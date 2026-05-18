@@ -1,0 +1,122 @@
+import type { MagiConfig } from "../types"
+import { describe, expect, test } from "vitest"
+import { resolveRepository, reviewerKey } from "./resolve"
+
+const config: MagiConfig = {
+  agents: {
+    reviewers: [
+      {
+        model: "anthropic/claude",
+        account: "bot-a",
+        options: { thinking: { type: "enabled", budgetTokens: 16000 } },
+      },
+      { id: "security", model: "anthropic/claude", account: "bot-b" },
+      { id: "compat", model: "openai/gpt", account: "bot-c" },
+    ],
+    editor: {
+      model: "openai/gpt",
+      account: "bot-c",
+      author: { email: "bot-c@example.com", name: "Bot C" },
+    },
+  },
+  github: { owner: "owner", repo: "repo" },
+  language: "en",
+  prompts: { review: "global-review.md" },
+}
+const reviewers = config.agents.reviewers ?? []
+
+describe("resolveRepository", () => {
+  test("uses index reviewer keys unless id is configured", () => {
+    expect(reviewerKey({}, 0)).toBe("reviewer-1")
+    expect(reviewerKey({ id: "security" }, 1)).toBe("security")
+  })
+
+  test("resolves repository defaults", () => {
+    const repo = resolveRepository(config)
+
+    expect(repo.alias).toBe("repo")
+    expect(repo.github.apiRetryAttempts).toBe(3)
+    expect(repo.github.host).toBe("github.com")
+    expect(repo.agents.reviewers.map((reviewer) => reviewer.key)).toEqual([
+      "reviewer-1",
+      "security",
+      "compat",
+    ])
+    expect(repo.merge.method).toBe("squash")
+    expect(repo.merge.approvalPolicy).toBe("majority")
+    expect(repo.merge.mergeQueue).toBe(false)
+    expect(repo.merge.maxThreadResolutionCycles).toBe(5)
+    expect(repo.automation).toEqual({ close: true, merge: true })
+    expect(repo.concurrency).toEqual({ runs: 3, reviewers: 3 })
+    expect(repo.checks.exclude).toEqual([])
+    expect(repo.checks.waitAfterEdit).toBe(true)
+    expect(repo.checks.retryFailedJobs).toBe(3)
+    expect(repo.language).toBe("en")
+    expect(repo.prompts.review).toBe("global-review.md")
+  })
+
+  test("resolves practical default permissions for reviewers and editor", () => {
+    const repo = resolveRepository(config)
+
+    expect(repo.agents.reviewers[0].permission).toMatchObject({
+      edit: "deny",
+      question: "deny",
+      read: "allow",
+      task: "deny",
+      webfetch: "deny",
+      websearch: "deny",
+    })
+    expect(repo.agents.reviewers[0].permission).toMatchObject({
+      bash: {
+        "*": "deny",
+        "git diff*": "allow",
+        "git status*": "allow",
+        "rg *": "allow",
+      },
+    })
+    expect(repo.agents.editor?.permission).toMatchObject({
+      bash: {
+        "git add*": "allow",
+        "git commit*": "allow",
+      },
+      edit: "allow",
+    })
+    expect(repo.agents.editor?.permission).not.toMatchObject({
+      bash: { "pnpm test*": "allow" },
+    })
+  })
+
+  test("merges common and per-agent permission overrides", () => {
+    const repo = resolveRepository({
+      ...config,
+      agents: {
+        ...config.agents,
+        permissions: {
+          bash: { "gh pr view*": "allow" },
+          webfetch: "allow",
+        },
+        reviewers: [
+          {
+            ...(reviewers[0] as NonNullable<(typeof reviewers)[number]>),
+            permission: { bash: { "git push*": "deny" }, webfetch: "deny" },
+          },
+          ...reviewers.slice(1),
+        ],
+      },
+    })
+
+    expect(repo.agents.reviewers[0].permission).toMatchObject({
+      bash: {
+        "*": "deny",
+        "gh pr view*": "allow",
+        "git push*": "deny",
+        "git status*": "allow",
+      },
+      webfetch: "deny",
+    })
+    expect(repo.agents.reviewers[1].permission).toMatchObject({
+      bash: { "gh pr view*": "allow" },
+      webfetch: "allow",
+    })
+  })
+})

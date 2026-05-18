@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencode-magi.local/schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "agents": { "$ref": "#/$defs/agents" },
+    "automation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "merge": { "type": "boolean", "default": true },
+        "close": { "type": "boolean", "default": true }
+      }
+    },
+    "clear": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "output": { "type": "boolean", "default": true },
+        "worktree": { "type": "boolean", "default": true },
+        "session": { "type": "boolean", "default": true },
+        "branch": { "type": "boolean", "default": true }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exclude": { "type": "array", "items": { "type": "string" } },
+        "waitAfterEdit": { "type": "boolean" },
+        "waitBeforeReview": { "type": "boolean" },
+        "retryFailedJobs": { "type": "integer", "minimum": 0, "default": 3 }
+      }
+    },
+    "concurrency": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runs": { "type": "integer", "minimum": 1, "default": 3 },
+        "reviewers": { "type": "integer", "minimum": 1, "default": 3 }
+      }
+    },
+    "github": {
+      "type": "object",
+      "required": ["owner", "repo"],
+      "additionalProperties": false,
+      "properties": {
+        "host": { "type": "string", "default": "github.com" },
+        "apiRetryAttempts": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 3,
+          "description": "Number of retry attempts for GitHub CLI API calls that fail with rate limit errors."
+        },
+        "owner": { "type": "string", "minLength": 1 },
+        "repo": { "type": "string", "minLength": 1 }
+      }
+    },
+    "language": { "type": "string" },
+    "merge": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "approvalPolicy": {
+          "enum": ["majority", "unanimous"],
+          "default": "majority"
+        },
+        "method": { "enum": ["merge", "squash", "rebase"] },
+        "auto": { "type": "boolean" },
+        "deleteBranch": { "type": "boolean" },
+        "mergeQueue": { "type": "boolean", "default": false },
+        "maxThreadResolutionCycles": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 5,
+          "description": "Maximum resolution attempts per unresolved review thread. Set 0 for unlimited attempts."
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dirs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pr": { "type": "string" }
+          }
+        },
+        "repairAttempts": { "type": "integer", "minimum": 0, "default": 3 }
+      }
+    },
+    "prompts": { "$ref": "#/$defs/prompts" },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowAuthors": { "type": "array", "items": { "type": "string" } },
+        "blockedPaths": { "type": "array", "items": { "type": "string" } },
+        "maxChangedFiles": { "type": "integer", "minimum": 0 },
+        "requiredLabels": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "worktree": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dir": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "reviewer": {
+      "type": "object",
+      "required": ["model", "account"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "model": { "type": "string", "minLength": 1 },
+        "options": { "type": "object", "additionalProperties": true },
+        "account": { "type": "string", "minLength": 1 },
+        "permission": { "$ref": "#/$defs/permission" },
+        "persona": { "type": "string" }
+      }
+    },
+    "editor": {
+      "type": "object",
+      "required": ["model", "account", "author"],
+      "additionalProperties": false,
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "options": { "type": "object", "additionalProperties": true },
+        "account": { "type": "string", "minLength": 1 },
+        "author": {
+          "type": "object",
+          "required": ["name", "email"],
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "email": { "type": "string", "minLength": 1 }
+          }
+        },
+        "permission": { "$ref": "#/$defs/permission" },
+        "persona": { "type": "string" }
+      }
+    },
+    "agents": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "permissions": { "$ref": "#/$defs/permission" },
+        "reviewers": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/reviewer" }
+        },
+        "editor": { "$ref": "#/$defs/editor" }
+      }
+    },
+    "permissionAction": { "enum": ["allow", "ask", "deny"] },
+    "permissionRule": {
+      "oneOf": [
+        { "$ref": "#/$defs/permissionAction" },
+        {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/permissionAction" }
+        }
+      ]
+    },
+    "permission": {
+      "oneOf": [
+        { "$ref": "#/$defs/permissionAction" },
+        {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/permissionRule" }
+        }
+      ]
+    },
+    "prompts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "review": { "type": "string" },
+        "rereview": { "type": "string" },
+        "edit": { "type": "string" },
+        "editGuidelines": { "type": "string" },
+        "findingValidation": { "type": "string" },
+        "closeReconsideration": { "type": "string" },
+        "rereviewCloseReconsideration": { "type": "string" },
+        "ciClassification": { "type": "string" },
+        "ciClassificationAfterEdit": { "type": "string" },
+        "report": { "type": "string" },
+        "reviewGuidelines": { "type": "string" }
+      }
+    }
+  }
+}

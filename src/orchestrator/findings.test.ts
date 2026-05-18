@@ -1,0 +1,59 @@
+import { describe, expect, test } from "vitest"
+import { applyFindingValidation } from "./findings"
+
+describe("applyFindingValidation", () => {
+  test("keeps only findings that reach finding-level majority", () => {
+    const result = applyFindingValidation({
+      outputs: {
+        a: {
+          verdict: "CHANGES_REQUESTED",
+          findings: [
+            { fix: "fix 1", issue: "issue 1", line: 1, path: "a.ts" },
+            { fix: "fix 2", issue: "issue 2", line: 2, path: "a.ts" },
+          ],
+        },
+        b: { findings: [], verdict: "MERGE" },
+        c: { findings: [], verdict: "MERGE" },
+      },
+      reviewerKeys: ["a", "b", "c"],
+      validations: {
+        b: {
+          votes: [
+            { findingIndex: 0, reviewer: "a", vote: "AGREE" },
+            { findingIndex: 1, reviewer: "a", vote: "DISAGREE" },
+          ],
+        },
+        c: {
+          votes: [
+            { findingIndex: 0, reviewer: "a", vote: "DISAGREE" },
+            { findingIndex: 1, reviewer: "a", vote: "DISAGREE" },
+          ],
+        },
+      },
+    })
+
+    expect(result.outputs.a.verdict).toBe("CHANGES_REQUESTED")
+    expect(result.outputs.a.findings).toHaveLength(1)
+    expect(result.outputs.a.findings[0].issue).toBe("issue 1")
+  })
+
+  test("turns changes requested into merge when all findings are rejected", () => {
+    const result = applyFindingValidation({
+      outputs: {
+        a: {
+          verdict: "CHANGES_REQUESTED",
+          findings: [{ fix: "fix", issue: "issue", line: 1, path: "a.ts" }],
+        },
+        b: { findings: [], verdict: "MERGE" },
+        c: { findings: [], verdict: "MERGE" },
+      },
+      reviewerKeys: ["a", "b", "c"],
+      validations: {
+        b: { votes: [{ findingIndex: 0, reviewer: "a", vote: "DISAGREE" }] },
+        c: { votes: [{ findingIndex: 0, reviewer: "a", vote: "DISAGREE" }] },
+      },
+    })
+
+    expect(result.outputs.a).toEqual({ findings: [], verdict: "MERGE" })
+  })
+})

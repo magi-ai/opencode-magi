@@ -1,0 +1,143 @@
+name: "Bug Report"
+description: "Create a bug report."
+labels: ["triage"]
+type: Bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for creating an issue 😎!
+
+        Please search open/closed issues before submitting. Someone might have asked the same thing before 😎!
+
+          - [Issues](https://github.com/hirotomoyamada/opencode-magi/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc)
+          - [Closed Issues](https://github.com/hirotomoyamada/opencode-magi/issues?q=is%3Aissue+sort%3Aupdated-desc+is%3Aclosed)
+
+        We're all volunteers here, so please help us help you by taking the time to accurately fill out this template. 💖
+  - type: input
+    id: version
+    attributes:
+      label: "opencode-magi version"
+      description: "The version of opencode-magi you are using."
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: opencode-version
+    attributes:
+      label: "OpenCode version"
+      description: "The OpenCode version where the issue occurs."
+      placeholder: "opencode --version"
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: "Node.js version"
+      description: "The Node.js version where the issue occurs."
+      placeholder: "node --version"
+    validations:
+      required: true
+  - type: input
+    id: gh-version
+    attributes:
+      label: "GitHub CLI version"
+      description: "The GitHub CLI version used by opencode-magi."
+      placeholder: "gh --version"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: "Description"
+      description: "A brief description of the issue."
+      placeholder: |
+        When I ____, I expected ____ to happen, but ____ happened instead.
+    validations:
+      required: true
+  - type: input
+    id: pull-request
+    attributes:
+      label: "Pull request URL"
+      description: |
+        If the issue happens while reviewing or merging a pull request, include the target PR URL.
+      placeholder: "https://github.com/owner/repo/pull/123"
+  - type: dropdown
+    id: command
+    attributes:
+      label: "Command"
+      description: "Select the command where the issue occurs."
+      options:
+        - "/magi:validate"
+        - "/magi:review"
+        - "/magi:merge"
+        - "/magi:status"
+        - "/magi:output"
+        - "/magi:cancel"
+        - "Other (add additional context)"
+  - type: textarea
+    id: steps
+    attributes:
+      label: "Steps to Reproduce"
+      description: |
+        Explain how to reproduce the issue.
+      value: |
+        1. Configure opencode-magi with '...'
+        2. Run '...'
+        3. Observe '...'
+  - type: checkboxes
+    id: operating-system
+    attributes:
+      label: "Operating System"
+      description: "The operating system(s) on which this issue occurred."
+      options:
+        - label: "macOS"
+        - label: "Windows"
+        - label: "Linux"
+  - type: textarea
+    id: config
+    attributes:
+      label: "Configuration"
+      description: |
+        Include the relevant parts of your global or project magi config. Remove tokens, credentials, and private values.
+      render: json
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logs or output"
+      description: |
+        Include the command output, stack trace, or relevant logs. Remove tokens, credentials, and private values.
+      render: shell
+  - type: dropdown
+    id: fix
+    attributes:
+      label: Do you know how to fix the issue?
+      options:
+        - "Yes"
+        - "No"
+  - type: dropdown
+    id: participate
+    attributes:
+      label: Are you willing to participate in fixing this issue and create a pull request with the fix?
+      options:
+        - "Yes"
+        - "No"
+  - type: textarea
+    id: additional-information
+    attributes:
+      label: "Additional Information"
+      description: |
+        Use this section to provide any additional information you might have,
+        such as a possible fix, screenshots, notes, or links to ideas.
+  - type: checkboxes
+    id: ai-used
+    attributes:
+      label: "AI used"
+      options:
+        - label: "I did not use AI to create this issue."
+        - label: "(If there is no check above) I checked the generated content before submitting."
+  - type: markdown
+    attributes:
+      value: |
+        This issue will be automatically unassigned after one week has passed since it was assigned.
+        Once unassigned, it may be picked up by someone else for work.

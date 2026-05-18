@@ -1,0 +1,24 @@
+{
+  "bash": {
+    "*": "deny",
+    "git status*": "allow",
+    "git diff*": "allow",
+    "git show*": "allow",
+    "git grep*": "allow",
+    "git log*": "allow",
+    "git blame*": "allow",
+    "git ls-files*": "allow",
+    "git rev-parse*": "allow",
+    "git merge-base*": "allow",
+    "rg *": "allow"
+  },
+  "edit": "deny",
+  "glob": "allow",
+  "grep": "allow",
+  "list": "allow",
+  "question": "deny",
+  "read": "allow",
+  "task": "deny",
+  "webfetch": "deny",
+  "websearch": "deny"
+}

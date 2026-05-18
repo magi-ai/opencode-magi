@@ -1,0 +1,120 @@
+name: Quality
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    branches:
+      - main
+  merge_group:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_OPTIONS: --max-old-space-size=8192
+
+jobs:
+  changeset:
+    name: Changeset
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Skip changeset validation on merge queue
+        if: github.event_name == 'merge_group'
+        run: |
+          echo "Changeset validation runs on pull_request. Merge queue candidates already passed PR checks."
+
+      - name: Check changeset
+        if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/')
+        run: |
+          git fetch --no-tags --prune --depth=1 origin "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+
+          changed_files="$(git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}...HEAD" -- src schema.json package.json)"
+          changeset_files="$(git diff --name-only --diff-filter=A "origin/${{ github.base_ref }}...HEAD" -- ".changeset/*.md")"
+
+          if [ -n "$changed_files" ] && [ -z "$changeset_files" ]; then
+            echo "A changeset is required for package code, prompt, schema, or package metadata changes."
+            echo "Changed files requiring a changeset:"
+            echo "$changed_files"
+            exit 1
+          fi
+
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install
+        uses: ./.github/composite-actions/install
+
+      - name: Run build
+        run: pnpm build
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install
+        uses: ./.github/composite-actions/install
+
+      - name: Run lint
+        run: pnpm lint:check
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install
+        uses: ./.github/composite-actions/install
+
+      - name: Run typecheck
+        run: pnpm typecheck
+
+  format:
+    name: Format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install
+        uses: ./.github/composite-actions/install
+
+      - name: Run format
+        run: pnpm format:check
+
+  test:
+    name: Test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install
+        uses: ./.github/composite-actions/install
+
+      - name: Run test
+        run: pnpm test

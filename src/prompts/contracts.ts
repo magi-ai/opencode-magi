@@ -1,0 +1,199 @@
+export const reviewOutputContract = `
+<output_contract>
+Return exactly one JSON object and nothing else. Do not wrap it in markdown.
+
+The object must match this shape:
+{
+  "verdict": "MERGE" | "CHANGES_REQUESTED" | "CLOSE",
+  "findings": [
+    {
+      "path": "relative/path.ext",
+      "line": 123,
+      "startLine": 120,
+      "issue": "What is wrong.",
+      "fix": "How to fix it.",
+      "perspective": "Optional review perspective."
+    }
+  ],
+  "reason": "Required only for CLOSE."
+}
+
+Rules:
+- MERGE requires an empty findings array.
+- CHANGES_REQUESTED requires at least one finding.
+- CLOSE requires a reason and an empty findings array.
+- path must be repository-relative.
+- line and startLine must refer to lines inside the PR diff hunk.
+- Omit startLine for single-line findings.
+</output_contract>`.trim()
+
+export const rereviewOutputContract = `
+<output_contract>
+Return exactly one JSON object and nothing else. Do not wrap it in markdown.
+
+The object must match this shape:
+{
+  "verdict": "MERGE" | "CHANGES_REQUESTED" | "CLOSE",
+  "resolve": [{ "commentId": 123, "threadId": "..." }],
+  "followUps": [{ "commentId": 123, "body": "..." }],
+  "newFindings": [{ "path": "relative/path.ext", "line": 123, "startLine": 120, "body": "..." }],
+  "reason": "Required only for CLOSE."
+}
+
+Rules:
+- MERGE requires empty followUps and newFindings arrays.
+- CHANGES_REQUESTED requires at least one followUp or newFinding.
+- CLOSE requires a reason and empty followUps and newFindings arrays.
+- line and startLine must refer to lines inside the latest PR diff hunk.
+- Omit startLine for single-line findings.
+</output_contract>`.trim()
+
+export const findingValidationOutputContract = `
+<output_contract>
+Return exactly one JSON object and nothing else. Do not wrap it in markdown.
+
+The object must match this shape:
+{
+  "votes": [
+    {
+      "reviewer": "reviewer-key-that-authored-the-finding",
+      "findingIndex": 0,
+      "vote": "AGREE" | "DISAGREE",
+      "reason": "Optional short rationale."
+    }
+  ]
+}
+
+Rules:
+- Vote on every finding listed in the task.
+- Do not vote on your own findings.
+- AGREE means the finding should remain posted.
+- DISAGREE means the finding should be discarded.
+</output_contract>`.trim()
+
+export const closeReconsiderationOutputContract = `
+<output_contract>
+Return exactly one JSON object and nothing else. Do not wrap it in markdown.
+
+The object must match this shape:
+{
+  "verdict": "MERGE" | "CHANGES_REQUESTED",
+  "findings": [
+    {
+      "path": "relative/path.ext",
+      "line": 123,
+      "startLine": 120,
+      "issue": "What is wrong.",
+      "fix": "How to fix it."
+    }
+  ]
+}
+
+Rules:
+- MERGE requires an empty findings array.
+- CHANGES_REQUESTED requires at least one finding.
+- CLOSE is not allowed in this reconsideration step.
+- Omit startLine for single-line findings.
+</output_contract>`.trim()
+
+export const rereviewCloseReconsiderationOutputContract = `
+<output_contract>
+Return exactly one JSON object and nothing else. Do not wrap it in markdown.
+
+The object must match this shape:
+{
+  "verdict": "MERGE" | "CHANGES_REQUESTED",
+  "resolve": [{ "commentId": 123, "threadId": "..." }],
+  "followUps": [{ "commentId": 123, "body": "..." }],
+  "newFindings": [{ "path": "relative/path.ext", "line": 123, "startLine": 120, "body": "..." }]
+}
+
+Rules:
+- MERGE requires empty followUps and newFindings arrays.
+- CHANGES_REQUESTED requires at least one followUp or newFinding.
+- CLOSE is not allowed in this reconsideration step.
+- Omit startLine for single-line findings.
+</output_contract>`.trim()
+
+export const editOutputContract = `
+<output_contract>
+Return exactly one JSON object and nothing else. Do not wrap it in markdown.
+
+The object must match this shape:
+{
+  "mode": "EDITED" | "REPLIED",
+  "commitSha": "full sha, required only when mode is EDITED; omit when mode is REPLIED",
+  "commitMessage": "fix(scope): short description, required only when mode is EDITED; omit when mode is REPLIED",
+  "filesTouched": ["relative/path.ext"],
+  "responses": [{ "commentId": 123, "action": "FIXED" | "DISAGREE" | "ASK", "body": "Fixed." }]
+}
+
+Rules:
+- Use EDITED only when you edited files, staged changes, and committed.
+- Use REPLIED when you only replied without code changes.
+- FIXED means you agreed with the reviewer and made a code change.
+- DISAGREE means you did not edit because the requested change is incorrect or unnecessary.
+- ASK means you did not edit because you need clarification.
+- Do not make changes just because a reviewer requested them; edit only when you understand and agree.
+- Do not push. The orchestrator pushes after validating this envelope.
+- filesTouched must include every final changed file.
+- responses must include a reply for each thread you addressed.
+- REPLIED requires filesTouched to be empty and at least one DISAGREE or ASK response.
+</output_contract>`.trim()
+
+export const ciClassificationOutputContract = `
+<output_contract>
+Return exactly one JSON object and nothing else. Do not wrap it in markdown.
+{
+  "checks": [
+    {
+      "name": "exact failed check name",
+      "classification": "SCOPE_IN" | "SCOPE_OUT",
+      "reason": "Short reason."
+    }
+  ]
+}
+Rules:
+- Return one item for every failed check.
+- SCOPE_IN means the failure should be treated as caused by the PR changes and passed to reviewers/editor.
+- SCOPE_OUT means the failure is likely flaky, external, or infrastructure-related and may be rerun.
+- If uncertain, choose SCOPE_IN.
+</output_contract>`.trim()
+
+export const ciClassificationAfterEditOutputContract = `
+<output_contract>
+Return exactly one JSON object and nothing else. Do not wrap it in markdown.
+{
+  "checks": [
+    {
+      "name": "exact failed check name",
+      "classification": "SCOPE_IN" | "SCOPE_OUT",
+      "reason": "Short reason."
+    }
+  ]
+}
+Rules:
+- Return one item for every failed check.
+- SCOPE_IN means the failure should be treated as caused by the PR changes or the editor changes and passed to reviewers/editor.
+- SCOPE_OUT means the failure is likely flaky, external, or infrastructure-related and may be rerun.
+- If uncertain, choose SCOPE_IN.
+</output_contract>`.trim()
+
+const outputContractsBySchemaName: Record<string, string> = {
+  "CI classification": ciClassificationOutputContract,
+  "close reconsideration": closeReconsiderationOutputContract,
+  edit: editOutputContract,
+  "finding validation": findingValidationOutputContract,
+  rereview: rereviewOutputContract,
+  "rereview close reconsideration": rereviewCloseReconsiderationOutputContract,
+  review: reviewOutputContract,
+}
+
+export function repairPrompt(schemaName: string): string {
+  const outputContract = outputContractsBySchemaName[schemaName]
+  const instructions = `Your previous ${schemaName} output did not match the required schema. Regenerate the ${schemaName} result.\n\nReturn only a JSON object matching the output contract below. Do not include analysis, explanation, apologies, markdown, or any text before or after the JSON object.`
+
+  if (!outputContract) return instructions
+
+  return `${instructions}\n\n${outputContract}`
+}

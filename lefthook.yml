@@ -1,0 +1,32 @@
+pre-commit:
+  piped: true
+  jobs:
+    - name: lint & typecheck
+      glob: "*.{js,cjs,mjs,jsx,ts,cts,mts,tsx,d.ts}"
+      run: pnpm oxlint {staged_files} --type-check --max-warnings=0 --fix
+      stage_fixed: true
+
+    - name: format
+      glob: "*.{js,cjs,mjs,jsx,ts,cts,mts,tsx,d.ts,md,mdx,yaml,yml,json,html,css}"
+      run: pnpm exec oxfmt {staged_files} --write
+      stage_fixed: true
+
+commit-msg:
+  commands:
+    commitlint:
+      run: |
+        pnpm commitlint --edit {1}
+
+post-merge:
+  commands:
+    pnpm:
+      files: git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD
+      glob: "{package.json,pnpm-lock.yaml}"
+      run: pnpm install --frozen-lockfile
+
+post-checkout:
+  commands:
+    pnpm:
+      files: git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD
+      glob: "{package.json,pnpm-lock.yaml}"
+      run: pnpm install --frozen-lockfile
