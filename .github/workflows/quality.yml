@@ -39,11 +39,11 @@ jobs:
         run: |
           git fetch --no-tags --prune --depth=1 origin "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
 
-          changed_files="$(git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}...HEAD" -- src schema.json package.json)"
+          changed_files="$(git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}...HEAD" -- src schema.json package.json README.md)"
           changeset_files="$(git diff --name-only --diff-filter=A "origin/${{ github.base_ref }}...HEAD" -- ".changeset/*.md")"
 
           if [ -n "$changed_files" ] && [ -z "$changeset_files" ]; then
-            echo "A changeset is required for package code, prompt, schema, or package metadata changes."
+            echo "A changeset is required for package code, prompt, schema, package metadata, or README changes."
             echo "Changed files requiring a changeset:"
             echo "$changed_files"
             exit 1
