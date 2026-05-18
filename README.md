@@ -36,6 +36,8 @@ Add the plugin to `opencode.json`.
 }
 ```
 
+Restart OpenCode. Done.
+
 ### Configure
 
 Configure global defaults in `~/.config/opencode/magi.json` and project overrides in `<project>/.opencode/magi.json`.
