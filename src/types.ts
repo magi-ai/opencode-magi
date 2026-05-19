@@ -23,7 +23,7 @@ export interface ReviewerConfig {
   id?: string
   model: string
   options?: ModelOptions
-  permission?: PermissionConfig
+  permissions?: PermissionConfig
   persona?: string
 }
 
@@ -35,14 +35,12 @@ export interface EditorConfig {
   }
   model: string
   options?: ModelOptions
-  permission?: PermissionConfig
+  permissions?: PermissionConfig
   persona?: string
 }
 
 export interface AgentsConfig {
-  editor?: EditorConfig
   permissions?: PermissionConfig
-  reviewers?: ReviewerConfig[]
 }
 
 export interface GitHubRepoConfig {
@@ -52,20 +50,22 @@ export interface GitHubRepoConfig {
   repo: string
 }
 
-export interface MergeConfig {
+export interface PullRequestMergeConfig {
   approvalPolicy?: "majority" | "unanimous"
   auto?: boolean
   deleteBranch?: boolean
-  maxThreadResolutionCycles?: number
-  mergeQueue?: boolean
   method?: "merge" | "squash" | "rebase"
+  queue?: boolean
 }
 
-export interface ChecksConfig {
+export interface ReviewChecksConfig {
   exclude?: string[]
   retryFailedJobs?: number
-  waitAfterEdit?: boolean
-  waitBeforeReview?: boolean
+  wait?: boolean
+}
+
+export interface MergeChecksConfig {
+  wait?: boolean
 }
 
 export interface AutomationConfig {
@@ -99,54 +99,75 @@ export interface PromptConfig {
   edit?: string
   editGuidelines?: string
   findingValidation?: string
-  report?: string
   rereview?: string
   rereviewCloseReconsideration?: string
   review?: string
   reviewGuidelines?: string
 }
 
-export interface WorktreeConfig {
-  dirs?: Partial<Record<"pr", string>>
+export interface ReviewPromptConfig {
+  ciClassification?: string
+  closeReconsideration?: string
+  findingValidation?: string
+  rereview?: string
+  review?: string
+  reviewGuidelines?: string
+}
+
+export interface MergePromptConfig {
+  ciClassification?: string
+  edit?: string
+  editGuidelines?: string
 }
 
 export interface RepositoryConfig {
   alias: string
-  checks?: ChecksConfig
   github: GitHubRepoConfig
   language?: string
-  merge?: MergeConfig
-  prompts?: PromptConfig
 }
 
 export interface OutputConfig {
-  dirs?: Partial<Record<"pr", string>>
   repairAttempts?: number
+}
+
+export interface ReviewConfig {
+  agents?: ReviewerConfig[]
+  automation?: AutomationConfig
+  checks?: ReviewChecksConfig
+  concurrency?: ConcurrencyConfig
+  merge?: PullRequestMergeConfig
+  output?: string
+  prompts?: ReviewPromptConfig
+  safety?: SafetyConfig
+  worktree?: string
+}
+
+export interface MergeConfig {
+  automation?: AutomationConfig
+  checks?: MergeChecksConfig
+  editor?: EditorConfig
+  maxThreadResolutionCycles?: number
+  prompts?: MergePromptConfig
 }
 
 export interface MagiConfig {
   $schema?: string
-  agents: AgentsConfig
-  automation?: AutomationConfig
+  agents?: AgentsConfig
   clear?: ClearConfig
-  checks?: ChecksConfig
-  concurrency?: ConcurrencyConfig
   github?: GitHubRepoConfig
   language?: string
   merge?: MergeConfig
   output?: OutputConfig
-  prompts?: PromptConfig
-  safety?: SafetyConfig
-  worktree?: WorktreeConfig
+  review?: ReviewConfig
 }
 
-export interface ResolvedReviewer extends ReviewerConfig {
+export interface ResolvedReviewer extends Omit<ReviewerConfig, "permissions"> {
   index: number
   key: string
   permission: PermissionConfig
 }
 
-export interface ResolvedEditor extends EditorConfig {
+export interface ResolvedEditor extends Omit<EditorConfig, "permissions"> {
   permission: PermissionConfig
 }
 
@@ -158,12 +179,23 @@ export interface ResolvedAgents {
 export interface ResolvedRepository extends RepositoryConfig {
   agents: ResolvedAgents
   automation: Required<AutomationConfig>
-  checks: Required<ChecksConfig>
+  checks: {
+    exclude: string[]
+    retryFailedJobs: number
+    wait?: boolean
+    waitAfterEdit: boolean
+    waitBeforeReview: boolean
+  }
   concurrency: Required<ConcurrencyConfig>
   github: Required<GitHubRepoConfig>
   language?: string
-  merge: Required<MergeConfig>
+  merge: Required<Omit<PullRequestMergeConfig, "queue">> & {
+    maxThreadResolutionCycles: number
+    mergeQueue: boolean
+    queue?: boolean
+  }
   prompts: PromptConfig
+  reviewAutomation?: Required<AutomationConfig>
   safety: Required<Omit<SafetyConfig, "maxChangedFiles">> & {
     maxChangedFiles?: number
   }

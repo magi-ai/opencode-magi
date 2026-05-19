@@ -87,8 +87,8 @@ describe("magi_validate", () => {
     const validateMagiConfigFiles = await loadValidateMagiConfigFiles()
 
     await writeConfig(globalPath, {
-      agents: {
-        reviewers: [
+      review: {
+        agents: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },
           { account: "bot-c", model: "openai/gpt" },
@@ -121,8 +121,8 @@ describe("magi_validate", () => {
     const validateMagiConfigFiles = await loadValidateMagiConfigFiles()
 
     await writeConfig(globalPath, {
-      agents: {
-        reviewers: [
+      review: {
+        agents: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },
           { account: "bot-c", model: "openai/gpt" },
@@ -171,8 +171,8 @@ describe("magi_validate", () => {
     const validateMagiConfigFiles = await loadValidateMagiConfigFiles()
 
     await writeConfig(globalPath, {
-      agents: {
-        reviewers: [
+      review: {
+        agents: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },
         ],
@@ -184,7 +184,7 @@ describe("magi_validate", () => {
     })
 
     expect(result).toContain(
-      "agents.reviewers must contain an odd number of reviewers",
+      "review.agents must contain an odd number of reviewers",
     )
     expect(result).not.toContain("github.owner is required")
     expect(result).not.toContain("github.repo is required")

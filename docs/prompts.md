@@ -4,7 +4,7 @@ Magi keeps built-in task prompts as Markdown templates under [`src/prompts/templ
 
 Custom prompt files replace the built-in task template for that phase. They do not replace the fixed output contract, so prompt customization cannot change the required response schema.
 
-Guideline files are additive. Configure `prompts.reviewGuidelines` or `prompts.editGuidelines` when you want to keep Magi's built-in task prompts and append shared guidance from a Markdown file.
+Guideline files are additive. Configure `review.prompts.reviewGuidelines` or `merge.prompts.editGuidelines` when you want to keep Magi's built-in task prompts and append shared guidance from a Markdown file.
 
 Custom prompt and guideline files are also rendered with the same placeholder values as the built-in template for that phase.
 
@@ -14,12 +14,12 @@ Project prompt paths in `.opencode/magi.json` override the same global prompt ke
 
 For each model call, Magi builds one final prompt from several parts.
 
-The `<task>` block comes from either Magi's built-in Markdown template or your configured `prompts.*` Markdown file. It tells the model what phase it is running, what PR to inspect, what diff range to use, and what inputs Magi has collected for that phase.
+The `<task>` block comes from either Magi's built-in Markdown template or your configured `review.prompts.*` or `merge.prompts.*` Markdown file. It tells the model what phase it is running, what PR to inspect, what diff range to use, and what inputs Magi has collected for that phase.
 
 For example, in a review prompt:
 
-- Without `prompts.review`, Magi uses [`review.md`](/src/prompts/templates/review.md).
-- With `prompts.review`, Magi uses that file instead of [`review.md`](/src/prompts/templates/review.md).
+- Without `review.prompts.review`, Magi uses [`review.md`](/src/prompts/templates/review.md).
+- With `review.prompts.review`, Magi uses that file instead of [`review.md`](/src/prompts/templates/review.md).
 - In both cases, Magi still appends the fixed review output contract.
 
 The custom file replaces the built-in task, but it does not replace the output schema.
@@ -28,7 +28,7 @@ The final prompt has this shape:
 
 ```text
 <task>
-...built-in template or configured prompts.* template, with runtime values filled in...
+...built-in template or configured prompt template, with runtime values filled in...
 </task>
 
 <language>
@@ -40,11 +40,11 @@ The final prompt has this shape:
 </persona>
 
 <review_guidelines>
-    ...optional Markdown loaded from prompts.reviewGuidelines...
+    ...optional Markdown loaded from review.prompts.reviewGuidelines...
 </review_guidelines>
 
 <edit_guidelines>
-    ...optional Markdown loaded from prompts.editGuidelines...
+    ...optional Markdown loaded from merge.prompts.editGuidelines...
 </edit_guidelines>
 
 <output_contract>
@@ -56,12 +56,14 @@ Only the task template and guideline files support placeholder replacement. The 
 
 ## Review Guidelines
 
-Use `prompts.reviewGuidelines` to append repository-specific review standards without replacing Magi's built-in task prompt.
+Use `review.prompts.reviewGuidelines` to append repository-specific review standards without replacing Magi's built-in task prompt.
 
 ```json
 {
-  "prompts": {
-    "reviewGuidelines": ".agents/references/pr-review-guidelines.md"
+  "review": {
+    "prompts": {
+      "reviewGuidelines": ".agents/references/pr-review-guidelines.md"
+    }
   }
 }
 ```
@@ -78,7 +80,7 @@ Placeholders use `{name}` syntax. Unknown placeholders are left unchanged.
 
 Used when a reviewer performs an initial PR review.
 
-Config key: `prompts.review`
+Config key: `review.prompts.review`
 
 Built-in template: [`review.md`](/src/prompts/templates/review.md)
 
@@ -91,14 +93,12 @@ Built-in template: [`review.md`](/src/prompts/templates/review.md)
 | `{jsonEncodedWorktreePath}` | JSON-encoded worktree path for shell snippets.                          |
 | `{ciFailureContext}`        | Scope-in CI failure context, when present.                              |
 | `{ciFailureContextBlock}`   | Full `<ci_failure_context>` block when context exists, otherwise empty. |
-| `{ciFailureLogs}`           | Backward-compatible alias for `{ciFailureContext}`.                     |
-| `{ciFailureLogsBlock}`      | Backward-compatible alias for `{ciFailureContextBlock}`.                |
 
 ### Re-review
 
 Used when a reviewer checks new commits or editor changes against unresolved review threads.
 
-Config key: `prompts.rereview`
+Config key: `review.prompts.rereview`
 
 Built-in template: [`rereview.md`](/src/prompts/templates/rereview.md)
 
@@ -112,8 +112,6 @@ Built-in template: [`rereview.md`](/src/prompts/templates/rereview.md)
 | `{unresolvedThreads}`             | JSON list of unresolved review threads for the reviewer.                              |
 | `{ciFailureContext}`              | Scope-in CI failure context, when present.                                            |
 | `{ciFailureContextBlock}`         | Full `<ci_failure_context>` block when context exists, otherwise empty.               |
-| `{ciFailureLogs}`                 | Backward-compatible alias for `{ciFailureContext}`.                                   |
-| `{ciFailureLogsBlock}`            | Backward-compatible alias for `{ciFailureContextBlock}`.                              |
 | `{previousReview}`                | Previous GitHub review metadata, when available.                                      |
 | `{previousReviewBlock}`           | Full `<previous_review>` block when previous review metadata exists, otherwise empty. |
 
@@ -121,7 +119,7 @@ Built-in template: [`rereview.md`](/src/prompts/templates/rereview.md)
 
 Used when the editor responds to requested changes by fixing code, disagreeing with a clear reason, or asking for clarification.
 
-Config key: `prompts.edit`
+Config key: `merge.prompts.edit`
 
 Built-in template: [`edit.md`](/src/prompts/templates/edit.md)
 
@@ -134,12 +132,14 @@ Built-in template: [`edit.md`](/src/prompts/templates/edit.md)
 
 #### Edit Guidelines
 
-Use `prompts.editGuidelines` to append repository-specific edit standards without replacing Magi's built-in task prompt.
+Use `merge.prompts.editGuidelines` to append repository-specific edit standards without replacing Magi's built-in task prompt.
 
 ```json
 {
-  "prompts": {
-    "editGuidelines": ".agents/references/edit-guidelines.md"
+  "merge": {
+    "prompts": {
+      "editGuidelines": ".agents/references/edit-guidelines.md"
+    }
   }
 }
 ```
@@ -152,7 +152,7 @@ Paths may be absolute, project-relative, or start with `~/`.
 
 Used when reviewers vote on whether another reviewer's findings should remain posted.
 
-Config key: `prompts.findingValidation`
+Config key: `review.prompts.findingValidation`
 
 Built-in template: [`finding-validation.md`](/src/prompts/templates/finding-validation.md)
 
@@ -169,7 +169,7 @@ Built-in template: [`finding-validation.md`](/src/prompts/templates/finding-vali
 
 Used when a reviewer returned `CLOSE`, but `CLOSE` did not reach majority. The reviewer must choose `MERGE` or `CHANGES_REQUESTED` before anything is posted.
 
-Config key: `prompts.closeReconsideration`
+Config key: `review.prompts.closeReconsideration`
 
 Built-in template: [`close-reconsideration.md`](/src/prompts/templates/close-reconsideration.md)
 
@@ -186,7 +186,7 @@ Built-in template: [`close-reconsideration.md`](/src/prompts/templates/close-rec
 
 Used when a reviewer returned `CLOSE` during re-review, but `CLOSE` did not reach majority. The reviewer must choose `MERGE` or `CHANGES_REQUESTED` before anything is posted.
 
-Config key: `prompts.rereviewCloseReconsideration`
+Config key: `review.prompts.closeReconsideration`
 
 Built-in template: [`rereview-close-reconsideration.md`](/src/prompts/templates/rereview-close-reconsideration.md)
 
@@ -200,15 +200,13 @@ Built-in template: [`rereview-close-reconsideration.md`](/src/prompts/templates/
 | `{unresolvedThreads}`             | JSON list of unresolved review threads for the reviewer.                |
 | `{ciFailureContext}`              | Scope-in CI failure context, when present.                              |
 | `{ciFailureContextBlock}`         | Full `<ci_failure_context>` block when context exists, otherwise empty. |
-| `{ciFailureLogs}`                 | Backward-compatible alias for `{ciFailureContext}`.                     |
-| `{ciFailureLogsBlock}`            | Backward-compatible alias for `{ciFailureContextBlock}`.                |
 | `{closeReason}`                   | The original minority close reason.                                     |
 
 ### CI Classification
 
 Used when failed checks need to be classified as caused by the PR (`SCOPE_IN`) or likely flaky, external, or infrastructure-related (`SCOPE_OUT`).
 
-Config key: `prompts.ciClassification`
+Config key: `review.prompts.ciClassification`
 
 Built-in template: [`ci-classification.md`](/src/prompts/templates/ci-classification.md)
 
@@ -220,9 +218,9 @@ Built-in template: [`ci-classification.md`](/src/prompts/templates/ci-classifica
 
 ### CI Classification After Edit
 
-Used when failed checks need to be classified after the editor has pushed fixes. If `prompts.ciClassificationAfterEdit` is not set, Magi falls back to `prompts.ciClassification`. The fixed output contract is the same as [CI Classification](#ci-classification).
+Used when failed checks need to be classified after the editor has pushed fixes.
 
-Config key: `prompts.ciClassificationAfterEdit`
+Config key: `merge.prompts.ciClassification`
 
 Built-in template: [`ci-classification-after-edit.md`](/src/prompts/templates/ci-classification-after-edit.md)
 

@@ -970,6 +970,7 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
     ...abortableInput,
     allowAlreadyReviewed: true,
     approvalPolicy: input.repository.merge.approvalPolicy,
+    enableReviewAutomation: false,
     onProgress: (progress) => input.onProgress?.(progress),
     runId: input.runId,
     dryRun: input.dryRun,

@@ -18,7 +18,7 @@ It is safe to run after creating or updating `~/.config/opencode/magi.json` or `
 2. Read the project config at `<project>/.opencode/magi.json`.
 3. Report whether each config file is found, missing, or invalid JSON.
 4. Merge existing configs, with project config overriding global config.
-5. Validate known keys, value types, reviewer count, reviewer IDs, duplicate accounts, model IDs, prompts, output settings, worktree settings, check settings, merge settings, automation settings, and clear settings.
+5. Validate known keys, value types, reviewer count, reviewer IDs, duplicate accounts, model IDs, prompts, output settings, worktree settings, check settings, review settings, merge settings, automation settings, and clear settings.
 6. Require `github.owner` and `github.repo` when a project config exists.
 7. Verify GitHub CLI authentication for configured reviewer and editor accounts.
 8. Verify repository permissions when GitHub authentication succeeds.
@@ -42,15 +42,16 @@ It does not modify files, create runs, post to GitHub, or start agents.
 
 `/magi:validate` validates the same settings documented in [Config](/docs/config.md). The most important requirements are:
 
-| Setting                      | Requirement                                                 |
-| ---------------------------- | ----------------------------------------------------------- |
-| `agents.reviewers`           | Required for review/merge, at least 3 reviewers, odd count. |
-| `agents.reviewers[].model`   | Required full OpenCode model ID in `provider/model` form.   |
-| `agents.reviewers[].account` | Required GitHub account, unique across reviewers.           |
-| `agents.editor`              | Required by `/magi:merge`, optional for `/magi:review`.     |
-| `github.owner`               | Required for PR review/merge runs.                          |
-| `github.repo`                | Required for PR review/merge runs.                          |
-| `prompts.*`                  | Must point to readable files when configured.               |
+| Setting                   | Requirement                                                 |
+| ------------------------- | ----------------------------------------------------------- |
+| `review.agents`           | Required for review/merge, at least 3 reviewers, odd count. |
+| `review.agents[].model`   | Required full OpenCode model ID in `provider/model` form.   |
+| `review.agents[].account` | Required GitHub account, unique across reviewers.           |
+| `merge.editor`            | Required by `/magi:merge`, optional for `/magi:review`.     |
+| `github.owner`            | Required for PR review/merge runs.                          |
+| `github.repo`             | Required for PR review/merge runs.                          |
+| `review.prompts.*`        | Must point to readable files when configured.               |
+| `merge.prompts.*`         | Must point to readable files when configured.               |
 
 ## FAQ
 
@@ -72,4 +73,4 @@ Yes, after auth succeeds. Reviewer accounts must be able to read the repository.
 
 ### Why can validation pass without an editor?
 
-`agents.editor` is required when running `/magi:merge`, but not when running only `/magi:review`. `/magi:validate` validates general config by default; `/magi:merge` performs a stricter validation before starting.
+`merge.editor` is required when running `/magi:merge`, but not when running only `/magi:review`. `/magi:validate` validates general config by default; `/magi:merge` performs a stricter validation before starting.

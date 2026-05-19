@@ -15,6 +15,8 @@ import {
   fetchPullRequestCommits,
   fetchPullRequestReviews,
   fetchUnresolvedThreads,
+  closePullRequest,
+  mergePullRequest,
   postApproval,
   postChangesRequested,
   postCloseComment,
@@ -65,6 +67,7 @@ export interface ReviewRunInput {
   config: MagiConfig
   directory: string
   dryRun?: boolean
+  enableReviewAutomation?: boolean
   exec: Exec
   onProgress?: (progress: ReviewRunProgress) => void | Promise<void>
   pr: number
@@ -321,6 +324,13 @@ function reviewStateToVerdict(
   if (state === "CHANGES_REQUESTED") return "CHANGES_REQUESTED"
 
   return "CLOSE"
+}
+
+function hasBlockingCiReports(reports: CheckWaitReport[]): boolean {
+  return reports.some(
+    (report) =>
+      report.scopeInside.length || report.scopeOutsideUnresolved.length,
+  )
 }
 
 function previousReviewText(review: PullRequestReview): string {
@@ -1271,6 +1281,45 @@ export async function runReview(
           ]),
         ),
       ),
+    }
+
+    const automationAccount = input.repository.agents.reviewers[0]?.account
+    const enableReviewAutomation = input.enableReviewAutomation ?? true
+    if (
+      enableReviewAutomation &&
+      verdict === "MERGE" &&
+      input.repository.reviewAutomation?.merge
+    ) {
+      await input.onProgress?.({ phase: "merging PR", type: "phase" })
+      posted.automation = hasBlockingCiReports(ciReports)
+        ? "skipped: unresolved CI"
+        : input.dryRun
+          ? "dry-run:would-merge"
+          : automationAccount
+            ? await mergePullRequest(
+                input.exec,
+                input.repository,
+                input.pr,
+                automationAccount,
+              )
+            : "skipped: no review automation account"
+    }
+    if (
+      enableReviewAutomation &&
+      verdict === "CLOSE" &&
+      input.repository.reviewAutomation?.close
+    ) {
+      await input.onProgress?.({ phase: "closing PR", type: "phase" })
+      posted.automation = input.dryRun
+        ? "dry-run:would-close"
+        : automationAccount
+          ? await closePullRequest(
+              input.exec,
+              input.repository,
+              input.pr,
+              automationAccount,
+            )
+          : "skipped: no review automation account"
     }
 
     await writeFile(

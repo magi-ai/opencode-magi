@@ -78,33 +78,36 @@ export function mergePermissions(
 
 export function resolveReviewerPermission(
   agents: AgentsConfig,
-  reviewer: { permission?: PermissionConfig },
+  reviewer: { permissions?: PermissionConfig },
 ): PermissionConfig {
   return mergePermissions(
     mergePermissions(DEFAULT_REVIEWER_PERMISSION, agents.permissions),
-    reviewer.permission,
+    reviewer.permissions,
   )
 }
 
 export function resolveEditorPermission(
   agents: AgentsConfig,
-  editor: { permission?: PermissionConfig },
+  editor: { permissions?: PermissionConfig },
 ): PermissionConfig {
   return mergePermissions(
     mergePermissions(DEFAULT_EDITOR_PERMISSION, agents.permissions),
-    editor.permission,
+    editor.permissions,
   )
 }
 
-export function resolveAgents(agents: AgentsConfig): ResolvedAgents {
+export function resolveAgents(config: MagiConfig): ResolvedAgents {
+  const agents = config.agents ?? {}
+  const editor = config.merge?.editor
+
   return {
-    editor: agents.editor
+    editor: editor
       ? {
-          ...agents.editor,
-          permission: resolveEditorPermission(agents, agents.editor),
+          ...editor,
+          permission: resolveEditorPermission(agents, editor),
         }
       : undefined,
-    reviewers: (agents.reviewers ?? []).map<ResolvedReviewer>(
+    reviewers: (config.review?.agents ?? []).map<ResolvedReviewer>(
       (reviewer, index) => ({
         ...reviewer,
         key: reviewerKey(reviewer, index),
@@ -121,20 +124,21 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
 
   return {
     alias: config.github.repo,
-    agents: resolveAgents(config.agents),
+    agents: resolveAgents(config),
     automation: {
-      close: config.automation?.close ?? true,
-      merge: config.automation?.merge ?? true,
+      close: config.merge?.automation?.close ?? false,
+      merge: config.merge?.automation?.merge ?? true,
     },
     checks: {
-      exclude: config.checks?.exclude ?? [],
-      waitAfterEdit: config.checks?.waitAfterEdit ?? true,
-      waitBeforeReview: config.checks?.waitBeforeReview ?? true,
-      retryFailedJobs: config.checks?.retryFailedJobs ?? 3,
+      exclude: config.review?.checks?.exclude ?? [],
+      retryFailedJobs: config.review?.checks?.retryFailedJobs ?? 3,
+      wait: config.review?.checks?.wait ?? true,
+      waitAfterEdit: config.merge?.checks?.wait ?? true,
+      waitBeforeReview: config.review?.checks?.wait ?? true,
     },
     concurrency: {
-      runs: config.concurrency?.runs ?? 3,
-      reviewers: config.concurrency?.reviewers ?? 3,
+      runs: config.review?.concurrency?.runs ?? 3,
+      reviewers: config.review?.concurrency?.reviewers ?? 3,
     },
     github: {
       apiRetryAttempts: config.github.apiRetryAttempts ?? 3,
@@ -144,19 +148,36 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
     },
     language: config.language,
     merge: {
-      approvalPolicy: config.merge?.approvalPolicy ?? "majority",
-      method: config.merge?.method ?? "squash",
-      auto: config.merge?.auto ?? true,
-      deleteBranch: config.merge?.deleteBranch ?? true,
-      mergeQueue: config.merge?.mergeQueue ?? false,
+      approvalPolicy: config.review?.merge?.approvalPolicy ?? "majority",
+      method: config.review?.merge?.method ?? "squash",
+      auto: config.review?.merge?.auto ?? true,
+      deleteBranch: config.review?.merge?.deleteBranch ?? true,
+      queue: config.review?.merge?.queue ?? false,
+      mergeQueue: config.review?.merge?.queue ?? false,
       maxThreadResolutionCycles: config.merge?.maxThreadResolutionCycles ?? 5,
     },
-    prompts: config.prompts ?? {},
+    prompts: {
+      ciClassification: config.review?.prompts?.ciClassification,
+      ciClassificationAfterEdit: config.merge?.prompts?.ciClassification,
+      closeReconsideration: config.review?.prompts?.closeReconsideration,
+      edit: config.merge?.prompts?.edit,
+      editGuidelines: config.merge?.prompts?.editGuidelines,
+      findingValidation: config.review?.prompts?.findingValidation,
+      rereview: config.review?.prompts?.rereview,
+      rereviewCloseReconsideration:
+        config.review?.prompts?.closeReconsideration,
+      review: config.review?.prompts?.review,
+      reviewGuidelines: config.review?.prompts?.reviewGuidelines,
+    },
+    reviewAutomation: {
+      close: config.review?.automation?.close ?? false,
+      merge: config.review?.automation?.merge ?? false,
+    },
     safety: {
-      allowAuthors: config.safety?.allowAuthors ?? [],
-      blockedPaths: config.safety?.blockedPaths ?? [],
-      maxChangedFiles: config.safety?.maxChangedFiles,
-      requiredLabels: config.safety?.requiredLabels ?? [],
+      allowAuthors: config.review?.safety?.allowAuthors ?? [],
+      blockedPaths: config.review?.safety?.blockedPaths ?? [],
+      maxChangedFiles: config.review?.safety?.maxChangedFiles,
+      requiredLabels: config.review?.safety?.requiredLabels ?? [],
     },
   }
 }

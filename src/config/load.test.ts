@@ -4,8 +4,11 @@ import { mergeMagiConfig } from "./load"
 import { resolveRepository } from "./resolve"
 
 const config: MagiConfig = {
-  agents: {
-    reviewers: [
+  agents: {},
+  github: { owner: "owner", repo: "repo" },
+  language: "en",
+  review: {
+    agents: [
       {
         model: "anthropic/claude",
         account: "bot-a",
@@ -14,15 +17,15 @@ const config: MagiConfig = {
       { id: "security", model: "anthropic/claude", account: "bot-b" },
       { id: "compat", model: "openai/gpt", account: "bot-c" },
     ],
+    prompts: { review: "global-review.md" },
+  },
+  merge: {
     editor: {
       model: "openai/gpt",
       account: "bot-c",
       author: { email: "bot-c@example.com", name: "Bot C" },
     },
   },
-  github: { owner: "owner", repo: "repo" },
-  language: "en",
-  prompts: { review: "global-review.md" },
 }
 
 describe("mergeMagiConfig", () => {
@@ -31,9 +34,14 @@ describe("mergeMagiConfig", () => {
       config as unknown as Record<string, unknown>,
       {
         language: "ja",
-        automation: { merge: false },
-        merge: { approvalPolicy: "unanimous", mergeQueue: true },
-        prompts: { edit: "project-edit.md", review: "project-review.md" },
+        merge: {
+          automation: { merge: false },
+          prompts: { edit: "project-edit.md" },
+        },
+        review: {
+          merge: { approvalPolicy: "unanimous", queue: true },
+          prompts: { review: "project-review.md" },
+        },
       },
     ) as unknown as MagiConfig
     const repo = resolveRepository(merged)
@@ -44,8 +52,16 @@ describe("mergeMagiConfig", () => {
     expect(repo.merge.mergeQueue).toBe(true)
     expect(repo.automation.merge).toBe(false)
     expect(repo.prompts).toEqual({
+      ciClassification: undefined,
+      ciClassificationAfterEdit: undefined,
+      closeReconsideration: undefined,
       edit: "project-edit.md",
+      editGuidelines: undefined,
+      findingValidation: undefined,
+      rereview: undefined,
+      rereviewCloseReconsideration: undefined,
       review: "project-review.md",
+      reviewGuidelines: undefined,
     })
   })
 
@@ -53,8 +69,8 @@ describe("mergeMagiConfig", () => {
     const merged = mergeMagiConfig(
       config as unknown as Record<string, unknown>,
       {
-        agents: {
-          reviewers: [
+        review: {
+          agents: [
             { id: "a", model: "openai/gpt", account: "bot-1" },
             { id: "b", model: "openai/gpt", account: "bot-2" },
             { id: "c", model: "openai/gpt", account: "bot-3" },
@@ -63,9 +79,11 @@ describe("mergeMagiConfig", () => {
       },
     ) as unknown as MagiConfig
 
-    expect(
-      merged.agents.reviewers!.map((reviewer) => reviewer.account),
-    ).toEqual(["bot-1", "bot-2", "bot-3"])
-    expect(merged.agents.editor).toEqual(config.agents.editor)
+    expect(merged.review?.agents!.map((reviewer) => reviewer.account)).toEqual([
+      "bot-1",
+      "bot-2",
+      "bot-3",
+    ])
+    expect(merged.merge?.editor).toEqual(config.merge?.editor)
   })
 })
