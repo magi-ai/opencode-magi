@@ -39,7 +39,7 @@ jobs:
         run: |
           git fetch --no-tags --prune --depth=1 origin "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
 
-          changed_files="$(git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}...HEAD" -- src schema.json package.json README.md)"
+          changed_files="$(git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}...HEAD" -- src schema.json package.json README.md ":(exclude)src/**/*.test.ts")"
           changeset_files="$(git diff --name-only --diff-filter=A "origin/${{ github.base_ref }}...HEAD" -- ".changeset/*.md")"
 
           if [ -n "$changed_files" ] && [ -z "$changeset_files" ]; then

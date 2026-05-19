@@ -664,6 +664,7 @@ async function finishMergeRun(
     editorOutputs: reportInput.editorOutputs,
     outputs: reportInput.outputs,
     posted: reportInput.posted,
+    pr: input.pr,
     repository: input.repository,
     status: result.status,
   })
@@ -932,6 +933,7 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
         editorOutputs: [],
         outputs: {},
         posted: {},
+        pr: input.pr,
         repository: input.repository,
         safety,
         status: "safety_blocked",
