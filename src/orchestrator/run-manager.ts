@@ -150,6 +150,19 @@ function now(): string {
   return new Date().toISOString()
 }
 
+export function redactSecrets(value: string): string {
+  return value
+    .replace(
+      /\b(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN)=('[^']*'|"[^"]*"|\S+)/g,
+      "$1=<redacted>",
+    )
+    .replace(/(password=)([^;'\s]+)/g, "$1<redacted>")
+}
+
+function errorMessage(error: unknown): string {
+  return redactSecrets(error instanceof Error ? error.message : String(error))
+}
+
 function isActiveStatus(status: MagiRunStatus): boolean {
   return (
     status === "blocked" ||
@@ -1381,8 +1394,8 @@ export class MagiRunManager {
 
     if (input.event.type === "session.error") {
       agent.status = "failed"
-      agent.error = JSON.stringify(
-        input.event.properties?.error ?? "session error",
+      agent.error = redactSecrets(
+        JSON.stringify(input.event.properties?.error ?? "session error"),
       )
       markUpdated(true)
       dirty = true
@@ -1793,7 +1806,7 @@ export class MagiRunManager {
     if (progress.type === "ci_classifier_failed") {
       const classifier = state.ciClassifiers?.[progress.reviewer]
       if (classifier) {
-        classifier.error = progress.error
+        classifier.error = redactSecrets(progress.error)
         classifier.status = "failed"
         classifier.lastUpdate = now()
       }
@@ -1850,7 +1863,7 @@ export class MagiRunManager {
       const reviewer = state.reviewers[progress.reviewer]
       if (!reviewer) return
       reviewer.status = "failed"
-      reviewer.error = progress.error
+      reviewer.error = redactSecrets(progress.error)
       reviewer.lastUpdate = now()
     }
 
@@ -1928,7 +1941,7 @@ export class MagiRunManager {
     if (progress.type === "ci_classifier_failed") {
       await this.notify(
         state,
-        `**CI classifier ${progress.reviewer}** failed for ${prMarkdownLink(state)}: ${progress.error}`,
+        `**CI classifier ${progress.reviewer}** failed for ${prMarkdownLink(state)}: ${redactSecrets(progress.error)}`,
       )
     }
 
@@ -1964,7 +1977,7 @@ export class MagiRunManager {
       await this.notify(
         state,
         reviewerFailureText({
-          error: progress.error,
+          error: redactSecrets(progress.error),
           pr: prMarkdownLink(state),
           repairAttempts:
             state.reviewers[progress.reviewer]?.repairAttempts ?? 0,
@@ -2110,7 +2123,7 @@ export class MagiRunManager {
 
     if (progress.type === "editor_failed") {
       editor.status = "failed"
-      editor.error = progress.error
+      editor.error = redactSecrets(progress.error)
       editor.lastUpdate = now()
     }
 
@@ -2158,7 +2171,7 @@ export class MagiRunManager {
       await this.notify(
         state,
         editorFailureText({
-          error: progress.error,
+          error: redactSecrets(progress.error),
           pr: prMarkdownLink(state),
           repairAttempts: state.editor?.repairAttempts ?? 0,
         }),
@@ -2181,7 +2194,7 @@ export class MagiRunManager {
     state.status = "failed"
     state.phase = "failed"
     state.completedAt = now()
-    state.error = error instanceof Error ? error.message : String(error)
+    state.error = errorMessage(error)
     if (
       state.editor?.status === "pending" ||
       state.editor?.status === "running" ||

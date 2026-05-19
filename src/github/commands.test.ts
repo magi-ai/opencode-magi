@@ -1,4 +1,4 @@
-import type { ResolvedRepository } from "../types"
+import type { Exec, ResolvedRepository } from "../types"
 import { mkdtemp, readFile, rm as removePath } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -11,6 +11,7 @@ import {
   fetchPullRequestSafetyMeta,
   fetchUnresolvedThreads,
   ghHostOption,
+  mergePullRequest,
   postCloseComment,
   pushHead,
   repoSpecifier,
@@ -87,10 +88,12 @@ describe("GitHub command helpers", () => {
 
   test("pushes detached HEAD to the PR head repository", async () => {
     const commands: string[] = []
+    const options: Array<Parameters<Exec>[1]> = []
 
     await pushHead(
-      async (command) => {
+      async (command, option) => {
         commands.push(command)
+        options.push(option)
         if (command.includes("gh auth token")) return "token"
 
         return ""
@@ -104,7 +107,32 @@ describe("GitHub command helpers", () => {
     expect(commands[1]).toContain(
       "push 'https://github.com/fork-owner/fork-repo.git' 'HEAD:refs/heads/feature-branch'",
     )
-    expect(commands[1]).toContain("credential.helper")
+    expect(commands[1]).not.toContain("token")
+    expect(options[1]?.env?.GIT_PASSWORD).toBe("token")
+    expect(options[1]?.env?.GIT_CONFIG_VALUE_1).toContain("$GIT_PASSWORD")
+  })
+
+  test("passes GitHub token through exec env for merges", async () => {
+    const commands: string[] = []
+    const options: Array<Parameters<Exec>[1]> = []
+
+    await mergePullRequest(
+      async (command, option) => {
+        commands.push(command)
+        options.push(option)
+        if (command.includes("gh auth token")) return "token"
+
+        return ""
+      },
+      repository,
+      7557,
+      "bot-a",
+    )
+
+    expect(commands[1]).toContain("gh pr merge 7557")
+    expect(commands[1]).not.toContain("GH_TOKEN")
+    expect(commands[1]).not.toContain("token")
+    expect(options[1]?.env?.GH_TOKEN).toBe("token")
   })
 
   test("fetches PR head repository metadata", async () => {
@@ -137,11 +165,13 @@ describe("GitHub command helpers", () => {
 
   test("posts close comments as PR review comments", async () => {
     const commands: string[] = []
+    const options: Array<Parameters<Exec>[1]> = []
     let payload: unknown
 
     const result = await postCloseComment(
-      async (command) => {
+      async (command, option) => {
         commands.push(command)
+        options.push(option)
         if (command.includes("gh auth token")) return "token"
 
         const input = command.match(/--input '([^']+)'/)?.[1]
@@ -161,6 +191,8 @@ describe("GitHub command helpers", () => {
     )
     expect(commands[1]).toContain("repos/owner/repo/pulls/7557/reviews")
     expect(commands[1]).not.toContain("repos/owner/repo/issues/7557/comments")
+    expect(commands[1]).not.toContain("GH_TOKEN")
+    expect(options[1]?.env?.GH_TOKEN).toBe("token")
     expect(payload).toEqual({
       body: "This PR should be closed.",
       event: "COMMENT",

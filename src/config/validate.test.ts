@@ -405,18 +405,18 @@ describe("validateConfig", () => {
   test("checks repository permissions when auth succeeds", async () => {
     const result = await validateConfig(config, {
       checkAuth: true,
-      exec: async (command) => {
+      exec: async (command, options) => {
         if (command.startsWith("gh auth token")) {
           const account = command.match(/--user "([^"]+)"/)?.[1]
           return `${account}-token`
         }
 
         if (command.includes("gh api repos/owner/repo")) {
-          if (command.startsWith('GH_TOKEN="bot-a-token"')) {
+          if (options?.env?.GH_TOKEN === "bot-a-token") {
             return JSON.stringify({ pull: false, push: false })
           }
 
-          if (command.startsWith('GH_TOKEN="bot-c-token"')) {
+          if (options?.env?.GH_TOKEN === "bot-c-token") {
             return JSON.stringify({ pull: true, push: false })
           }
 
