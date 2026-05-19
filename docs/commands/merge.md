@@ -82,13 +82,13 @@ Important settings for `/magi:merge`:
 | `merge.editor`                    | Editor agent, model, persona, permissions, GitHub account, author. |
 | `review.agents`                   | Reviewer agents used for initial review and re-review.             |
 | `merge.automation.close`          | Run `gh pr close` after a close decision.                          |
-| `merge.automation.merge`          | Run `gh pr merge` after approval.                                  |
+| `merge.automation.merge`          | Merge or enqueue the PR after approval.                            |
 | `merge.checks.wait`               | Wait for PR checks after editor changes.                           |
 | `review.merge.approvalPolicy`     | Decide readiness by `majority` or `unanimous`.                     |
-| `review.merge.auto`               | Pass `--auto` to `gh pr merge`.                                    |
-| `review.merge.deleteBranch`       | Delete the PR branch during merge when configured.                 |
+| `review.merge.auto`               | Pass `--auto` to `gh pr merge` outside merge queue mode.           |
+| `review.merge.deleteBranch`       | Delete the PR branch during non-queue merges when configured.      |
 | `merge.maxThreadResolutionCycles` | Maximum fix/reply attempts per unresolved review thread.           |
-| `review.merge.queue`              | Poll GitHub merge queue completion after `gh pr merge`.            |
+| `review.merge.queue`              | Enqueue the PR through GitHub GraphQL and poll queue completion.   |
 | `review.merge.method`             | Merge method: `merge`, `squash`, or `rebase`.                      |
 | `merge.prompts.edit*`             | Editor prompt templates and guidelines.                            |
 | `review.prompts.rereview`         | Re-review prompt template.                                         |
@@ -108,7 +108,9 @@ Magi posts close comments and stops with `close_requested`. It leaves the PR ope
 
 ### How does merge queue support work?
 
-`review.merge.auto` controls whether Magi passes `--auto` to `gh pr merge`. `review.merge.queue` controls whether Magi polls GitHub after the merge command to wait for merge queue completion. These settings are independent.
+When `review.merge.queue` is `false`, Magi uses `gh pr merge` and applies `review.merge.method`, `review.merge.auto`, and `review.merge.deleteBranch`.
+
+When `review.merge.queue` is `true`, Magi does not use `gh pr merge`. It enqueues the PR with GitHub GraphQL `enqueuePullRequest` and polls GraphQL queue state until the PR is merged or removed from the queue. `review.merge.method`, `review.merge.auto`, and `review.merge.deleteBranch` are ignored in this mode; configure merge method and automatic head branch deletion in the repository merge queue and pull request settings instead.
 
 When `review.merge.queue` is `true`, Magi also checks the base branch rules for a `merge_queue` rule. If GitHub reports that merge queue is not enabled, or Magi cannot verify it, the run records a warning.
 

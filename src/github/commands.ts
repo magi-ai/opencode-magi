@@ -29,6 +29,12 @@ export interface PullRequestMergeStatus {
   state: string
 }
 
+export interface PullRequestQueueStatus {
+  isInMergeQueue: boolean
+  mergeQueueEntry?: unknown
+  state: string
+}
+
 export interface WorkflowRunMeta {
   conclusion?: string
   headSha: string
@@ -238,6 +244,33 @@ export async function ghToken(
 
 function ghTokenEnv(token: string): { env: Record<string, string> } {
   return { env: { GH_TOKEN: token } }
+}
+
+async function fetchPullRequestQueueInput(
+  exec: Exec,
+  repository: ResolvedRepository,
+  pr: number,
+  token: string,
+): Promise<{ headRefOid: string; id: string }> {
+  const query = `query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { id headRefOid } } }`
+  const raw = await exec(
+    `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F pr=${pr}`,
+    ghTokenEnv(token),
+  )
+  const data = JSON.parse(raw) as {
+    data?: {
+      repository?: {
+        pullRequest?: { headRefOid?: string; id?: string }
+      }
+    }
+  }
+  const pullRequest = data.data?.repository?.pullRequest
+
+  if (!pullRequest?.id || !pullRequest.headRefOid) {
+    throw new Error(`Could not fetch pull request queue metadata for #${pr}`)
+  }
+
+  return { headRefOid: pullRequest.headRefOid, id: pullRequest.id }
 }
 
 export async function fetchPullRequest(
@@ -674,6 +707,22 @@ export async function mergePullRequest(
   account: string,
 ): Promise<string> {
   const token = await ghToken(exec, repository, account)
+
+  if (repository.merge.mergeQueue) {
+    const queueInput = await fetchPullRequestQueueInput(
+      exec,
+      repository,
+      pr,
+      token,
+    )
+    const query = `mutation($pullRequestId: ID!, $expectedHeadOid: GitObjectID!) { enqueuePullRequest(input: { pullRequestId: $pullRequestId, expectedHeadOid: $expectedHeadOid }) { mergeQueueEntry { id } } }`
+
+    return exec(
+      `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F pullRequestId=${shellQuote(queueInput.id)} -F expectedHeadOid=${shellQuote(queueInput.headRefOid)} --jq .data.enqueuePullRequest.mergeQueueEntry.id`,
+      ghTokenEnv(token),
+    )
+  }
+
   const methodFlag =
     repository.merge.method === "merge"
       ? "--merge"
@@ -682,12 +731,9 @@ export async function mergePullRequest(
         : "--squash"
   const autoFlag = repository.merge.auto ? " --auto" : ""
   const deleteFlag = repository.merge.deleteBranch ? " --delete-branch" : ""
-  const mergeFlags = repository.merge.mergeQueue
-    ? ""
-    : ` ${methodFlag}${autoFlag}${deleteFlag}`
 
   return exec(
-    `gh pr merge ${pr} --repo ${shellQuote(repoSpecifier(repository))}${mergeFlags}`,
+    `gh pr merge ${pr} --repo ${shellQuote(repoSpecifier(repository))} ${methodFlag}${autoFlag}${deleteFlag}`,
     ghTokenEnv(token),
   )
 }
@@ -704,6 +750,29 @@ export async function fetchPullRequestMergeStatus(
   return JSON.parse(json) as PullRequestMergeStatus
 }
 
+export async function fetchPullRequestQueueStatus(
+  exec: Exec,
+  repository: ResolvedRepository,
+  pr: number,
+): Promise<PullRequestQueueStatus> {
+  const query = `query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { state isInMergeQueue mergeQueueEntry { id } } } }`
+  const raw = await exec(
+    `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F pr=${pr}`,
+  )
+  const data = JSON.parse(raw) as {
+    data?: {
+      repository?: {
+        pullRequest?: PullRequestQueueStatus
+      }
+    }
+  }
+  const status = data.data?.repository?.pullRequest
+
+  if (!status) throw new Error(`Could not fetch merge queue status for #${pr}`)
+
+  return status
+}
+
 export async function waitForMergeQueue(
   exec: Exec,
   repository: ResolvedRepository,
@@ -711,10 +780,14 @@ export async function waitForMergeQueue(
   intervalMs = 30_000,
 ): Promise<"dequeued" | "merged"> {
   for (;;) {
-    const status = await fetchPullRequestMergeStatus(exec, repository, pr)
+    const status = await fetchPullRequestQueueStatus(exec, repository, pr)
 
     if (status.state === "MERGED") return "merged"
-    if (status.state === "OPEN" && status.autoMergeRequest == null) {
+    if (
+      status.state === "OPEN" &&
+      !status.isInMergeQueue &&
+      status.mergeQueueEntry == null
+    ) {
       return "dequeued"
     }
 

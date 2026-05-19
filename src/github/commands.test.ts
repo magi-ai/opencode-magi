@@ -17,6 +17,7 @@ import {
   repoSpecifier,
   shellQuote,
   waitForChecks,
+  waitForMergeQueue,
 } from "./commands"
 
 const repository: ResolvedRepository = {
@@ -154,25 +155,90 @@ describe("GitHub command helpers", () => {
     expect(commands[1]).toContain("--squash --auto --delete-branch")
   })
 
-  test("queues pull requests without merge method or delete branch flags", async () => {
+  test("queues pull requests through GraphQL in merge queue mode", async () => {
     const commands: string[] = []
+    const options: Array<Parameters<Exec>[1]> = []
 
-    await mergePullRequest(
-      async (command) => {
+    const result = await mergePullRequest(
+      async (command, option) => {
         commands.push(command)
+        options.push(option)
         if (command.includes("gh auth token")) return "token"
+        if (command.includes("pullRequest(number")) {
+          return JSON.stringify({
+            data: {
+              repository: {
+                pullRequest: { headRefOid: "head-sha", id: "PR_node_id" },
+              },
+            },
+          })
+        }
+        if (command.includes("enqueuePullRequest")) return "queue-entry-id"
 
-        return ""
+        throw new Error(`unexpected command: ${command}`)
       },
       { ...repository, merge: { ...repository.merge, mergeQueue: true } },
       7557,
       "bot-a",
     )
 
-    expect(commands[1]).toContain("gh pr merge 7557")
-    expect(commands[1]).not.toContain("--squash")
-    expect(commands[1]).not.toContain("--auto")
-    expect(commands[1]).not.toContain("--delete-branch")
+    expect(result).toBe("queue-entry-id")
+    expect(commands).toHaveLength(3)
+    expect(commands[1]).toContain("pullRequest(number: $pr)")
+    expect(commands[2]).toContain("enqueuePullRequest")
+    expect(commands[2]).toContain("pullRequestId='PR_node_id'")
+    expect(commands[2]).toContain("expectedHeadOid='head-sha'")
+    expect(commands[2]).not.toContain("gh pr merge")
+    expect(commands[2]).not.toContain("--delete-branch")
+    expect(options[1]?.env?.GH_TOKEN).toBe("token")
+    expect(options[2]?.env?.GH_TOKEN).toBe("token")
+  })
+
+  test("waits for merge queue state through GraphQL", async () => {
+    const commands: string[] = []
+    const statuses = [
+      { isInMergeQueue: true, mergeQueueEntry: { id: "entry" }, state: "OPEN" },
+      { isInMergeQueue: false, mergeQueueEntry: null, state: "MERGED" },
+    ]
+
+    const result = await waitForMergeQueue(
+      async (command) => {
+        commands.push(command)
+
+        return JSON.stringify({
+          data: { repository: { pullRequest: statuses.shift() } },
+        })
+      },
+      repository,
+      7557,
+      0,
+    )
+
+    expect(result).toBe("merged")
+    expect(commands[0]).toContain("isInMergeQueue")
+    expect(commands[0]).toContain("mergeQueueEntry")
+  })
+
+  test("returns dequeued when a pull request leaves the merge queue", async () => {
+    const result = await waitForMergeQueue(
+      async () =>
+        JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                isInMergeQueue: false,
+                mergeQueueEntry: null,
+                state: "OPEN",
+              },
+            },
+          },
+        }),
+      repository,
+      7557,
+      0,
+    )
+
+    expect(result).toBe("dequeued")
   })
 
   test("fetches PR head repository metadata", async () => {
