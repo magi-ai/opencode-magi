@@ -169,7 +169,7 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
     },
     reviewAutomation: {
       close: config.review?.automation?.close ?? false,
-      merge: config.review?.automation?.merge ?? false,
+      merge: config.review?.automation?.merge ?? true,
     },
     safety: {
       allowAuthors: config.review?.safety?.allowAuthors ?? [],
