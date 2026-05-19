@@ -37,7 +37,7 @@ jobs:
           setupGitUser: false
         env:
           NPM_CONFIG_PROVENANCE: true
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
 
       - name: Create @dev release
         if: steps.changesets.outputs.published != 'true'
