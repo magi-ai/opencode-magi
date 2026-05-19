@@ -235,7 +235,25 @@ async function runEditor(
 
   if (!input.dryRun) {
     if (result.value.mode === "EDITED") {
-      await pushHead(input.exec, input.repository, worktreePath, editor.account)
+      const meta = await fetchPullRequest(
+        input.exec,
+        input.repository,
+        input.pr,
+      )
+      const headOwner = meta.headRepositoryOwner?.login
+      const headRepo = meta.headRepository?.name
+
+      if (!headOwner || !headRepo) {
+        throw new Error("Pull request head repository is missing")
+      }
+
+      await pushHead(
+        input.exec,
+        input.repository,
+        worktreePath,
+        editor.account,
+        { owner: headOwner, ref: meta.headRefName, repo: headRepo },
+      )
     }
   }
 

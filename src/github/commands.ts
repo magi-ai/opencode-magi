@@ -6,6 +6,8 @@ import { dirname, join } from "node:path"
 export interface PullRequestMeta {
   baseRefName: string
   baseRefOid: string
+  headRepository?: { name?: string }
+  headRepositoryOwner?: { login?: string }
   headRefName: string
   headRefOid: string
   isDraft: boolean
@@ -169,7 +171,7 @@ async function checkoutPullRequestWithRetry(
   for (let attempt = 0; ; attempt += 1) {
     try {
       await exec(
-        `gh pr checkout ${pr} --repo ${shellQuote(repoSpecifier(repository))}`,
+        `gh pr checkout ${pr} --repo ${shellQuote(repoSpecifier(repository))} --detach`,
         {
           cwd: worktreePath,
         },
@@ -208,6 +210,14 @@ export function repoSpecifier(repository: ResolvedRepository): string {
     : `${host}/${repoSlug(repository)}`
 }
 
+function repositoryGitUrl(
+  repository: ResolvedRepository,
+  owner: string,
+  repo: string,
+): string {
+  return `https://${githubHost(repository)}/${owner}/${repo}.git`
+}
+
 export function ghHostOption(repository: ResolvedRepository): string {
   const host = githubHost(repository)
 
@@ -232,7 +242,7 @@ export async function fetchPullRequest(
   pr: number,
 ): Promise<PullRequestMeta> {
   const json = await exec(
-    `gh pr view ${pr} --repo ${shellQuote(repoSpecifier(repository))} --json number,title,url,isDraft,baseRefOid,headRefOid,baseRefName,headRefName`,
+    `gh pr view ${pr} --repo ${shellQuote(repoSpecifier(repository))} --json number,title,url,isDraft,baseRefOid,headRefOid,baseRefName,headRefName,headRepository,headRepositoryOwner`,
   )
 
   return JSON.parse(json) as PullRequestMeta
@@ -719,11 +729,13 @@ export async function pushHead(
   repository: ResolvedRepository,
   worktreePath: string,
   account: string,
+  head: { owner: string; ref: string; repo: string },
 ): Promise<void> {
   const token = await ghToken(exec, repository, account)
+  const url = repositoryGitUrl(repository, head.owner, head.repo)
 
   await exec(
-    `git -c credential.helper= -c credential.helper=${shellQuote(`!f() { echo username=x-access-token; echo password=${token}; }; f`)} push origin HEAD`,
+    `git -c credential.helper= -c credential.helper=${shellQuote(`!f() { echo username=x-access-token; echo password=${token}; }; f`)} push ${shellQuote(url)} ${shellQuote(`HEAD:refs/heads/${head.ref}`)}`,
     { cwd: worktreePath },
   )
 }

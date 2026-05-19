@@ -5,12 +5,14 @@ import { join } from "node:path"
 import { describe, expect, test } from "vitest"
 import {
   createWorktree,
+  fetchPullRequest,
   fetchPullRequestCommits,
   fetchPullRequestReviews,
   fetchPullRequestSafetyMeta,
   fetchUnresolvedThreads,
   ghHostOption,
   postCloseComment,
+  pushHead,
   repoSpecifier,
   shellQuote,
   waitForChecks,
@@ -81,6 +83,56 @@ describe("GitHub command helpers", () => {
     expect(ghHostOption(repository)).toBe("")
     expect(repoSpecifier(enterprise)).toBe("github.example.com/owner/repo")
     expect(ghHostOption(enterprise)).toBe(" --hostname 'github.example.com'")
+  })
+
+  test("pushes detached HEAD to the PR head repository", async () => {
+    const commands: string[] = []
+
+    await pushHead(
+      async (command) => {
+        commands.push(command)
+        if (command.includes("gh auth token")) return "token"
+
+        return ""
+      },
+      repository,
+      "/tmp/worktree",
+      "editor-bot",
+      { owner: "fork-owner", ref: "feature-branch", repo: "fork-repo" },
+    )
+
+    expect(commands[1]).toContain(
+      "push 'https://github.com/fork-owner/fork-repo.git' 'HEAD:refs/heads/feature-branch'",
+    )
+    expect(commands[1]).toContain("credential.helper")
+  })
+
+  test("fetches PR head repository metadata", async () => {
+    let command = ""
+    const result = await fetchPullRequest(
+      async (value) => {
+        command = value
+
+        return JSON.stringify({
+          baseRefName: "main",
+          baseRefOid: "base-sha",
+          headRefName: "feature-branch",
+          headRefOid: "head-sha",
+          headRepository: { name: "fork-repo" },
+          headRepositoryOwner: { login: "fork-owner" },
+          isDraft: false,
+          number: 1,
+          title: "PR title",
+          url: "https://github.com/owner/repo/pull/1",
+        })
+      },
+      repository,
+      1,
+    )
+
+    expect(command).toContain("headRepository,headRepositoryOwner")
+    expect(result.headRepository?.name).toBe("fork-repo")
+    expect(result.headRepositoryOwner?.login).toBe("fork-owner")
   })
 
   test("posts close comments as PR review comments", async () => {
@@ -359,6 +411,32 @@ describe("GitHub command helpers", () => {
 })
 
 describe("createWorktree", () => {
+  test("checks out pull requests without binding the head branch", async () => {
+    const root = await mkdtemp(join(tmpdir(), "magi-worktrees-"))
+    const commands: string[] = []
+
+    try {
+      const result = await createWorktree(
+        async (command) => {
+          commands.push(command)
+          if (command === "git branch --show-current") return "\n"
+
+          return ""
+        },
+        repository,
+        1,
+        root,
+      )
+
+      expect(result.branch).toBeUndefined()
+      expect(commands).toContain(
+        "gh pr checkout 1 --repo 'owner/repo' --detach",
+      )
+    } finally {
+      await removePath(root, { force: true, recursive: true })
+    }
+  })
+
   test("serializes worktree creation for the same repository root", async () => {
     const root = await mkdtemp(join(tmpdir(), "magi-worktrees-"))
     const commands: string[] = []
