@@ -164,8 +164,6 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
       editGuidelines: config.merge?.prompts?.editGuidelines,
       findingValidation: config.review?.prompts?.findingValidation,
       rereview: config.review?.prompts?.rereview,
-      rereviewCloseReconsideration:
-        config.review?.prompts?.closeReconsideration,
       review: config.review?.prompts?.review,
       reviewGuidelines: config.review?.prompts?.reviewGuidelines,
     },

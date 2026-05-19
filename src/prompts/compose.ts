@@ -238,7 +238,7 @@ export async function composeReviewPrompt(
 ): Promise<string> {
   const values = reviewValues(input)
   const task = await taskBlock({
-    builtin: "review",
+    builtin: "review/review",
     customPath: input.repository.prompts.review,
     directory: input.directory,
     values,
@@ -264,7 +264,7 @@ export async function composeRereviewPrompt(
 ): Promise<string> {
   const values = rereviewValues(input)
   const task = await taskBlock({
-    builtin: "rereview",
+    builtin: "review/rereview",
     customPath: input.repository.prompts.rereview,
     directory: input.directory,
     values,
@@ -296,7 +296,7 @@ export async function composeEditPrompt(
 ): Promise<string> {
   const values = editValues(input)
   const task = await taskBlock({
-    builtin: "edit",
+    builtin: "merge/edit",
     customPath: input.repository.prompts.edit,
     directory: input.directory,
     values,
@@ -323,7 +323,7 @@ export async function composeFindingValidationPrompt(
 ): Promise<string> {
   const values = { ...reviewValues(input), findings: input.findings }
   const task = await taskBlock({
-    builtin: "finding-validation",
+    builtin: "review/finding-validation",
     customPath: input.repository.prompts.findingValidation,
     directory: input.directory,
     values,
@@ -353,7 +353,7 @@ export async function composeCloseReconsiderationPrompt(
     closeReason: input.closeReason ?? "",
   }
   const task = await taskBlock({
-    builtin: "close-reconsideration",
+    builtin: "review/close-reconsideration",
     customPath: input.repository.prompts.closeReconsideration,
     directory: input.directory,
     values,
@@ -384,8 +384,8 @@ export async function composeRereviewCloseReconsiderationPrompt(
     previousHeadSha: input.previousHeadSha,
   }
   const task = await taskBlock({
-    builtin: "rereview-close-reconsideration",
-    customPath: input.repository.prompts.rereviewCloseReconsideration,
+    builtin: "review/close-reconsideration",
+    customPath: input.repository.prompts.closeReconsideration,
     directory: input.directory,
     values,
   })
@@ -415,7 +415,7 @@ export async function composeCiClassificationPrompt(
     pr: String(input.pr),
   }
   const task = await taskBlock({
-    builtin: "ci-classification",
+    builtin: "review/ci-classification",
     customPath: input.repository.prompts.ciClassification,
     directory: input.directory,
     values,
@@ -444,7 +444,7 @@ export async function composeCiClassificationAfterEditPrompt(
     worktreePath: input.worktreePath,
   }
   const task = await taskBlock({
-    builtin: "ci-classification-after-edit",
+    builtin: "merge/ci-classification",
     customPath:
       input.repository.prompts.ciClassificationAfterEdit ??
       input.repository.prompts.ciClassification,

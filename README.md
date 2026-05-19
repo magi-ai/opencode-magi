@@ -156,7 +156,7 @@ Run commands from OpenCode.
 
 - [Commands](docs/commands/index.md)
 - [Config](docs/config.md)
-- [Prompts](docs/prompts.md)
+- [Prompts](docs/prompts/index.md)
 
 ## Contributing
 
