@@ -50,13 +50,25 @@ describe("resolveRepository", () => {
     expect(repo.merge.mergeQueue).toBe(false)
     expect(repo.merge.maxThreadResolutionCycles).toBe(5)
     expect(repo.automation).toEqual({ close: false, merge: true })
-    expect(repo.reviewAutomation).toEqual({ close: false, merge: false })
+    expect(repo.reviewAutomation).toEqual({ close: false, merge: true })
     expect(repo.concurrency).toEqual({ runs: 3, reviewers: 3 })
     expect(repo.checks.exclude).toEqual([])
     expect(repo.checks.waitAfterEdit).toBe(true)
     expect(repo.checks.retryFailedJobs).toBe(3)
     expect(repo.language).toBe("en")
     expect(repo.prompts.review).toBe("global-review.md")
+  })
+
+  test("respects disabled review merge automation", () => {
+    const repo = resolveRepository({
+      ...config,
+      review: {
+        ...config.review,
+        automation: { merge: false },
+      },
+    })
+
+    expect(repo.reviewAutomation).toEqual({ close: false, merge: false })
   })
 
   test("resolves practical default permissions for reviewers and editor", () => {
