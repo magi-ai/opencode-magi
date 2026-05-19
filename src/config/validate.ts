@@ -684,7 +684,8 @@ async function fetchPermissions(
     )
   ).trim()
   const raw = await exec(
-    `GH_TOKEN=${JSON.stringify(token)} gh api${ghHostOption(config)} repos/${config.github?.owner}/${config.github?.repo} --jq .permissions`,
+    `gh api${ghHostOption(config)} repos/${config.github?.owner}/${config.github?.repo} --jq .permissions`,
+    { env: { GH_TOKEN: token } },
   )
 
   return JSON.parse(raw) as { pull?: boolean; push?: boolean }

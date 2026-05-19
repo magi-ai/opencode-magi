@@ -236,6 +236,10 @@ export async function ghToken(
   ).trim()
 }
 
+function ghTokenEnv(token: string): { env: Record<string, string> } {
+  return { env: { GH_TOKEN: token } }
+}
+
 export async function fetchPullRequest(
   exec: Exec,
   repository: ResolvedRepository,
@@ -582,7 +586,8 @@ export async function postApproval(
   const token = await ghToken(exec, repository, account)
 
   return exec(
-    `GH_TOKEN=${shellQuote(token)} gh pr review ${pr} --repo ${shellQuote(repoSpecifier(repository))} --approve`,
+    `gh pr review ${pr} --repo ${shellQuote(repoSpecifier(repository))} --approve`,
+    ghTokenEnv(token),
   )
 }
 
@@ -603,7 +608,8 @@ export async function postCloseComment(
 
   try {
     return await exec(
-      `GH_TOKEN=${shellQuote(token)} gh api${ghHostOption(repository)} repos/${repository.github.owner}/${repository.github.repo}/pulls/${pr}/reviews --method POST --input ${shellQuote(payloadPath)} --jq .html_url`,
+      `gh api${ghHostOption(repository)} repos/${repository.github.owner}/${repository.github.repo}/pulls/${pr}/reviews --method POST --input ${shellQuote(payloadPath)} --jq .html_url`,
+      ghTokenEnv(token),
     )
   } finally {
     await rm(payloadPath, { force: true })
@@ -653,7 +659,8 @@ export async function postChangesRequested(
 
   try {
     return await exec(
-      `GH_TOKEN=${shellQuote(token)} gh api${ghHostOption(repository)} repos/${repository.github.owner}/${repository.github.repo}/pulls/${pr}/reviews --method POST --input ${shellQuote(payloadPath)} --jq .html_url`,
+      `gh api${ghHostOption(repository)} repos/${repository.github.owner}/${repository.github.repo}/pulls/${pr}/reviews --method POST --input ${shellQuote(payloadPath)} --jq .html_url`,
+      ghTokenEnv(token),
     )
   } finally {
     await rm(payloadPath, { force: true })
@@ -680,7 +687,8 @@ export async function mergePullRequest(
     : ` ${methodFlag}${autoFlag}${deleteFlag}`
 
   return exec(
-    `GH_TOKEN=${shellQuote(token)} gh pr merge ${pr} --repo ${shellQuote(repoSpecifier(repository))}${mergeFlags}`,
+    `gh pr merge ${pr} --repo ${shellQuote(repoSpecifier(repository))}${mergeFlags}`,
+    ghTokenEnv(token),
   )
 }
 
@@ -723,7 +731,8 @@ export async function closePullRequest(
   const token = await ghToken(exec, repository, account)
 
   return exec(
-    `GH_TOKEN=${shellQuote(token)} gh pr close ${pr} --repo ${shellQuote(repoSpecifier(repository))}`,
+    `gh pr close ${pr} --repo ${shellQuote(repoSpecifier(repository))}`,
+    ghTokenEnv(token),
   )
 }
 
@@ -738,8 +747,20 @@ export async function pushHead(
   const url = repositoryGitUrl(repository, head.owner, head.repo)
 
   await exec(
-    `git -c credential.helper= -c credential.helper=${shellQuote(`!f() { echo username=x-access-token; echo password=${token}; }; f`)} push ${shellQuote(url)} ${shellQuote(`HEAD:refs/heads/${head.ref}`)}`,
-    { cwd: worktreePath },
+    `git push ${shellQuote(url)} ${shellQuote(`HEAD:refs/heads/${head.ref}`)}`,
+    {
+      cwd: worktreePath,
+      env: {
+        GIT_CONFIG_COUNT: "2",
+        GIT_CONFIG_KEY_0: "credential.helper",
+        GIT_CONFIG_KEY_1: "credential.helper",
+        GIT_CONFIG_VALUE_0: "",
+        GIT_CONFIG_VALUE_1:
+          "!f() { echo username=x-access-token; echo password=$GIT_PASSWORD; }; f",
+        GIT_PASSWORD: token,
+        GIT_TERMINAL_PROMPT: "0",
+      },
+    },
   )
 }
 
@@ -855,7 +876,8 @@ export async function postReply(
 
   try {
     return await exec(
-      `GH_TOKEN=${shellQuote(token)} gh api${ghHostOption(repository)} repos/${repository.github.owner}/${repository.github.repo}/pulls/${pr}/comments/${commentId}/replies --method POST --input ${shellQuote(payloadPath)} --jq .html_url`,
+      `gh api${ghHostOption(repository)} repos/${repository.github.owner}/${repository.github.repo}/pulls/${pr}/comments/${commentId}/replies --method POST --input ${shellQuote(payloadPath)} --jq .html_url`,
+      ghTokenEnv(token),
     )
   } finally {
     await rm(payloadPath, { force: true })
@@ -872,6 +894,7 @@ export async function resolveThread(
   const query = `mutation($threadId: ID!) { resolveReviewThread(input: { threadId: $threadId }) { thread { id } } }`
 
   await exec(
-    `GH_TOKEN=${shellQuote(token)} gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F threadId=${shellQuote(threadId)}`,
+    `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F threadId=${shellQuote(threadId)}`,
+    ghTokenEnv(token),
   )
 }

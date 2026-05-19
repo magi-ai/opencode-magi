@@ -14,7 +14,7 @@ vi.mock("./review", async (importOriginal) => {
   return { ...actual, runReview: runReviewMock }
 })
 
-import { MagiRunManager } from "./run-manager"
+import { MagiRunManager, redactSecrets } from "./run-manager"
 
 describe("MagiRunManager notifications", () => {
   afterEach(() => {
@@ -171,6 +171,15 @@ describe("MagiRunManager notifications", () => {
       await rm(directory, { force: true, recursive: true })
     }
   }
+
+  test("redacts tokens from error text", () => {
+    expect(
+      redactSecrets("Command failed: GH_TOKEN='secret-token' gh pr merge 1"),
+    ).toBe("Command failed: GH_TOKEN=<redacted> gh pr merge 1")
+    expect(redactSecrets("echo password=secret-token; git push")).toBe(
+      "echo password=<redacted>; git push",
+    )
+  })
 
   test("sends synthetic notifications as model-visible replies", async () => {
     let promptInput: unknown
