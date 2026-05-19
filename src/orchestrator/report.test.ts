@@ -11,6 +11,7 @@ const repository = {
       { account: "bot-c", index: 2, key: "gamma", model: "test/model" },
     ],
   },
+  github: { host: "github.test", owner: "o", repo: "r" },
 } as ResolvedRepository
 
 const passingChecks: CheckWaitReport[] = [
@@ -59,9 +60,13 @@ describe("report formatting", () => {
       posted: {
         alpha: "https://github.com/o/r/pull/1#pullrequestreview-1",
       },
+      pr: 29,
       repository,
     })
 
+    expect(report).toContain(
+      "- **Pull Request**: [#29](https://github.test/o/r/pull/29)",
+    )
     expect(report).toContain("- **Check**: Pass")
     expect(report).toContain(
       "- **alpha**: [Changes requested](https://github.com/o/r/pull/1#pullrequestreview-1)",
@@ -111,10 +116,14 @@ describe("report formatting", () => {
         gamma: { findings: [], verdict: "MERGE" },
       },
       posted: {},
+      pr: 29,
       repository,
       status: "ci_unresolved",
     })
 
+    expect(report).toContain(
+      "- **Pull Request**: [#29](https://github.test/o/r/pull/29)",
+    )
     expect(report).toContain("- **Status**: Failed")
     expect(report).toContain("- **Check**: Failure")
     expect(report).toContain("- **TypeScript**: Type error in changed file.")
@@ -146,6 +155,7 @@ describe("report formatting", () => {
         gamma: { findings: [], verdict: "MERGE" },
       },
       posted: {},
+      pr: 29,
       repository,
       status: "changes_unresolved",
     })

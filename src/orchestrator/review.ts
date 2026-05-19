@@ -787,6 +787,7 @@ export async function runReview(
         dryRun: input.dryRun,
         outputs: {},
         posted: {},
+        pr: input.pr,
         repository: input.repository,
         safety,
       })
@@ -1349,6 +1350,7 @@ export async function runReview(
       dryRun: input.dryRun,
       outputs,
       posted,
+      pr: input.pr,
       repository: input.repository,
     })
 
