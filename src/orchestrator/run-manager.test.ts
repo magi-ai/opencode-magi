@@ -229,10 +229,11 @@ describe("MagiRunManager notifications", () => {
 
   test("notifies reviewer failures", async () => {
     const { manager, prompts } = managerWithPromptCapture()
+    const directory = await mkdtemp(join(tmpdir(), "magi-run-"))
     const state: MagiRunState = {
       command: "review",
       createdAt: "now",
-      outputDir: ".",
+      outputDir: directory,
       parentSessionId: "parent-session",
       phase: "reviewing",
       pr: 7557,
@@ -256,11 +257,15 @@ describe("MagiRunManager notifications", () => {
     }
 
     privateManager.active.set("run", state)
-    await privateManager.applyReviewProgress("run", {
-      error: "Invalid JSON",
-      reviewer: "security",
-      type: "reviewer_failed",
-    })
+    try {
+      await privateManager.applyReviewProgress("run", {
+        error: "Invalid JSON",
+        reviewer: "security",
+        type: "reviewer_failed",
+      })
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
 
     expect(state.reviewers.security.status).toBe("failed")
     expect(prompts).toMatchObject([
@@ -281,6 +286,7 @@ describe("MagiRunManager notifications", () => {
 
   test("notifies editor failures", async () => {
     const { manager, prompts } = managerWithPromptCapture()
+    const directory = await mkdtemp(join(tmpdir(), "magi-run-"))
     const state: MagiRunState = {
       command: "merge",
       createdAt: "now",
@@ -290,7 +296,7 @@ describe("MagiRunManager notifications", () => {
         status: "repairing",
         toolCalls: 0,
       },
-      outputDir: ".",
+      outputDir: directory,
       parentSessionId: "parent-session",
       phase: "editing cycle 1",
       pr: 7557,
@@ -307,11 +313,15 @@ describe("MagiRunManager notifications", () => {
     }
 
     privateManager.active.set("run", state)
-    await privateManager.applyMergeProgress("run", {
-      cycle: 1,
-      error: "Invalid JSON",
-      type: "editor_failed",
-    })
+    try {
+      await privateManager.applyMergeProgress("run", {
+        cycle: 1,
+        error: "Invalid JSON",
+        type: "editor_failed",
+      })
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
 
     expect(state.editor?.status).toBe("failed")
     expect(prompts).toMatchObject([
