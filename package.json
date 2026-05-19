@@ -41,7 +41,7 @@
     "test": "vitest run",
     "typecheck": "tsgo --noEmit",
     "release": "changeset publish",
-    "release:version": "changeset version"
+    "release:dev": "changeset version --snapshot dev && changeset publish --tag dev"
   },
   "dependencies": {
     "@opencode-ai/plugin": "latest",

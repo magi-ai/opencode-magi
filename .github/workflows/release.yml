@@ -28,13 +28,22 @@ jobs:
         run: pnpm build
 
       - name: Create Release Pull Request or Publish
+        id: changesets
         uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1.7.0
         with:
-          version: pnpm release:version
           publish: pnpm release
           title: "Updated packages"
           commit: "ci(changesets): updated packages"
           setupGitUser: false
+        env:
+          NPM_CONFIG_PROVENANCE: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create @dev release
+        if: steps.changesets.outputs.published != 'true'
+        run: |
+          git checkout ${{ github.ref_name }}
+          pnpm release:dev
         env:
           NPM_CONFIG_PROVENANCE: true
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
