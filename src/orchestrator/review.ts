@@ -67,6 +67,7 @@ export interface ReviewRunInput {
   config: MagiConfig
   directory: string
   dryRun?: boolean
+  enableReviewAutomation?: boolean
   exec: Exec
   onProgress?: (progress: ReviewRunProgress) => void | Promise<void>
   pr: number
@@ -1283,7 +1284,12 @@ export async function runReview(
     }
 
     const automationAccount = input.repository.agents.reviewers[0]?.account
-    if (verdict === "MERGE" && input.repository.reviewAutomation?.merge) {
+    const enableReviewAutomation = input.enableReviewAutomation ?? true
+    if (
+      enableReviewAutomation &&
+      verdict === "MERGE" &&
+      input.repository.reviewAutomation?.merge
+    ) {
       await input.onProgress?.({ phase: "merging PR", type: "phase" })
       posted.automation = hasBlockingCiReports(ciReports)
         ? "skipped: unresolved CI"
@@ -1298,7 +1304,11 @@ export async function runReview(
               )
             : "skipped: no review automation account"
     }
-    if (verdict === "CLOSE" && input.repository.reviewAutomation?.close) {
+    if (
+      enableReviewAutomation &&
+      verdict === "CLOSE" &&
+      input.repository.reviewAutomation?.close
+    ) {
       await input.onProgress?.({ phase: "closing PR", type: "phase" })
       posted.automation = input.dryRun
         ? "dry-run:would-close"
