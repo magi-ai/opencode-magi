@@ -24,7 +24,7 @@ If at least one config exists, Magi validates the merged effective config and re
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/hirotomoyamada/opencode-magi/main/schema.json",
+  "$schema": "https://raw.githubusercontent.com/magi-ai/opencode-magi/main/schema.json",
   "agents": {
     "reviewers": [
       {
@@ -62,7 +62,7 @@ If at least one config exists, Magi validates the merged effective config and re
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/hirotomoyamada/opencode-magi/main/schema.json",
+  "$schema": "https://raw.githubusercontent.com/magi-ai/opencode-magi/main/schema.json",
   "github": {
     "host": "github.com",
     "owner": "yamada-ui",

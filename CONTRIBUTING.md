@@ -6,7 +6,7 @@ When it comes to open source, there are different ways you can contribute, all o
 
 The following steps will get you up and running to contribute to OpenCode Magi:
 
-1. Fork the [repository](https://github.com/hirotomoyamada/opencode-magi).
+1. Fork the [repository](https://github.com/magi-ai/opencode-magi).
 
 2. Clone your fork locally.
 
@@ -64,7 +64,7 @@ AI-assisted contributions remain the responsibility of the human submitter. Plea
 
 ## Think you found a bug?
 
-Please use the [bug report template](https://github.com/hirotomoyamada/opencode-magi/issues/new/choose) and provide a clear path to reproduction.
+Please use the [bug report template](https://github.com/magi-ai/opencode-magi/issues/new/choose) and provide a clear path to reproduction.
 
 Useful bug reports usually include:
 
@@ -77,7 +77,7 @@ Useful bug reports usually include:
 
 ## Proposing a new feature or changed behavior?
 
-Please use the [feature request template](https://github.com/hirotomoyamada/opencode-magi/issues/new/choose) and explain the problem you want to solve.
+Please use the [feature request template](https://github.com/magi-ai/opencode-magi/issues/new/choose) and explain the problem you want to solve.
 
 For new or changed APIs, configuration options, commands, prompts, or automation behavior, include thoughtful comments and sample usage. Proposals that are unclear, too broad, or not aligned with the project goals may be closed.
 
@@ -122,7 +122,7 @@ build: update release workflow
 
 ### Steps to PR
 
-1. Fork and clone the [repository](https://github.com/hirotomoyamada/opencode-magi).
+1. Fork and clone the [repository](https://github.com/magi-ai/opencode-magi).
 
 2. Create a new branch out of the `main` branch. Use the format `<type>/<description>`, where `type` is one of the conventional commit types and `description` is a short kebab-case summary.
 

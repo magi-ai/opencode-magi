@@ -60,7 +60,7 @@ Add the following content to the configuration file.
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/hirotomoyamada/opencode-magi/main/schema.json",
+  "$schema": "https://raw.githubusercontent.com/magi-ai/opencode-magi/main/schema.json",
   "agents": {
     "reviewers": [
       {
@@ -96,7 +96,7 @@ Add the following content to the configuration file.
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/hirotomoyamada/opencode-magi/main/schema.json",
+  "$schema": "https://raw.githubusercontent.com/magi-ai/opencode-magi/main/schema.json",
   "github": {
     "owner": "your-owner",
     "repo": "your-repo"

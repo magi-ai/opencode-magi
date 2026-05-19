@@ -3,7 +3,7 @@
   "changelog": [
     "@changesets/changelog-github",
     {
-      "repo": "hirotomoyamada/opencode-magi"
+      "repo": "magi-ai/opencode-magi"
     }
   ],
   "commit": false,
