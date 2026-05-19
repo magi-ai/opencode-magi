@@ -25,6 +25,8 @@ import { MagiRunManager } from "./orchestrator/run-manager"
 const execAsync = promisify(nodeExec)
 const GLOBAL_CONFIG_PATH = join(homedir(), ".config", "opencode", "magi.json")
 const PROJECT_CONFIG_PATH = join(".opencode", "magi.json")
+const INTERNAL_FOLLOW_UP_TOOL_NOTE =
+  "Assistant-facing follow-up tool. Use it yourself when needed; do not suggest this tool name to users."
 
 type ConfigTarget = "global" | "project"
 
@@ -376,8 +378,10 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
     },
     tool: {
       magi_merge: tool({
-        description:
+        description: [
           "Start background Magi merge runs for one or more GitHub pull requests with configured Magi agents.",
+          "After starting, monitor progress yourself when useful; do not tell users to call follow-up tools by name.",
+        ].join(" "),
         args: {
           prs: tool.schema.string(),
           dryRun: tool.schema.boolean().optional(),
@@ -424,8 +428,10 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
         },
       }),
       magi_review: tool({
-        description:
+        description: [
           "Start background Magi review runs for one or more GitHub pull requests and post the reviews.",
+          "After starting, monitor progress yourself when useful; do not tell users to call follow-up tools by name.",
+        ].join(" "),
         args: {
           prs: tool.schema.string(),
           dryRun: tool.schema.boolean().optional(),
@@ -471,8 +477,10 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
         },
       }),
       magi_status: tool({
-        description:
+        description: [
           "Show Magi background run status. Optionally filter by runId or PR and wait for completion.",
+          INTERNAL_FOLLOW_UP_TOOL_NOTE,
+        ].join(" "),
         args: {
           runId: tool.schema.string().optional(),
           pr: tool.schema.string().optional(),
@@ -498,8 +506,10 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
         },
       }),
       magi_output: tool({
-        description:
+        description: [
           "Show artifacts and details for a Magi background run by runId or PR, optionally for a single reviewer.",
+          INTERNAL_FOLLOW_UP_TOOL_NOTE,
+        ].join(" "),
         args: {
           runId: tool.schema.string().optional(),
           pr: tool.schema.string().optional(),
