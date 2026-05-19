@@ -240,12 +240,19 @@ async function runEditor(
         input.repository,
         input.pr,
       )
+      const headOwner = meta.headRepositoryOwner?.login
+      const headRepo = meta.headRepository?.name
+
+      if (!headOwner || !headRepo) {
+        throw new Error("Pull request head repository is missing")
+      }
+
       await pushHead(
         input.exec,
         input.repository,
         worktreePath,
         editor.account,
-        meta.headRefName,
+        { owner: headOwner, ref: meta.headRefName, repo: headRepo },
       )
     }
   }

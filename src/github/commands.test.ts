@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { describe, expect, test } from "vitest"
 import {
   createWorktree,
+  fetchPullRequest,
   fetchPullRequestCommits,
   fetchPullRequestReviews,
   fetchPullRequestSafetyMeta,
@@ -84,7 +85,7 @@ describe("GitHub command helpers", () => {
     expect(ghHostOption(enterprise)).toBe(" --hostname 'github.example.com'")
   })
 
-  test("pushes detached HEAD to the PR head branch", async () => {
+  test("pushes detached HEAD to the PR head repository", async () => {
     const commands: string[] = []
 
     await pushHead(
@@ -97,13 +98,41 @@ describe("GitHub command helpers", () => {
       repository,
       "/tmp/worktree",
       "editor-bot",
-      "feature-branch",
+      { owner: "fork-owner", ref: "feature-branch", repo: "fork-repo" },
     )
 
     expect(commands[1]).toContain(
-      "push origin 'HEAD:refs/heads/feature-branch'",
+      "push 'https://github.com/fork-owner/fork-repo.git' 'HEAD:refs/heads/feature-branch'",
     )
     expect(commands[1]).toContain("credential.helper")
+  })
+
+  test("fetches PR head repository metadata", async () => {
+    let command = ""
+    const result = await fetchPullRequest(
+      async (value) => {
+        command = value
+
+        return JSON.stringify({
+          baseRefName: "main",
+          baseRefOid: "base-sha",
+          headRefName: "feature-branch",
+          headRefOid: "head-sha",
+          headRepository: { name: "fork-repo" },
+          headRepositoryOwner: { login: "fork-owner" },
+          isDraft: false,
+          number: 1,
+          title: "PR title",
+          url: "https://github.com/owner/repo/pull/1",
+        })
+      },
+      repository,
+      1,
+    )
+
+    expect(command).toContain("headRepository,headRepositoryOwner")
+    expect(result.headRepository?.name).toBe("fork-repo")
+    expect(result.headRepositoryOwner?.login).toBe("fork-owner")
   })
 
   test("posts close comments as PR review comments", async () => {
