@@ -15,6 +15,7 @@ import { promisify } from "node:util"
 import { MAGI_COMMANDS } from "./commands"
 import { loadConfig, mergeMagiConfig } from "./config/load"
 import { outputBaseDirs } from "./config/output"
+import { worktreeBaseDirs } from "./config/worktree"
 import { resolveRepository } from "./config/resolve"
 import { type ModelCatalog, validateConfig } from "./config/validate"
 import { withGitHubApiRetry } from "./github/retry"
@@ -586,6 +587,9 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
               : undefined,
             pr: parseOptionalPr(args.pr),
             runId: args.runId,
+            worktreeDir: loaded
+              ? worktreeBaseDirs(directory, loaded.config)
+              : undefined,
           })
         },
       }),

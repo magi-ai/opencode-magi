@@ -107,7 +107,7 @@ export interface PromptConfig {
 }
 
 export interface WorktreeConfig {
-  dir?: string
+  dirs?: Partial<Record<"pr", string>>
 }
 
 export interface RepositoryConfig {

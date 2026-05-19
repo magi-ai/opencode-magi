@@ -16,6 +16,7 @@ import {
 } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { outputBaseDirs, prRunOutputDir } from "../config/output"
+import { worktreeBaseDirs } from "../config/worktree"
 import {
   removeBranch,
   removeWorktree,
@@ -924,6 +925,7 @@ export class MagiRunManager {
     outputDir?: string | string[]
     pr?: number
     runId?: string
+    worktreeDir?: string | string[]
   }): Promise<string> {
     const configured = input.options ?? {}
     const options: MagiClearOptions = {
@@ -933,9 +935,7 @@ export class MagiRunManager {
       worktree: configured.worktree ?? DEFAULT_CLEAR_OPTIONS.worktree,
     }
     const states = await this.filteredStates(input)
-    const cleanupDirs = new Set<string>([
-      join(this.input.directory, ".magi", "worktrees"),
-    ])
+    const cleanupDirs = new Set<string>(this.absoluteWorktreeDirs(input))
     const cleanupTrees = new Set(this.emptyOutputCleanupRoots(input))
     const summary: MagiClearSummary = {
       branchDeleted: 0,
@@ -2278,6 +2278,20 @@ export class MagiRunManager {
 
   private absoluteOutputDir(dir: string): string {
     return isAbsolute(dir) ? dir : join(this.input.directory, dir)
+  }
+
+  private absoluteWorktreeDirs(input: {
+    worktreeDir?: string | string[]
+  }): string[] {
+    const worktreeDirs = Array.isArray(input.worktreeDir)
+      ? input.worktreeDir
+      : input.worktreeDir
+        ? [input.worktreeDir]
+        : worktreeBaseDirs(this.input.directory)
+
+    return worktreeDirs.map((dir) =>
+      isAbsolute(dir) ? dir : join(this.input.directory, dir),
+    )
   }
 
   private emptyOutputCleanupRoots(input: {

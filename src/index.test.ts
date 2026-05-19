@@ -198,7 +198,7 @@ describe("magi_clear", () => {
       join(process.env.TMPDIR ?? "/tmp", "magi-project-"),
     )
     const outputDir = join(directory, ".magi", "runs", "pr", "1", "run-test")
-    const worktreePath = join(directory, ".magi", "worktrees", "pr-1")
+    const worktreePath = join(directory, ".magi", "worktrees", "pr", "pr-1")
     const deletedSessions: string[] = []
     mockState.home = home
     const { MagiPlugin } = await import("./index")
@@ -277,7 +277,7 @@ describe("magi_clear", () => {
       join(process.env.TMPDIR ?? "/tmp", "magi-project-"),
     )
     const outputDir = join(directory, ".magi", "runs", "pr", "1", "run-test")
-    const worktreePath = join(directory, ".magi", "worktrees", "pr-1")
+    const worktreePath = join(directory, ".magi", "worktrees", "pr", "pr-1")
     const deletedSessions: string[] = []
     mockState.home = home
     const { MagiPlugin } = await import("./index")
