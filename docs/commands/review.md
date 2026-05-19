@@ -21,13 +21,13 @@ It skips reviewer accounts that already reviewed the current effective head. If 
 
 1. Fetch PR metadata with `gh pr view`.
 2. Abort if the PR is a draft.
-3. Stop before agent execution when `safety.*` gates block the PR.
-4. Fetch existing PR reviews for configured `agents.reviewers[].account` values.
+3. Stop before agent execution when `review.safety.*` gates block the PR.
+4. Fetch existing PR reviews for configured `review.agents[].account` values.
 5. Determine review freshness against the latest non-merge PR commit.
 6. Skip current reviewers, use re-review mode for stale reviewers, and use initial review mode for reviewers with no prior review.
-7. Wait for PR checks when `checks.waitBeforeReview` is enabled.
-8. If checks fail, remove checks matching `checks.exclude`, fetch failed job logs, classify each remaining failure as `SCOPE_IN` or `SCOPE_OUT`, rerun only `SCOPE_OUT` GitHub Actions jobs up to `checks.retryFailedJobs`, and pass `SCOPE_IN` failure context to reviewers. Dry runs skip the rerun and report it as a planned action.
-9. Create a detached git worktree under `worktree.dirs.pr` and check out the PR branch.
+7. Wait for PR checks when `review.checks.wait` is enabled.
+8. If checks fail, remove checks matching `review.checks.exclude`, fetch failed job logs, classify each remaining failure as `SCOPE_IN` or `SCOPE_OUT`, rerun only `SCOPE_OUT` GitHub Actions jobs up to `review.checks.retryFailedJobs`, and pass `SCOPE_IN` failure context to reviewers. Dry runs skip the rerun and report it as a planned action.
+9. Create a detached git worktree under `review.worktree` and check out the PR branch.
 10. Run each non-skipped reviewer agent through the reviewer worker pool.
 11. Parse each reviewer response as the fixed review or re-review JSON schema.
 12. Validate each `CHANGES_REQUESTED` finding by asking the other reviewers to vote on it.
@@ -35,15 +35,16 @@ It skips reviewer accounts that already reviewed the current effective head. If 
 14. Reconsider any minority `CLOSE` verdict before posting.
 15. Aggregate active reviewer verdicts plus skipped reviewer verdicts from existing GitHub review state by majority vote.
 16. Post each active reviewer result to GitHub with that reviewer's configured account, unless `--dry-run` is set.
-17. Remove the temporary worktree and recorded worktree branch.
+17. If configured, merge or close the PR according to `review.automation`.
+18. Remove the temporary worktree and recorded worktree branch.
 
 Reviewer verdicts map to GitHub actions:
 
-| Verdict             | GitHub action                                                              |
-| ------------------- | -------------------------------------------------------------------------- |
-| `MERGE`             | Post an approving PR review.                                               |
-| `CHANGES_REQUESTED` | Post a request-changes PR review with inline comments from `findings`.     |
-| `CLOSE`             | Post a PR comment with `reason`. The review command does not close the PR. |
+| Verdict             | GitHub action                                                                                                     |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `MERGE`             | Post an approving PR review.                                                                                      |
+| `CHANGES_REQUESTED` | Post a request-changes PR review with inline comments from `findings`.                                            |
+| `CLOSE`             | Post a PR comment with `reason`. The review command closes the PR only when `review.automation.close` is enabled. |
 
 The majority result can be `MERGE`, `CHANGES_REQUESTED`, or `CLOSE`. Reviewer count must be odd and at least 3, so one verdict must reach majority.
 
@@ -68,20 +69,20 @@ Review artifacts are written to the run output directory:
 
 Important settings for `/magi:review`:
 
-| Setting                   | Purpose                                                       |
-| ------------------------- | ------------------------------------------------------------- |
-| `agents.reviewers`        | Reviewer agents, models, personas, permissions, and accounts. |
-| `checks.waitBeforeReview` | Wait for PR checks before review.                             |
-| `checks.exclude`          | Ignore matching failed checks.                                |
-| `checks.retryFailedJobs`  | Retry scope-outside GitHub Actions jobs.                      |
-| `concurrency.reviewers`   | Maximum reviewer agents running at once.                      |
-| `concurrency.runs`        | Maximum PR runs processed at once.                            |
-| `github.apiRetryAttempts` | Retry count for GitHub CLI API rate limit errors.             |
-| `output.dirs.pr`          | PR run output directory.                                      |
-| `output.repairAttempts`   | Model output repair attempts.                                 |
-| `prompts.review*`         | Review prompt templates and guidelines.                       |
-| `safety.*`                | Optional gates that block review before agents run.           |
-| `worktree.dirs.pr`        | Temporary PR worktree base directory.                         |
+| Setting                         | Purpose                                                       |
+| ------------------------------- | ------------------------------------------------------------- |
+| `review.agents`                 | Reviewer agents, models, personas, permissions, and accounts. |
+| `review.checks.wait`            | Wait for PR checks before review.                             |
+| `review.checks.exclude`         | Ignore matching failed checks.                                |
+| `review.checks.retryFailedJobs` | Retry scope-outside GitHub Actions jobs.                      |
+| `review.concurrency.reviewers`  | Maximum reviewer agents running at once.                      |
+| `review.concurrency.runs`       | Maximum PR runs processed at once.                            |
+| `github.apiRetryAttempts`       | Retry count for GitHub CLI API rate limit errors.             |
+| `review.output`                 | PR run output directory.                                      |
+| `output.repairAttempts`         | Model output repair attempts.                                 |
+| `review.prompts.*`              | Review prompt templates and guidelines.                       |
+| `review.safety.*`               | Optional gates that block review before agents run.           |
+| `review.worktree`               | Temporary PR worktree base directory.                         |
 
 See [Config](/docs/config.md) for the complete configuration reference.
 
@@ -109,4 +110,4 @@ Magi currently queries reviews first 100, commits first 100, review threads firs
 
 ### Which GitHub accounts are used?
 
-Each reviewer posts with its configured `agents.reviewers[].account`. Each account must be authenticated with GitHub CLI and able to read the repository and post PR reviews or comments.
+Each reviewer posts with its configured `review.agents[].account`. Each account must be authenticated with GitHub CLI and able to read the repository and post PR reviews or comments. Review automation uses the first configured reviewer account for PR merge or close actions.

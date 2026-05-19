@@ -5,13 +5,11 @@
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
-    "agents": { "$ref": "#/$defs/agents" },
-    "automation": {
+    "agents": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "merge": { "type": "boolean", "default": true },
-        "close": { "type": "boolean", "default": true }
+        "permissions": { "$ref": "#/$defs/permissions" }
       }
     },
     "clear": {
@@ -22,24 +20,6 @@
         "worktree": { "type": "boolean", "default": true },
         "session": { "type": "boolean", "default": true },
         "branch": { "type": "boolean", "default": true }
-      }
-    },
-    "checks": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "exclude": { "type": "array", "items": { "type": "string" } },
-        "waitAfterEdit": { "type": "boolean" },
-        "waitBeforeReview": { "type": "boolean" },
-        "retryFailedJobs": { "type": "integer", "minimum": 0, "default": 3 }
-      }
-    },
-    "concurrency": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "runs": { "type": "integer", "minimum": 1, "default": 3 },
-        "reviewers": { "type": "integer", "minimum": 1, "default": 3 }
       }
     },
     "github": {
@@ -59,64 +39,15 @@
       }
     },
     "language": { "type": "string" },
-    "merge": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "approvalPolicy": {
-          "enum": ["majority", "unanimous"],
-          "default": "majority"
-        },
-        "method": { "enum": ["merge", "squash", "rebase"] },
-        "auto": { "type": "boolean" },
-        "deleteBranch": { "type": "boolean" },
-        "mergeQueue": { "type": "boolean", "default": false },
-        "maxThreadResolutionCycles": {
-          "type": "integer",
-          "minimum": 0,
-          "default": 5,
-          "description": "Maximum resolution attempts per unresolved review thread. Set 0 for unlimited attempts."
-        }
-      }
-    },
+    "merge": { "$ref": "#/$defs/merge" },
     "output": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "dirs": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "pr": { "type": "string" }
-          }
-        },
         "repairAttempts": { "type": "integer", "minimum": 0, "default": 3 }
       }
     },
-    "prompts": { "$ref": "#/$defs/prompts" },
-    "safety": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "allowAuthors": { "type": "array", "items": { "type": "string" } },
-        "blockedPaths": { "type": "array", "items": { "type": "string" } },
-        "maxChangedFiles": { "type": "integer", "minimum": 0 },
-        "requiredLabels": { "type": "array", "items": { "type": "string" } }
-      }
-    },
-    "worktree": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "dirs": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "pr": { "type": "string" }
-          }
-        }
-      }
-    }
+    "review": { "$ref": "#/$defs/review" }
   },
   "$defs": {
     "reviewer": {
@@ -128,7 +59,7 @@
         "model": { "type": "string", "minLength": 1 },
         "options": { "type": "object", "additionalProperties": true },
         "account": { "type": "string", "minLength": 1 },
-        "permission": { "$ref": "#/$defs/permission" },
+        "permissions": { "$ref": "#/$defs/permissions" },
         "persona": { "type": "string" }
       }
     },
@@ -149,21 +80,120 @@
             "email": { "type": "string", "minLength": 1 }
           }
         },
-        "permission": { "$ref": "#/$defs/permission" },
+        "permissions": { "$ref": "#/$defs/permissions" },
         "persona": { "type": "string" }
       }
     },
-    "agents": {
+    "automation": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "permissions": { "$ref": "#/$defs/permission" },
-        "reviewers": {
+        "merge": { "type": "boolean" },
+        "close": { "type": "boolean" }
+      }
+    },
+    "reviewChecks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exclude": { "type": "array", "items": { "type": "string" } },
+        "wait": { "type": "boolean", "default": true },
+        "retryFailedJobs": { "type": "integer", "minimum": 0, "default": 3 }
+      }
+    },
+    "mergeChecks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "wait": { "type": "boolean", "default": true }
+      }
+    },
+    "concurrency": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runs": { "type": "integer", "minimum": 1, "default": 3 },
+        "reviewers": { "type": "integer", "minimum": 1, "default": 3 }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowAuthors": { "type": "array", "items": { "type": "string" } },
+        "blockedPaths": { "type": "array", "items": { "type": "string" } },
+        "maxChangedFiles": { "type": "integer", "minimum": 0 },
+        "requiredLabels": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "reviewPrompts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "review": { "type": "string" },
+        "rereview": { "type": "string" },
+        "reviewGuidelines": { "type": "string" },
+        "ciClassification": { "type": "string" },
+        "findingValidation": { "type": "string" },
+        "closeReconsideration": { "type": "string" }
+      }
+    },
+    "mergePrompts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "edit": { "type": "string" },
+        "editGuidelines": { "type": "string" },
+        "ciClassification": { "type": "string" }
+      }
+    },
+    "reviewMerge": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "approvalPolicy": {
+          "enum": ["majority", "unanimous"],
+          "default": "majority"
+        },
+        "method": { "enum": ["merge", "squash", "rebase"] },
+        "auto": { "type": "boolean" },
+        "deleteBranch": { "type": "boolean" },
+        "queue": { "type": "boolean", "default": false }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "agents": {
           "type": "array",
           "minItems": 3,
           "items": { "$ref": "#/$defs/reviewer" }
         },
-        "editor": { "$ref": "#/$defs/editor" }
+        "prompts": { "$ref": "#/$defs/reviewPrompts" },
+        "checks": { "$ref": "#/$defs/reviewChecks" },
+        "safety": { "$ref": "#/$defs/safety" },
+        "automation": { "$ref": "#/$defs/automation" },
+        "concurrency": { "$ref": "#/$defs/concurrency" },
+        "merge": { "$ref": "#/$defs/reviewMerge" },
+        "output": { "type": "string" },
+        "worktree": { "type": "string" }
+      }
+    },
+    "merge": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "editor": { "$ref": "#/$defs/editor" },
+        "checks": { "$ref": "#/$defs/mergeChecks" },
+        "prompts": { "$ref": "#/$defs/mergePrompts" },
+        "automation": { "$ref": "#/$defs/automation" },
+        "maxThreadResolutionCycles": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 5,
+          "description": "Maximum resolution attempts per unresolved review thread. Set 0 for unlimited attempts."
+        }
       }
     },
     "permissionAction": { "enum": ["allow", "ask", "deny"] },
@@ -176,7 +206,7 @@
         }
       ]
     },
-    "permission": {
+    "permissions": {
       "oneOf": [
         { "$ref": "#/$defs/permissionAction" },
         {
@@ -184,23 +214,6 @@
           "additionalProperties": { "$ref": "#/$defs/permissionRule" }
         }
       ]
-    },
-    "prompts": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "review": { "type": "string" },
-        "rereview": { "type": "string" },
-        "edit": { "type": "string" },
-        "editGuidelines": { "type": "string" },
-        "findingValidation": { "type": "string" },
-        "closeReconsideration": { "type": "string" },
-        "rereviewCloseReconsideration": { "type": "string" },
-        "ciClassification": { "type": "string" },
-        "ciClassificationAfterEdit": { "type": "string" },
-        "report": { "type": "string" },
-        "reviewGuidelines": { "type": "string" }
-      }
     }
   }
 }

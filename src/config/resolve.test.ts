@@ -3,8 +3,11 @@ import { describe, expect, test } from "vitest"
 import { resolveRepository, reviewerKey } from "./resolve"
 
 const config: MagiConfig = {
-  agents: {
-    reviewers: [
+  agents: {},
+  github: { owner: "owner", repo: "repo" },
+  language: "en",
+  review: {
+    agents: [
       {
         model: "anthropic/claude",
         account: "bot-a",
@@ -13,17 +16,17 @@ const config: MagiConfig = {
       { id: "security", model: "anthropic/claude", account: "bot-b" },
       { id: "compat", model: "openai/gpt", account: "bot-c" },
     ],
+    prompts: { review: "global-review.md" },
+  },
+  merge: {
     editor: {
       model: "openai/gpt",
       account: "bot-c",
       author: { email: "bot-c@example.com", name: "Bot C" },
     },
   },
-  github: { owner: "owner", repo: "repo" },
-  language: "en",
-  prompts: { review: "global-review.md" },
 }
-const reviewers = config.agents.reviewers ?? []
+const reviewers = config.review?.agents ?? []
 
 describe("resolveRepository", () => {
   test("uses index reviewer keys unless id is configured", () => {
@@ -46,7 +49,8 @@ describe("resolveRepository", () => {
     expect(repo.merge.approvalPolicy).toBe("majority")
     expect(repo.merge.mergeQueue).toBe(false)
     expect(repo.merge.maxThreadResolutionCycles).toBe(5)
-    expect(repo.automation).toEqual({ close: true, merge: true })
+    expect(repo.automation).toEqual({ close: false, merge: true })
+    expect(repo.reviewAutomation).toEqual({ close: false, merge: false })
     expect(repo.concurrency).toEqual({ runs: 3, reviewers: 3 })
     expect(repo.checks.exclude).toEqual([])
     expect(repo.checks.waitAfterEdit).toBe(true)
@@ -95,10 +99,13 @@ describe("resolveRepository", () => {
           bash: { "gh pr view*": "allow" },
           webfetch: "allow",
         },
-        reviewers: [
+      },
+      review: {
+        ...config.review,
+        agents: [
           {
             ...(reviewers[0] as NonNullable<(typeof reviewers)[number]>),
-            permission: { bash: { "git push*": "deny" }, webfetch: "deny" },
+            permissions: { bash: { "git push*": "deny" }, webfetch: "deny" },
           },
           ...reviewers.slice(1),
         ],

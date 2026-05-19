@@ -5,8 +5,8 @@
     "owner": "magi-ai",
     "repo": "opencode-magi"
   },
-  "agents": {
-    "reviewers": [
+  "review": {
+    "agents": [
       {
         "id": "Melchior",
         "account": "melchior-magi",
@@ -23,6 +23,14 @@
         "model": "opencode/qwen3.6-plus-free"
       }
     ],
+    "merge": {
+      "queue": true
+    },
+    "prompts": {
+      "reviewGuidelines": ".agents/references/pr-review-guidelines.md"
+    }
+  },
+  "merge": {
     "editor": {
       "account": "hirotomoyamada",
       "model": "openai/gpt-5.5",
@@ -31,11 +39,5 @@
         "email": "hirotomo.yamada@avap.co.jp"
       }
     }
-  },
-  "merge": {
-    "mergeQueue": true
-  },
-  "prompts": {
-    "reviewGuidelines": ".agents/references/pr-review-guidelines.md"
   }
 }

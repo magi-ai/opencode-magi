@@ -1,4 +1,5 @@
 import type {
+  EditorConfig,
   Exec,
   MagiConfig,
   PermissionConfig,
@@ -36,25 +37,20 @@ const validateSchema = AJV.compile(schema)
 const CONFIG_KEYS = new Set([
   "$schema",
   "agents",
-  "automation",
   "clear",
-  "checks",
-  "concurrency",
   "github",
   "language",
   "merge",
   "output",
-  "prompts",
-  "safety",
-  "worktree",
+  "review",
 ])
-const AGENTS_KEYS = new Set(["editor", "permissions", "reviewers"])
+const AGENTS_KEYS = new Set(["permissions"])
 const REVIEWER_KEYS = new Set([
   "account",
   "id",
   "model",
   "options",
-  "permission",
+  "permissions",
   "persona",
 ])
 const EDITOR_KEYS = new Set([
@@ -62,50 +58,60 @@ const EDITOR_KEYS = new Set([
   "author",
   "model",
   "options",
-  "permission",
+  "permissions",
   "persona",
 ])
 const AUTHOR_KEYS = new Set(["email", "name"])
 const GITHUB_KEYS = new Set(["apiRetryAttempts", "host", "owner", "repo"])
+const REVIEW_KEYS = new Set([
+  "agents",
+  "automation",
+  "checks",
+  "concurrency",
+  "merge",
+  "output",
+  "prompts",
+  "safety",
+  "worktree",
+])
 const MERGE_KEYS = new Set([
+  "automation",
+  "checks",
+  "editor",
+  "maxThreadResolutionCycles",
+  "prompts",
+])
+const REVIEW_MERGE_KEYS = new Set([
   "approvalPolicy",
   "auto",
   "deleteBranch",
-  "maxThreadResolutionCycles",
-  "mergeQueue",
   "method",
+  "queue",
 ])
-const CHECKS_KEYS = new Set([
-  "exclude",
-  "retryFailedJobs",
-  "waitAfterEdit",
-  "waitBeforeReview",
-])
+const REVIEW_CHECKS_KEYS = new Set(["exclude", "retryFailedJobs", "wait"])
+const MERGE_CHECKS_KEYS = new Set(["wait"])
 const AUTOMATION_KEYS = new Set(["close", "merge"])
 const CLEAR_KEYS = new Set(["branch", "output", "session", "worktree"])
 const CONCURRENCY_KEYS = new Set(["reviewers", "runs"])
-const OUTPUT_KEYS = new Set(["dirs", "repairAttempts"])
-const OUTPUT_DIR_KEYS = new Set(["pr"])
-const WORKTREE_KEYS = new Set(["dirs"])
-const WORKTREE_DIR_KEYS = new Set(["pr"])
+const OUTPUT_KEYS = new Set(["repairAttempts"])
 const SAFETY_KEYS = new Set([
   "allowAuthors",
   "blockedPaths",
   "maxChangedFiles",
   "requiredLabels",
 ])
-const PROMPT_KEYS = new Set([
+const REVIEW_PROMPT_KEYS = new Set([
   "ciClassification",
-  "ciClassificationAfterEdit",
   "closeReconsideration",
-  "edit",
-  "editGuidelines",
   "findingValidation",
-  "report",
   "rereview",
-  "rereviewCloseReconsideration",
   "review",
   "reviewGuidelines",
+])
+const MERGE_PROMPT_KEYS = new Set([
+  "ciClassification",
+  "edit",
+  "editGuidelines",
 ])
 
 function githubHost(config: MagiConfig): string {
@@ -279,8 +285,8 @@ function validateReviewerList(
     if (reviewer.options != null && !isPlainObject(reviewer.options))
       errors.push(`${path}[${index}].options must be an object`)
     validatePermissionConfig(
-      reviewer.permission,
-      `${path}[${index}].permission`,
+      reviewer.permissions,
+      `${path}[${index}].permissions`,
       errors,
     )
 
@@ -317,11 +323,57 @@ function validateResolvedReviewers(
   }
 }
 
+function validateEditor(
+  editor: EditorConfig | undefined,
+  path: string,
+  errors: string[],
+  catalog?: ModelCatalog,
+): void {
+  if (!editor) return
+  if (!isPlainObject(editor)) {
+    errors.push(`${path} must be an object`)
+    return
+  }
+
+  if (!editor.model) errors.push(`${path}.model is required`)
+  validateKnownKeys(editor, path, EDITOR_KEYS, errors)
+  validateString(editor.model, `${path}.model`, errors)
+  validateString(editor.account, `${path}.account`, errors)
+  validateString(editor.persona, `${path}.persona`, errors)
+  validateModel(editor.model, `${path}.model`, errors, catalog)
+  if (!editor.account) errors.push(`${path}.account is required`)
+  if (editor.options != null && !isPlainObject(editor.options)) {
+    errors.push(`${path}.options must be an object`)
+  }
+  validatePermissionConfig(editor.permissions, `${path}.permissions`, errors)
+  const author = editor.author
+  if (!author || !isPlainObject(author)) {
+    if (author != null) errors.push(`${path}.author must be an object`)
+    errors.push(`${path}.author.name is required`)
+    errors.push(`${path}.author.email is required`)
+  } else {
+    validateKnownKeys(author, `${path}.author`, AUTHOR_KEYS, errors)
+    if (!author.name) {
+      errors.push(`${path}.author.name is required`)
+    } else if (typeof author.name !== "string") {
+      errors.push(`${path}.author.name must be a string`)
+    }
+
+    if (!author.email) {
+      errors.push(`${path}.author.email is required`)
+    } else if (typeof author.email !== "string") {
+      errors.push(`${path}.author.email must be a string`)
+    }
+  }
+}
+
 function validateMerge(
   config: MagiConfig,
   errors: string[],
   options: ValidationOptions,
 ): void {
+  const merge = config.merge
+
   if (options.requireGithub ?? true) {
     if (!config.github?.owner) errors.push("github.owner is required")
     if (!config.github?.repo) errors.push("github.repo is required")
@@ -336,15 +388,6 @@ function validateMerge(
     errors.push("github must be an object")
   }
 
-  if (config.merge != null && !isPlainObject(config.merge)) {
-    errors.push("merge must be an object")
-  }
-
-  validateKnownKeys(config.merge, "merge", MERGE_KEYS, errors)
-  validateBoolean(config.merge?.auto, "merge.auto", errors)
-  validateBoolean(config.merge?.deleteBranch, "merge.deleteBranch", errors)
-  validateBoolean(config.merge?.mergeQueue, "merge.mergeQueue", errors)
-
   if (
     config.github?.apiRetryAttempts != null &&
     (typeof config.github.apiRetryAttempts !== "number" ||
@@ -354,82 +397,106 @@ function validateMerge(
     errors.push("github.apiRetryAttempts must be a non-negative integer")
   }
 
-  if (
-    config.merge?.method != null &&
-    (typeof config.merge.method !== "string" ||
-      !["merge", "rebase", "squash"].includes(config.merge.method))
-  ) {
-    errors.push("merge.method must be merge, squash, or rebase")
+  if (merge != null && !isPlainObject(merge)) {
+    errors.push("merge must be an object")
   }
 
-  if (
-    config.merge?.approvalPolicy != null &&
-    (typeof config.merge.approvalPolicy !== "string" ||
-      !["majority", "unanimous"].includes(config.merge.approvalPolicy))
-  ) {
-    errors.push("merge.approvalPolicy must be majority or unanimous")
-  }
+  validateKnownKeys(merge, "merge", MERGE_KEYS, errors)
+  validateBooleanObject(
+    merge?.automation,
+    "merge.automation",
+    AUTOMATION_KEYS,
+    errors,
+  )
+  const checks = merge?.checks as { wait?: unknown } | undefined
+  validateKnownKeys(checks, "merge.checks", MERGE_CHECKS_KEYS, errors)
+  validateBoolean(checks?.wait, "merge.checks.wait", errors)
+  validateEditor(
+    merge?.editor as EditorConfig | undefined,
+    "merge.editor",
+    errors,
+    options.modelCatalog,
+  )
 
   if (
-    config.merge?.maxThreadResolutionCycles != null &&
-    (typeof config.merge.maxThreadResolutionCycles !== "number" ||
-      !Number.isInteger(config.merge.maxThreadResolutionCycles) ||
-      config.merge.maxThreadResolutionCycles < 0)
+    merge?.maxThreadResolutionCycles != null &&
+    (typeof merge.maxThreadResolutionCycles !== "number" ||
+      !Number.isInteger(merge.maxThreadResolutionCycles) ||
+      merge.maxThreadResolutionCycles < 0)
   ) {
     errors.push(
       "merge.maxThreadResolutionCycles must be a non-negative integer",
     )
   }
+
+  if (options.requireEditor && !merge?.editor)
+    errors.push("merge.editor is required")
+}
+
+function validateReviewMerge(config: MagiConfig, errors: string[]): void {
+  const merge = config.review?.merge
+  if (merge != null && !isPlainObject(merge)) {
+    errors.push("review.merge must be an object")
+  }
+
+  validateKnownKeys(merge, "review.merge", REVIEW_MERGE_KEYS, errors)
+  validateBoolean(merge?.auto, "review.merge.auto", errors)
+  validateBoolean(merge?.deleteBranch, "review.merge.deleteBranch", errors)
+  validateBoolean(merge?.queue, "review.merge.queue", errors)
+
+  if (
+    merge?.method != null &&
+    (typeof merge.method !== "string" ||
+      !["merge", "rebase", "squash"].includes(merge.method))
+  ) {
+    errors.push("review.merge.method must be merge, squash, or rebase")
+  }
+
+  if (
+    merge?.approvalPolicy != null &&
+    (typeof merge.approvalPolicy !== "string" ||
+      !["majority", "unanimous"].includes(merge.approvalPolicy))
+  ) {
+    errors.push("review.merge.approvalPolicy must be majority or unanimous")
+  }
 }
 
 function validateConcurrency(config: MagiConfig, errors: string[]): void {
-  if (config.concurrency != null && !isPlainObject(config.concurrency)) {
-    errors.push("concurrency must be an object")
+  const concurrency = config.review?.concurrency
+  if (concurrency != null && !isPlainObject(concurrency)) {
+    errors.push("review.concurrency must be an object")
   }
 
-  validateKnownKeys(config.concurrency, "concurrency", CONCURRENCY_KEYS, errors)
+  validateKnownKeys(concurrency, "review.concurrency", CONCURRENCY_KEYS, errors)
 
-  if (config.concurrency?.runs != null) {
+  if (concurrency?.runs != null) {
     if (
-      typeof config.concurrency.runs !== "number" ||
-      !Number.isInteger(config.concurrency.runs) ||
-      config.concurrency.runs < 1
+      typeof concurrency.runs !== "number" ||
+      !Number.isInteger(concurrency.runs) ||
+      concurrency.runs < 1
     ) {
-      errors.push("concurrency.runs must be a positive integer")
+      errors.push("review.concurrency.runs must be a positive integer")
     }
   }
 
-  if (config.concurrency?.reviewers != null) {
+  if (concurrency?.reviewers != null) {
     if (
-      typeof config.concurrency.reviewers !== "number" ||
-      !Number.isInteger(config.concurrency.reviewers) ||
-      config.concurrency.reviewers < 1
+      typeof concurrency.reviewers !== "number" ||
+      !Number.isInteger(concurrency.reviewers) ||
+      concurrency.reviewers < 1
     ) {
-      errors.push("concurrency.reviewers must be a positive integer")
+      errors.push("review.concurrency.reviewers must be a positive integer")
     }
   }
 }
 
 function validateAutomation(config: MagiConfig, errors: string[]): void {
-  if (config.automation != null && !isPlainObject(config.automation)) {
-    errors.push("automation must be an object")
-  }
-
-  validateKnownKeys(config.automation, "automation", AUTOMATION_KEYS, errors)
-
-  if (
-    config.automation?.merge != null &&
-    typeof config.automation.merge !== "boolean"
-  ) {
-    errors.push("automation.merge must be a boolean")
-  }
-
-  if (
-    config.automation?.close != null &&
-    typeof config.automation.close !== "boolean"
-  ) {
-    errors.push("automation.close must be a boolean")
-  }
+  validateBooleanObject(
+    config.review?.automation,
+    "review.automation",
+    AUTOMATION_KEYS,
+    errors,
+  )
 }
 
 function validateClear(config: MagiConfig, errors: string[]): void {
@@ -437,44 +504,35 @@ function validateClear(config: MagiConfig, errors: string[]): void {
 }
 
 function validateChecks(config: MagiConfig, errors: string[]): void {
-  if (config.checks != null && !isPlainObject(config.checks)) {
-    errors.push("checks must be an object")
+  const checks = config.review?.checks
+  if (checks != null && !isPlainObject(checks)) {
+    errors.push("review.checks must be an object")
   }
 
-  validateKnownKeys(config.checks, "checks", CHECKS_KEYS, errors)
+  validateKnownKeys(checks, "review.checks", REVIEW_CHECKS_KEYS, errors)
 
-  if (config.checks?.exclude != null) {
-    if (!Array.isArray(config.checks.exclude)) {
-      errors.push("checks.exclude must be an array")
+  if (checks?.exclude != null) {
+    if (!Array.isArray(checks.exclude)) {
+      errors.push("review.checks.exclude must be an array")
     } else {
-      config.checks.exclude.forEach((item, index) => {
+      checks.exclude.forEach((item, index) => {
         if (typeof item !== "string")
-          errors.push(`checks.exclude[${index}] must be a string`)
+          errors.push(`review.checks.exclude[${index}] must be a string`)
       })
     }
   }
 
-  if (
-    config.checks?.waitBeforeReview != null &&
-    typeof config.checks.waitBeforeReview !== "boolean"
-  ) {
-    errors.push("checks.waitBeforeReview must be a boolean")
+  if (checks?.wait != null && typeof checks.wait !== "boolean") {
+    errors.push("review.checks.wait must be a boolean")
   }
 
   if (
-    config.checks?.waitAfterEdit != null &&
-    typeof config.checks.waitAfterEdit !== "boolean"
+    checks?.retryFailedJobs != null &&
+    (typeof checks.retryFailedJobs !== "number" ||
+      !Number.isInteger(checks.retryFailedJobs) ||
+      checks.retryFailedJobs < 0)
   ) {
-    errors.push("checks.waitAfterEdit must be a boolean")
-  }
-
-  if (
-    config.checks?.retryFailedJobs != null &&
-    (typeof config.checks.retryFailedJobs !== "number" ||
-      !Number.isInteger(config.checks.retryFailedJobs) ||
-      config.checks.retryFailedJobs < 0)
-  ) {
-    errors.push("checks.retryFailedJobs must be a non-negative integer")
+    errors.push("review.checks.retryFailedJobs must be a non-negative integer")
   }
 }
 
@@ -496,34 +554,54 @@ function validateStringArray(
 }
 
 function validateSafety(config: MagiConfig, errors: string[]): void {
-  if (config.safety != null && !isPlainObject(config.safety)) {
-    errors.push("safety must be an object")
+  const safety = config.review?.safety
+  if (safety != null && !isPlainObject(safety)) {
+    errors.push("review.safety must be an object")
   }
 
-  validateKnownKeys(config.safety, "safety", SAFETY_KEYS, errors)
+  validateKnownKeys(safety, "review.safety", SAFETY_KEYS, errors)
   validateStringArray(
-    config.safety?.allowAuthors,
-    "safety.allowAuthors",
+    safety?.allowAuthors,
+    "review.safety.allowAuthors",
     errors,
   )
   validateStringArray(
-    config.safety?.blockedPaths,
-    "safety.blockedPaths",
+    safety?.blockedPaths,
+    "review.safety.blockedPaths",
     errors,
   )
   validateStringArray(
-    config.safety?.requiredLabels,
-    "safety.requiredLabels",
+    safety?.requiredLabels,
+    "review.safety.requiredLabels",
     errors,
   )
 
   if (
-    config.safety?.maxChangedFiles != null &&
-    (typeof config.safety.maxChangedFiles !== "number" ||
-      !Number.isInteger(config.safety.maxChangedFiles) ||
-      config.safety.maxChangedFiles < 0)
+    safety?.maxChangedFiles != null &&
+    (typeof safety.maxChangedFiles !== "number" ||
+      !Number.isInteger(safety.maxChangedFiles) ||
+      safety.maxChangedFiles < 0)
   ) {
-    errors.push("safety.maxChangedFiles must be a non-negative integer")
+    errors.push("review.safety.maxChangedFiles must be a non-negative integer")
+  }
+}
+
+function validatePromptObject(
+  prompts: unknown,
+  path: string,
+  keys: Set<string>,
+  errors: string[],
+): void {
+  if (prompts == null) return
+  if (!isPlainObject(prompts)) {
+    errors.push(`${path} must be an object`)
+    return
+  }
+
+  validateKnownKeys(prompts, path, keys, errors)
+  for (const [key, value] of Object.entries(prompts)) {
+    if (typeof value !== "string")
+      errors.push(`${path}.${key} must be a string`)
   }
 }
 
@@ -532,20 +610,31 @@ async function validatePrompts(
   errors: string[],
   directory?: string,
 ): Promise<void> {
-  if (config.prompts == null) return
-  if (!isPlainObject(config.prompts)) {
-    errors.push("prompts must be an object")
-    return
-  }
+  validatePromptObject(
+    config.review?.prompts,
+    "review.prompts",
+    REVIEW_PROMPT_KEYS,
+    errors,
+  )
+  validatePromptObject(
+    config.merge?.prompts,
+    "merge.prompts",
+    MERGE_PROMPT_KEYS,
+    errors,
+  )
 
-  validateKnownKeys(config.prompts, "prompts", PROMPT_KEYS, errors)
+  const promptEntries = [
+    ...Object.entries(config.review?.prompts ?? {}).map(
+      ([key, value]) => [`review.prompts.${key}`, value] as const,
+    ),
+    ...Object.entries(config.merge?.prompts ?? {}).map(
+      ([key, value]) => [`merge.prompts.${key}`, value] as const,
+    ),
+  ]
 
   await Promise.all(
-    Object.entries(config.prompts).map(async ([key, value]) => {
-      if (typeof value !== "string") {
-        errors.push(`prompts.${key} must be a string`)
-        return
-      }
+    promptEntries.map(async ([path, value]) => {
+      if (typeof value !== "string") return
 
       if (!directory) return
 
@@ -554,7 +643,7 @@ async function validatePrompts(
       try {
         await access(fullPath, constants.R_OK)
       } catch {
-        errors.push(`prompts.${key} file is not readable: ${value}`)
+        errors.push(`${path} file is not readable: ${value}`)
       }
     }),
   )
@@ -566,7 +655,7 @@ async function validateAuth(
   errors: string[],
 ): Promise<void> {
   const accounts = new Set<string>()
-  const agents = resolveAgents(config.agents)
+  const agents = resolveAgents(config)
 
   for (const reviewer of agents.reviewers) accounts.add(reviewer.account)
   if (agents.editor) accounts.add(agents.editor.account)
@@ -609,7 +698,7 @@ async function validateRepositoryPermissions(
 ): Promise<void> {
   if (!config.github?.owner || !config.github.repo) return
 
-  const agents = resolveAgents(config.agents)
+  const agents = resolveAgents(config)
 
   await Promise.all(
     agents.reviewers.map(async (reviewer) => {
@@ -670,98 +759,43 @@ export async function validateConfig(
   validateString(config.$schema, "$schema", errors)
   validateString(config.language, "language", errors)
 
-  if (!config.agents) {
-    errors.push("agents is required")
+  if (config.agents != null && !isPlainObject(config.agents)) {
+    errors.push("agents must be an object")
   } else {
-    if (!isPlainObject(config.agents)) {
-      errors.push("agents must be an object")
-    } else {
-      validateKnownKeys(config.agents, "agents", AGENTS_KEYS, errors)
-    }
+    validateKnownKeys(config.agents, "agents", AGENTS_KEYS, errors)
     validatePermissionConfig(
-      config.agents.permissions,
+      config.agents?.permissions as PermissionConfig | undefined,
       "agents.permissions",
       errors,
     )
-    if (!config.agents.reviewers) errors.push("agents.reviewers is required")
+  }
+
+  if (!config.review) {
+    errors.push("review is required")
+  } else {
+    if (!isPlainObject(config.review)) {
+      errors.push("review must be an object")
+    } else {
+      validateKnownKeys(config.review, "review", REVIEW_KEYS, errors)
+    }
+    if (!config.review.agents) errors.push("review.agents is required")
     validateReviewerList(
-      config.agents.reviewers,
-      "agents.reviewers",
+      config.review.agents as ReviewerConfig[] | undefined,
+      "review.agents",
       errors,
       options.modelCatalog,
     )
-    if (options.requireEditor && !config.agents.editor)
-      errors.push("agents.editor is required")
-    if (config.agents.editor) {
-      if (!config.agents.editor.model)
-        errors.push("agents.editor.model is required")
-      validateKnownKeys(
-        config.agents.editor,
-        "agents.editor",
-        EDITOR_KEYS,
-        errors,
-      )
-      validateString(config.agents.editor.model, "agents.editor.model", errors)
-      validateString(
-        config.agents.editor.account,
-        "agents.editor.account",
-        errors,
-      )
-      validateString(
-        config.agents.editor.persona,
-        "agents.editor.persona",
-        errors,
-      )
-      validateModel(
-        config.agents.editor.model,
-        "agents.editor.model",
-        errors,
-        options.modelCatalog,
-      )
-      if (!config.agents.editor.account)
-        errors.push("agents.editor.account is required")
-      if (
-        config.agents.editor.options != null &&
-        !isPlainObject(config.agents.editor.options)
-      ) {
-        errors.push("agents.editor.options must be an object")
-      }
-      validatePermissionConfig(
-        config.agents.editor.permission,
-        "agents.editor.permission",
-        errors,
-      )
-      const author = config.agents.editor.author
-      if (!author || !isPlainObject(author)) {
-        if (author != null)
-          errors.push("agents.editor.author must be an object")
-        errors.push("agents.editor.author.name is required")
-        errors.push("agents.editor.author.email is required")
-      } else {
-        validateKnownKeys(author, "agents.editor.author", AUTHOR_KEYS, errors)
-        if (!author.name) {
-          errors.push("agents.editor.author.name is required")
-        } else if (typeof author.name !== "string") {
-          errors.push("agents.editor.author.name must be a string")
-        }
-
-        if (!author.email) {
-          errors.push("agents.editor.author.email is required")
-        } else if (typeof author.email !== "string") {
-          errors.push("agents.editor.author.email must be a string")
-        }
-      }
-    }
-    if (Array.isArray(config.agents.reviewers)) {
+    if (Array.isArray(config.review.agents)) {
       validateResolvedReviewers(
-        resolveAgents(config.agents).reviewers,
-        "agents.resolvedReviewers",
+        resolveAgents(config).reviewers,
+        "review.resolvedAgents",
         errors,
       )
     }
   }
 
   validateMerge(config, errors, options)
+  validateReviewMerge(config, errors)
   validateAutomation(config, errors)
   validateClear(config, errors)
   validateChecks(config, errors)
@@ -785,51 +819,8 @@ export async function validateConfig(
     }
   }
 
-  if (config.output?.dirs != null) {
-    if (!isPlainObject(config.output.dirs)) {
-      errors.push("output.dirs must be an object")
-    } else {
-      validateKnownKeys(
-        config.output.dirs,
-        "output.dirs",
-        OUTPUT_DIR_KEYS,
-        errors,
-      )
-      const dirs = config.output.dirs as Record<string, unknown>
-      for (const key of OUTPUT_DIR_KEYS) {
-        const value = dirs[key]
-        if (value != null && typeof value !== "string") {
-          errors.push(`output.dirs.${key} must be a string`)
-        }
-      }
-    }
-  }
-
-  if (config.worktree != null && !isPlainObject(config.worktree)) {
-    errors.push("worktree must be an object")
-  }
-
-  validateKnownKeys(config.worktree, "worktree", WORKTREE_KEYS, errors)
-
-  if (config.worktree?.dirs != null) {
-    if (!isPlainObject(config.worktree.dirs)) {
-      errors.push("worktree.dirs must be an object")
-    } else {
-      validateKnownKeys(
-        config.worktree.dirs,
-        "worktree.dirs",
-        WORKTREE_DIR_KEYS,
-        errors,
-      )
-      const dirs = config.worktree.dirs as Record<string, unknown>
-      for (const key of WORKTREE_DIR_KEYS) {
-        const value = dirs[key]
-        if (value != null && typeof value !== "string") {
-          errors.push(`worktree.dirs.${key} must be a string`)
-        }
-      }
-    }
-  }
+  validateString(config.review?.output, "review.output", errors)
+  validateString(config.review?.worktree, "review.worktree", errors)
 
   if (options.checkAuth && !errors.length) {
     if (!options.exec) {

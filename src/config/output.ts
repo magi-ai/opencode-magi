@@ -18,7 +18,7 @@ export function outputBaseDir(
 ): string {
   return resolvePath(
     directory,
-    config.output?.dirs?.[kind] ?? DEFAULT_OUTPUT_DIRS[kind],
+    config.review?.output ?? DEFAULT_OUTPUT_DIRS[kind],
   )
 }
 

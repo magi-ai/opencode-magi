@@ -61,8 +61,8 @@ Add the following content to the configuration file.
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/magi-ai/opencode-magi/main/schema.json",
-  "agents": {
-    "reviewers": [
+  "review": {
+    "agents": [
       {
         "account": "your-account-1",
         "model": "openai/gpt-5.5"
@@ -80,7 +80,7 @@ Add the following content to the configuration file.
 }
 ```
 
-`agents.reviewers[].account` is the GitHub account used to post reviews and approvals. Must be authenticated with `gh auth token --user <account>` and must be unique.
+`review.agents[].account` is the GitHub account used to post reviews and approvals. Must be authenticated with `gh auth token --user <account>` and must be unique.
 
 #### Set project config
 
@@ -101,8 +101,8 @@ Add the following content to the configuration file.
     "owner": "your-owner",
     "repo": "your-repo"
   },
-  "agents": {
-    "reviewers": [
+  "review": {
+    "agents": [
       {
         "account": "your-account-1",
         "model": "openai/gpt-5.5"
@@ -115,7 +115,9 @@ Add the following content to the configuration file.
         "account": "your-account-3",
         "model": "opencode/kimi-k2-6"
       }
-    ],
+    ]
+  },
+  "merge": {
     "editor": {
       "account": "your-editor-account",
       "model": "openai/gpt-5.5",
@@ -128,7 +130,7 @@ Add the following content to the configuration file.
 }
 ```
 
-`agents.reviewers[].account` is the GitHub account used to post reviews and approvals. Must be authenticated with `gh auth token --user <account>` and must be unique.
+`review.agents[].account` is the GitHub account used to post reviews and approvals. Must be authenticated with `gh auth token --user <account>` and must be unique. `merge.editor.account` is used by `/magi:merge` to push fixes, close PRs, and merge PRs.
 
 #### Validate config
 

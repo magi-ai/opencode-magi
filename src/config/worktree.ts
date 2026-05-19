@@ -1,4 +1,4 @@
-import type { WorktreeConfig } from "../types"
+import type { MagiConfig } from "../types"
 import { isAbsolute, join } from "node:path"
 
 export type WorktreeKind = "pr"
@@ -13,18 +13,18 @@ function resolvePath(directory: string, path: string): string {
 
 export function worktreeBaseDir(
   directory: string,
-  config: { worktree?: WorktreeConfig },
+  config: MagiConfig,
   kind: WorktreeKind,
 ): string {
   return resolvePath(
     directory,
-    config.worktree?.dirs?.[kind] ?? DEFAULT_WORKTREE_DIRS[kind],
+    config.review?.worktree ?? DEFAULT_WORKTREE_DIRS[kind],
   )
 }
 
 export function worktreeBaseDirs(
   directory: string,
-  config: { worktree?: WorktreeConfig } = {},
+  config: MagiConfig = {},
 ): string[] {
   return [worktreeBaseDir(directory, config, "pr")]
 }

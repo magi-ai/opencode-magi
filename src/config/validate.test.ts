@@ -1,4 +1,4 @@
-import type { MagiConfig } from "../types"
+import type { MagiConfig, PermissionConfig } from "../types"
 import { mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -7,7 +7,12 @@ import { validateConfig } from "./validate"
 
 const config: MagiConfig = {
   agents: {
-    reviewers: [
+    permissions: { bash: { "git status*": "allow" } },
+  },
+  github: { owner: "owner", repo: "repo" },
+  language: "en",
+  review: {
+    agents: [
       {
         model: "anthropic/claude",
         account: "bot-a",
@@ -16,17 +21,17 @@ const config: MagiConfig = {
       { id: "security", model: "anthropic/claude", account: "bot-b" },
       { id: "compat", model: "openai/gpt", account: "bot-c" },
     ],
+    prompts: { review: "global-review.md" },
+  },
+  merge: {
     editor: {
       model: "openai/gpt",
       account: "bot-c",
       author: { email: "bot-c@example.com", name: "Bot C" },
     },
   },
-  github: { owner: "owner", repo: "repo" },
-  language: "en",
-  prompts: { review: "global-review.md" },
 }
-const reviewers = config.agents.reviewers ?? []
+const reviewers = config.review?.agents ?? []
 
 describe("validateConfig", () => {
   test("accepts valid odd reviewer config", async () => {
@@ -39,7 +44,7 @@ describe("validateConfig", () => {
   test("allows missing editor unless merge validation requires it", async () => {
     const withoutEditor: MagiConfig = {
       ...config,
-      agents: { reviewers },
+      merge: undefined,
     }
 
     await expect(validateConfig(withoutEditor)).resolves.toMatchObject({
@@ -48,7 +53,7 @@ describe("validateConfig", () => {
     await expect(
       validateConfig(withoutEditor, { requireEditor: true }),
     ).resolves.toMatchObject({
-      errors: ["agents.editor is required"],
+      errors: ["merge.editor is required"],
       ok: false,
     })
   })
@@ -56,23 +61,23 @@ describe("validateConfig", () => {
   test("requires editor author when editor is configured", async () => {
     const result = await validateConfig({
       ...config,
-      agents: {
-        ...config.agents,
+      merge: {
+        ...config.merge,
         editor: {
           model: "openai/gpt",
           account: "bot-c",
-        } as MagiConfig["agents"]["editor"],
+        } as NonNullable<MagiConfig["merge"]>["editor"],
       },
     })
 
     expect(result.ok).toBe(false)
-    expect(result.errors).toContain("agents.editor.author.name is required")
-    expect(result.errors).toContain("agents.editor.author.email is required")
+    expect(result.errors).toContain("merge.editor.author.name is required")
+    expect(result.errors).toContain("merge.editor.author.email is required")
   })
 
   test("allows global config without github", async () => {
     const globalConfig: MagiConfig = {
-      agents: { reviewers },
+      review: { agents: reviewers },
     }
 
     await expect(
@@ -83,55 +88,58 @@ describe("validateConfig", () => {
   test("rejects even reviewer config", async () => {
     const result = await validateConfig({
       ...config,
-      agents: {
-        ...config.agents,
-        reviewers: [...reviewers, { account: "bot-d", model: "google/gemini" }],
+      review: {
+        ...config.review,
+        agents: [...reviewers, { account: "bot-d", model: "google/gemini" }],
       },
     })
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "agents.reviewers must contain an odd number of reviewers",
+      "review.agents must contain an odd number of reviewers",
     )
   })
 
   test("rejects invalid concurrency config", async () => {
     const result = await validateConfig({
       ...config,
-      concurrency: { runs: 0, reviewers: -1 },
+      review: { ...config.review, concurrency: { runs: 0, reviewers: -1 } },
     })
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "concurrency.runs must be a positive integer",
+      "review.concurrency.runs must be a positive integer",
     )
     expect(result.errors).toContain(
-      "concurrency.reviewers must be a positive integer",
+      "review.concurrency.reviewers must be a positive integer",
     )
   })
 
   test("rejects invalid automation and approval policy config", async () => {
     const result = await validateConfig({
       ...config,
-      automation: {
-        close: "yes",
-        merge: "no",
-      } as unknown as MagiConfig["automation"],
-      merge: { approvalPolicy: "all" as "majority" },
+      review: {
+        ...config.review,
+        automation: {
+          close: "yes",
+          merge: "no",
+        } as unknown as NonNullable<MagiConfig["review"]>["automation"],
+        merge: { approvalPolicy: "all" as "majority" },
+      },
     })
 
     expect(result.ok).toBe(false)
-    expect(result.errors).toContain("automation.close must be a boolean")
-    expect(result.errors).toContain("automation.merge must be a boolean")
+    expect(result.errors).toContain("review.automation.close must be a boolean")
+    expect(result.errors).toContain("review.automation.merge must be a boolean")
     expect(result.errors).toContain(
-      "merge.approvalPolicy must be majority or unanimous",
+      "review.merge.approvalPolicy must be majority or unanimous",
     )
   })
 
   test("rejects invalid thread resolution cycle config", async () => {
     const result = await validateConfig({
       ...config,
-      merge: { maxThreadResolutionCycles: -1 },
+      merge: { ...config.merge, maxThreadResolutionCycles: -1 },
     })
 
     expect(result.ok).toBe(false)
@@ -153,12 +161,12 @@ describe("validateConfig", () => {
   test("rejects invalid checks retry config", async () => {
     const result = await validateConfig({
       ...config,
-      checks: { retryFailedJobs: -1 },
+      review: { ...config.review, checks: { retryFailedJobs: -1 } },
     })
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "checks.retryFailedJobs must be a non-negative integer",
+      "review.checks.retryFailedJobs must be a non-negative integer",
     )
   })
 
@@ -167,27 +175,26 @@ describe("validateConfig", () => {
       ...config,
       extra: true,
       github: { ...config.github, unknown: true },
-      merge: { ...config.merge, queue: true },
+      review: { ...config.review, unknown: true },
     } as unknown as MagiConfig)
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain("config.extra is not supported")
     expect(result.errors).toContain("github.unknown is not supported")
-    expect(result.errors).toContain("merge.queue is not supported")
+    expect(result.errors).toContain("review.unknown is not supported")
   })
 
   test("rejects invalid worktree dirs config", async () => {
     const result = await validateConfig({
       ...config,
-      worktree: {
-        dir: ".magi/worktrees",
-        dirs: { pr: 1 },
-      } as unknown as MagiConfig["worktree"],
+      review: {
+        ...config.review,
+        worktree: 1,
+      } as unknown as MagiConfig["review"],
     })
 
     expect(result.ok).toBe(false)
-    expect(result.errors).toContain("worktree.dir is not supported")
-    expect(result.errors).toContain("worktree.dirs.pr must be a string")
+    expect(result.errors).toContain("review.worktree must be a string")
   })
 
   test("checks prompt file paths when directory is provided", async () => {
@@ -197,9 +204,12 @@ describe("validateConfig", () => {
     const result = await validateConfig(
       {
         ...config,
-        prompts: {
-          editGuidelines: "missing.txt",
-          reviewGuidelines: "review.txt",
+        review: {
+          ...config.review,
+          prompts: {
+            review: "missing.txt",
+            reviewGuidelines: "review.txt",
+          },
         },
       },
       { directory: dir },
@@ -207,10 +217,10 @@ describe("validateConfig", () => {
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "prompts.editGuidelines file is not readable: missing.txt",
+      "review.prompts.review file is not readable: missing.txt",
     )
     expect(result.errors).not.toContain(
-      "prompts.reviewGuidelines file is not readable: review.txt",
+      "review.prompts.reviewGuidelines file is not readable: review.txt",
     )
   })
 
@@ -229,47 +239,55 @@ describe("validateConfig", () => {
   test("rejects invalid checks exclude config", async () => {
     const result = await validateConfig({
       ...config,
-      checks: { exclude: ["Test", 1] as string[] },
+      review: {
+        ...config.review,
+        checks: { exclude: ["Test", 1] as string[] },
+      },
     })
 
     expect(result.ok).toBe(false)
-    expect(result.errors).toContain("checks.exclude[1] must be a string")
+    expect(result.errors).toContain("review.checks.exclude[1] must be a string")
   })
 
   test("rejects invalid safety config", async () => {
     const result = await validateConfig({
       ...config,
-      safety: {
-        allowAuthors: ["bot-a", 1],
-        blockedPaths: [".github/**"],
-        maxChangedFiles: -1,
-        requiredLabels: ["magi-ok"],
-      } as unknown as MagiConfig["safety"],
+      review: {
+        ...config.review,
+        safety: {
+          allowAuthors: ["bot-a", 1],
+          blockedPaths: [".github/**"],
+          maxChangedFiles: -1,
+          requiredLabels: ["magi-ok"],
+        } as unknown as NonNullable<MagiConfig["review"]>["safety"],
+      },
     })
 
     expect(result.ok).toBe(false)
-    expect(result.errors).toContain("safety.allowAuthors[1] must be a string")
     expect(result.errors).toContain(
-      "safety.maxChangedFiles must be a non-negative integer",
+      "review.safety.allowAuthors[1] must be a string",
+    )
+    expect(result.errors).toContain(
+      "review.safety.maxChangedFiles must be a non-negative integer",
     )
   })
 
   test("rejects non-object model options", async () => {
     const result = await validateConfig({
       ...config,
-      agents: {
-        ...config.agents,
-        reviewers: [
+      review: {
+        ...config.review,
+        agents: [
           { account: "bot-a", model: "openai/gpt", options: "high" },
           { account: "bot-b", model: "openai/gpt" },
           { account: "bot-c", model: "openai/gpt" },
-        ] as MagiConfig["agents"]["reviewers"],
+        ] as NonNullable<MagiConfig["review"]>["agents"],
       },
     })
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "agents.reviewers[0].options must be an object",
+      "review.agents[0].options must be an object",
     )
   })
 
@@ -279,15 +297,21 @@ describe("validateConfig", () => {
       agents: {
         ...config.agents,
         permissions: { bash: { "*": "deny", "git status*": "allow" } },
-        reviewers: [
+      },
+      review: {
+        ...config.review,
+        agents: [
           {
             ...(reviewers[0] as NonNullable<(typeof reviewers)[number]>),
-            permission: { webfetch: "allow" },
+            permissions: { webfetch: "allow" },
           },
           ...reviewers.slice(1),
         ],
-        editor: config.agents.editor
-          ? { ...config.agents.editor, permission: { edit: "allow" } }
+      },
+      merge: {
+        ...config.merge,
+        editor: config.merge?.editor
+          ? { ...config.merge.editor, permissions: { edit: "allow" } }
           : undefined,
       },
     })
@@ -301,15 +325,20 @@ describe("validateConfig", () => {
       ...config,
       agents: {
         ...config.agents,
-        permissions: { bash: { "git status*": "yes" } },
-        reviewers: [
+        permissions: {
+          bash: { "git status*": "yes" },
+        } as unknown as PermissionConfig,
+      },
+      review: {
+        ...config.review,
+        agents: [
           {
             ...(reviewers[0] as NonNullable<(typeof reviewers)[number]>),
-            permission: { webfetch: "maybe" },
+            permissions: { webfetch: "maybe" },
           },
           ...reviewers.slice(1),
         ],
-      } as unknown as MagiConfig["agents"],
+      } as unknown as MagiConfig["review"],
     })
 
     expect(result.ok).toBe(false)
@@ -317,16 +346,16 @@ describe("validateConfig", () => {
       "agents.permissions.bash.git status* must be allow, ask, or deny",
     )
     expect(result.errors).toContain(
-      "agents.reviewers[0].permission.webfetch must be allow, ask, deny, or an object",
+      "review.agents[0].permissions.webfetch must be allow, ask, deny, or an object",
     )
   })
 
   test("rejects model IDs without provider", async () => {
     const result = await validateConfig({
       ...config,
-      agents: {
-        ...config.agents,
-        reviewers: [
+      review: {
+        ...config.review,
+        agents: [
           { account: "bot-a", model: "gpt" },
           { account: "bot-b", model: "openai/gpt" },
           { account: "bot-c", model: "openai/gpt" },
@@ -336,7 +365,7 @@ describe("validateConfig", () => {
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "agents.reviewers[0].model must be a full OpenCode model ID in provider/model form",
+      "review.agents[0].model must be a full OpenCode model ID in provider/model form",
     )
   })
 
@@ -350,10 +379,10 @@ describe("validateConfig", () => {
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "agents.reviewers[2].model uses unknown OpenCode model: openai/gpt",
+      "review.agents[2].model uses unknown OpenCode model: openai/gpt",
     )
     expect(result.errors).toContain(
-      "agents.editor.model uses unknown OpenCode model: openai/gpt",
+      "merge.editor.model uses unknown OpenCode model: openai/gpt",
     )
   })
 

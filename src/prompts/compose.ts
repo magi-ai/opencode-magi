@@ -16,7 +16,6 @@ import {
 export interface ReviewPromptInput {
   baseSha: string
   ciFailureContext?: string
-  ciFailureLogs?: string
   directory: string
   headSha: string
   pr: number
@@ -26,7 +25,6 @@ export interface ReviewPromptInput {
 }
 
 export interface RereviewPromptInput extends ReviewPromptInput {
-  ciFailureLogs?: string
   includeReviewGuidelines?: boolean
   includeSessionContext?: boolean
   previousReview?: string
@@ -141,18 +139,13 @@ function repositoryValues(
 }
 
 function reviewValues(input: ReviewPromptInput): Record<string, string> {
-  const ciFailureContext =
-    input.ciFailureContext?.trim() ?? input.ciFailureLogs?.trim() ?? ""
+  const ciFailureContext = input.ciFailureContext?.trim() ?? ""
 
   return {
     ...repositoryValues(input.repository),
     baseSha: input.baseSha,
     ciFailureContext,
     ciFailureContextBlock: ciFailureContext
-      ? `<ci_failure_context>\n${ciFailureContext}\n</ci_failure_context>`
-      : "",
-    ciFailureLogs: ciFailureContext,
-    ciFailureLogsBlock: ciFailureContext
       ? `<ci_failure_context>\n${ciFailureContext}\n</ci_failure_context>`
       : "",
     headSha: input.headSha,
