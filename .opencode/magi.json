@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/hirotomoyamada/opencode-magi/main/schema.json",
+  "$schema": "https://raw.githubusercontent.com/magi-ai/opencode-magi/main/schema.json",
   "language": "en",
   "github": {
     "owner": "magi-ai",

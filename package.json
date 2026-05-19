@@ -6,10 +6,10 @@
   "author": "Hirotomo Yamada <hirotomo.yamada@avap.co.jp>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hirotomoyamada/opencode-magi"
+    "url": "https://github.com/magi-ai/opencode-magi"
   },
   "bugs": {
-    "url": "https://github.com/hirotomoyamada/opencode-magi/issues"
+    "url": "https://github.com/magi-ai/opencode-magi/issues"
   },
   "keywords": [
     "opencode",

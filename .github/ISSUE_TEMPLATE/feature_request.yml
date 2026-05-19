@@ -10,8 +10,8 @@ body:
 
         Please search open/closed feature requests before submitting. Someone might have asked the same thing before 😎!
 
-          - [Issues](https://github.com/hirotomoyamada/opencode-magi/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc)
-          - [Closed Issues](https://github.com/hirotomoyamada/opencode-magi/issues?q=is%3Aissue+sort%3Aupdated-desc+is%3Aclosed)
+          - [Issues](https://github.com/magi-ai/opencode-magi/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc)
+          - [Closed Issues](https://github.com/magi-ai/opencode-magi/issues?q=is%3Aissue+sort%3Aupdated-desc+is%3Aclosed)
   - type: textarea
     id: "description"
     attributes:
