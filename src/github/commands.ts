@@ -675,9 +675,12 @@ export async function mergePullRequest(
         : "--squash"
   const autoFlag = repository.merge.auto ? " --auto" : ""
   const deleteFlag = repository.merge.deleteBranch ? " --delete-branch" : ""
+  const mergeFlags = repository.merge.mergeQueue
+    ? ""
+    : ` ${methodFlag}${autoFlag}${deleteFlag}`
 
   return exec(
-    `GH_TOKEN=${shellQuote(token)} gh pr merge ${pr} --repo ${shellQuote(repoSpecifier(repository))} ${methodFlag}${autoFlag}${deleteFlag}`,
+    `GH_TOKEN=${shellQuote(token)} gh pr merge ${pr} --repo ${shellQuote(repoSpecifier(repository))}${mergeFlags}`,
   )
 }
 
