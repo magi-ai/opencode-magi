@@ -100,7 +100,6 @@ export interface PromptConfig {
   editGuidelines?: string
   findingValidation?: string
   rereview?: string
-  rereviewCloseReconsideration?: string
   review?: string
   reviewGuidelines?: string
 }

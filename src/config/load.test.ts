@@ -59,7 +59,6 @@ describe("mergeMagiConfig", () => {
       editGuidelines: undefined,
       findingValidation: undefined,
       rereview: undefined,
-      rereviewCloseReconsideration: undefined,
       review: "project-review.md",
       reviewGuidelines: undefined,
     })
