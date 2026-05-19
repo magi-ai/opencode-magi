@@ -27,7 +27,7 @@ It skips reviewer accounts that already reviewed the current effective head. If 
 6. Skip current reviewers, use re-review mode for stale reviewers, and use initial review mode for reviewers with no prior review.
 7. Wait for PR checks when `checks.waitBeforeReview` is enabled.
 8. If checks fail, remove checks matching `checks.exclude`, fetch failed job logs, classify each remaining failure as `SCOPE_IN` or `SCOPE_OUT`, rerun only `SCOPE_OUT` GitHub Actions jobs up to `checks.retryFailedJobs`, and pass `SCOPE_IN` failure context to reviewers. Dry runs skip the rerun and report it as a planned action.
-9. Create a detached git worktree under `worktree.dir` and check out the PR branch.
+9. Create a detached git worktree under `worktree.dirs.pr` and check out the PR branch.
 10. Run each non-skipped reviewer agent through the reviewer worker pool.
 11. Parse each reviewer response as the fixed review or re-review JSON schema.
 12. Validate each `CHANGES_REQUESTED` finding by asking the other reviewers to vote on it.
@@ -81,7 +81,7 @@ Important settings for `/magi:review`:
 | `output.repairAttempts`   | Model output repair attempts.                                 |
 | `prompts.review*`         | Review prompt templates and guidelines.                       |
 | `safety.*`                | Optional gates that block review before agents run.           |
-| `worktree.dir`            | Temporary worktree base directory.                            |
+| `worktree.dirs.pr`        | Temporary PR worktree base directory.                         |
 
 See [Config](/docs/config.md) for the complete configuration reference.
 

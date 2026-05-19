@@ -32,6 +32,7 @@ import {
   composeReviewPrompt,
 } from "../prompts/compose"
 import { prRunOutputDir } from "../config/output"
+import { worktreeBaseDir } from "../config/worktree"
 import {
   parseCloseReconsiderationOutput,
   parseFindingValidationOutput,
@@ -930,10 +931,7 @@ export async function runReview(
     await input.onProgress?.({ report: checkResult.report, type: "ci_report" })
   }
 
-  const worktreeRoot = join(
-    input.directory,
-    input.config.worktree?.dir ?? ".magi/worktrees",
-  )
+  const worktreeRoot = worktreeBaseDir(input.directory, input.config, "pr")
   await input.onProgress?.({ phase: "creating worktree", type: "phase" })
   const worktree = await createWorktree(
     exec,

@@ -108,7 +108,13 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "dir": { "type": "string" }
+        "dirs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pr": { "type": "string" }
+          }
+        }
       }
     }
   },

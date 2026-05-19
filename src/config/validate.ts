@@ -86,7 +86,8 @@ const CLEAR_KEYS = new Set(["branch", "output", "session", "worktree"])
 const CONCURRENCY_KEYS = new Set(["reviewers", "runs"])
 const OUTPUT_KEYS = new Set(["dirs", "repairAttempts"])
 const OUTPUT_DIR_KEYS = new Set(["pr"])
-const WORKTREE_KEYS = new Set(["dir"])
+const WORKTREE_KEYS = new Set(["dirs"])
+const WORKTREE_DIR_KEYS = new Set(["pr"])
 const SAFETY_KEYS = new Set([
   "allowAuthors",
   "blockedPaths",
@@ -810,8 +811,24 @@ export async function validateConfig(
 
   validateKnownKeys(config.worktree, "worktree", WORKTREE_KEYS, errors)
 
-  if (config.worktree?.dir != null && typeof config.worktree.dir !== "string") {
-    errors.push("worktree.dir must be a string")
+  if (config.worktree?.dirs != null) {
+    if (!isPlainObject(config.worktree.dirs)) {
+      errors.push("worktree.dirs must be an object")
+    } else {
+      validateKnownKeys(
+        config.worktree.dirs,
+        "worktree.dirs",
+        WORKTREE_DIR_KEYS,
+        errors,
+      )
+      const dirs = config.worktree.dirs as Record<string, unknown>
+      for (const key of WORKTREE_DIR_KEYS) {
+        const value = dirs[key]
+        if (value != null && typeof value !== "string") {
+          errors.push(`worktree.dirs.${key} must be a string`)
+        }
+      }
+    }
   }
 
   if (options.checkAuth && !errors.length) {

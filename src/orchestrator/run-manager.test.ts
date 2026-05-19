@@ -986,7 +986,9 @@ describe("MagiRunManager notifications", () => {
     await mkdir(join(directory, ".magi", "runs", "pr", "7563"), {
       recursive: true,
     })
-    await mkdir(join(directory, ".magi", "worktrees"), { recursive: true })
+    await mkdir(join(directory, ".magi", "worktrees", "pr"), {
+      recursive: true,
+    })
 
     try {
       const result = await manager.clear({})

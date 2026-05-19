@@ -176,6 +176,20 @@ describe("validateConfig", () => {
     expect(result.errors).toContain("merge.queue is not supported")
   })
 
+  test("rejects invalid worktree dirs config", async () => {
+    const result = await validateConfig({
+      ...config,
+      worktree: {
+        dir: ".magi/worktrees",
+        dirs: { pr: 1 },
+      } as unknown as MagiConfig["worktree"],
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain("worktree.dir is not supported")
+    expect(result.errors).toContain("worktree.dirs.pr must be a string")
+  })
+
   test("checks prompt file paths when directory is provided", async () => {
     const dir = await mkdtemp(join(tmpdir(), "magi-validate-"))
     await writeFile(join(dir, "review.txt"), "Review guide")
