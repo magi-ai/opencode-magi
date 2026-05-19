@@ -7,6 +7,10 @@ opencode-magi is an OpenCode plugin for multi-agent GitHub pull request review a
 - **Do not bundle multiple fixes**: If you encounter a separate issue while working on a fix, do not fix it in the same PR. Create a separate issue and submit a separate PR.
 - **Do not run format, lint, or typecheck unless explicitly asked**: Format, lint and typecheck are handled by lefthook on commit. However, run tests for the changed files locally to verify that the implementation works correctly.
 
+## Rules
+
+When performing one of the actions below, read the linked rule first.
+
 - Creating branches:
   - [Branch Rules](.agents/rules/branch.md)
 - Creating commits:
@@ -19,6 +23,16 @@ opencode-magi is an OpenCode plugin for multi-agent GitHub pull request review a
 - Reviewing PRs:
   - [PR Merge Guidelines](.agents/references/pr-merge-guidelines.md)
   - [PR Review Guidelines](.agents/references/pr-review-guidelines.md)
+
+When editing or reviewing files that match a pattern below, read the linked rule first.
+
+- [Changesets](.agents/rules/changesets.md):
+  - `src/**/*.{ts,md,json}`
+  - `!src/**/*.test.ts`
+  - `.changeset/*.md`
+  - `schema.json`
+  - `package.json`
+  - `README.md`
 
 ## Development Commands
 
