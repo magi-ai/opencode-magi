@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { beforeEach, describe, expect, test, vi } from "vitest"
-import { parsePrs, parseRunArguments } from "./index"
+import { MagiPlugin, parsePrs, parseRunArguments } from "./index"
 
 const mockState = vi.hoisted(() => ({ home: "" }))
 
@@ -46,6 +46,31 @@ describe("parsePrs", () => {
       dryRun: true,
       prs: [7581],
     })
+  })
+})
+
+describe("tool descriptions", () => {
+  test("marks follow-up tools as assistant-facing", async () => {
+    const plugin = await MagiPlugin({
+      client: { session: {} },
+      directory: ".",
+    } as never)
+    const tools = plugin.tool as Record<string, { description: string }>
+
+    expect(tools.magi_review.description).toContain(
+      "do not tell users to call follow-up tools by name",
+    )
+    expect(tools.magi_merge.description).toContain(
+      "do not tell users to call follow-up tools by name",
+    )
+    for (const name of ["magi_status", "magi_output"]) {
+      expect(tools[name]?.description).toContain(
+        "Assistant-facing follow-up tool.",
+      )
+      expect(tools[name]?.description).toContain(
+        "do not suggest this tool name to users",
+      )
+    }
   })
 })
 
