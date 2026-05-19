@@ -11,6 +11,7 @@ import {
   fetchUnresolvedThreads,
   ghHostOption,
   postCloseComment,
+  pushHead,
   repoSpecifier,
   shellQuote,
   waitForChecks,
@@ -81,6 +82,28 @@ describe("GitHub command helpers", () => {
     expect(ghHostOption(repository)).toBe("")
     expect(repoSpecifier(enterprise)).toBe("github.example.com/owner/repo")
     expect(ghHostOption(enterprise)).toBe(" --hostname 'github.example.com'")
+  })
+
+  test("pushes detached HEAD to the PR head branch", async () => {
+    const commands: string[] = []
+
+    await pushHead(
+      async (command) => {
+        commands.push(command)
+        if (command.includes("gh auth token")) return "token"
+
+        return ""
+      },
+      repository,
+      "/tmp/worktree",
+      "editor-bot",
+      "feature-branch",
+    )
+
+    expect(commands[1]).toContain(
+      "push origin 'HEAD:refs/heads/feature-branch'",
+    )
+    expect(commands[1]).toContain("credential.helper")
   })
 
   test("posts close comments as PR review comments", async () => {
@@ -359,6 +382,32 @@ describe("GitHub command helpers", () => {
 })
 
 describe("createWorktree", () => {
+  test("checks out pull requests without binding the head branch", async () => {
+    const root = await mkdtemp(join(tmpdir(), "magi-worktrees-"))
+    const commands: string[] = []
+
+    try {
+      const result = await createWorktree(
+        async (command) => {
+          commands.push(command)
+          if (command === "git branch --show-current") return "\n"
+
+          return ""
+        },
+        repository,
+        1,
+        root,
+      )
+
+      expect(result.branch).toBeUndefined()
+      expect(commands).toContain(
+        "gh pr checkout 1 --repo 'owner/repo' --detach",
+      )
+    } finally {
+      await removePath(root, { force: true, recursive: true })
+    }
+  })
+
   test("serializes worktree creation for the same repository root", async () => {
     const root = await mkdtemp(join(tmpdir(), "magi-worktrees-"))
     const commands: string[] = []

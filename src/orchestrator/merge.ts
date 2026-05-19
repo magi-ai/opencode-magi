@@ -235,7 +235,18 @@ async function runEditor(
 
   if (!input.dryRun) {
     if (result.value.mode === "EDITED") {
-      await pushHead(input.exec, input.repository, worktreePath, editor.account)
+      const meta = await fetchPullRequest(
+        input.exec,
+        input.repository,
+        input.pr,
+      )
+      await pushHead(
+        input.exec,
+        input.repository,
+        worktreePath,
+        editor.account,
+        meta.headRefName,
+      )
     }
   }
 

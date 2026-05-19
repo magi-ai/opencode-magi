@@ -169,7 +169,7 @@ async function checkoutPullRequestWithRetry(
   for (let attempt = 0; ; attempt += 1) {
     try {
       await exec(
-        `gh pr checkout ${pr} --repo ${shellQuote(repoSpecifier(repository))}`,
+        `gh pr checkout ${pr} --repo ${shellQuote(repoSpecifier(repository))} --detach`,
         {
           cwd: worktreePath,
         },
@@ -719,11 +719,12 @@ export async function pushHead(
   repository: ResolvedRepository,
   worktreePath: string,
   account: string,
+  headRefName: string,
 ): Promise<void> {
   const token = await ghToken(exec, repository, account)
 
   await exec(
-    `git -c credential.helper= -c credential.helper=${shellQuote(`!f() { echo username=x-access-token; echo password=${token}; }; f`)} push origin HEAD`,
+    `git -c credential.helper= -c credential.helper=${shellQuote(`!f() { echo username=x-access-token; echo password=${token}; }; f`)} push origin ${shellQuote(`HEAD:refs/heads/${headRefName}`)}`,
     { cwd: worktreePath },
   )
 }
