@@ -27,6 +27,7 @@ export interface ReviewReportInput {
   dryRun?: boolean
   outputs: Record<string, ReviewerOutput>
   posted: Record<string, string>
+  pr: number
   repository: ResolvedRepository
   safety?: SafetyGateResult
 }
@@ -47,6 +48,13 @@ function reportUrl(value: string | undefined): string | undefined {
 
 function linkOrText(text: string, url: string | undefined): string {
   return url ? `[${text}](${url})` : text
+}
+
+function pullRequestLine(input: ReviewReportInput): string {
+  const host = input.repository.github.host || "github.com"
+  const url = `https://${host}/${input.repository.github.owner}/${input.repository.github.repo}/pull/${input.pr}`
+
+  return `- **Pull Request**: [#${input.pr}](${url})`
 }
 
 function formatFinding(finding: Finding): string {
@@ -228,6 +236,7 @@ function editorLines(outputs: EditOutput[] | undefined): string[] {
 
 export function formatReviewReport(input: ReviewReportInput): string {
   return [
+    pullRequestLine(input),
     ...dryRunLines(input.dryRun),
     ...safetyLines(input.safety),
     ...checkLines(input.ciReports),
@@ -237,6 +246,7 @@ export function formatReviewReport(input: ReviewReportInput): string {
 
 export function formatMergeReport(input: MergeReportInput): string {
   return [
+    pullRequestLine(input),
     ...mergeStatusLines(input.status),
     ...dryRunLines(input.dryRun),
     ...safetyLines(input.safety),
