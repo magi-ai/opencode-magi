@@ -135,6 +135,46 @@ describe("GitHub command helpers", () => {
     expect(options[1]?.env?.GH_TOKEN).toBe("token")
   })
 
+  test("merges pull requests with configured flags", async () => {
+    const commands: string[] = []
+
+    await mergePullRequest(
+      async (command) => {
+        commands.push(command)
+        if (command.includes("gh auth token")) return "token"
+
+        return ""
+      },
+      repository,
+      7557,
+      "bot-a",
+    )
+
+    expect(commands[1]).toContain("gh pr merge 7557")
+    expect(commands[1]).toContain("--squash --auto --delete-branch")
+  })
+
+  test("queues pull requests without merge method or delete branch flags", async () => {
+    const commands: string[] = []
+
+    await mergePullRequest(
+      async (command) => {
+        commands.push(command)
+        if (command.includes("gh auth token")) return "token"
+
+        return ""
+      },
+      { ...repository, merge: { ...repository.merge, mergeQueue: true } },
+      7557,
+      "bot-a",
+    )
+
+    expect(commands[1]).toContain("gh pr merge 7557")
+    expect(commands[1]).not.toContain("--squash")
+    expect(commands[1]).not.toContain("--auto")
+    expect(commands[1]).not.toContain("--delete-branch")
+  })
+
   test("fetches PR head repository metadata", async () => {
     let command = ""
     const result = await fetchPullRequest(
