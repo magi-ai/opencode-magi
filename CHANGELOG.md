@@ -1,5 +1,11 @@
 # opencode-magi
 
+## 0.2.1
+
+### Patch Changes
+
+- [#30](https://github.com/magi-ai/opencode-magi/pull/30) [`d97b51a`](https://github.com/magi-ai/opencode-magi/commit/d97b51ac9468a7e99ac325d2c307fce4944acc3c) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Default review merge automation to enabled.
+
 ## 0.2.0
 
 ### Minor Changes
