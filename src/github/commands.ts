@@ -329,7 +329,7 @@ export async function fetchIssue(
   repository: ResolvedRepository,
   issue: number,
 ): Promise<IssueMeta> {
-  const query = `query($owner: String!, $repo: String!, $issue: Int!) { repository(owner: $owner, name: $repo) { issue(number: $issue) { number title body url state author { login } labels(first: 100) { nodes { name } } issueType { name } } } } }`
+  const query = `query($owner: String!, $repo: String!, $issue: Int!) { repository(owner: $owner, name: $repo) { issue(number: $issue) { number title body url state author { login } labels(first: 100) { nodes { name } } issueType { name } } } }`
 
   try {
     const raw = await exec(

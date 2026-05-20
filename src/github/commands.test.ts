@@ -120,6 +120,7 @@ describe("GitHub command helpers", () => {
     expect(commands).toHaveLength(1)
     expect(commands[0]).toContain("gh api graphql")
     expect(commands[0]).toContain("issueType")
+    expectBalancedBraces(extractGraphqlQuery(commands[0]))
     expect(result).toEqual({
       author: "author",
       body: "Issue body",
