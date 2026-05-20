@@ -202,6 +202,13 @@ function createExec(input: {
     commands.push(command)
 
     if (command.startsWith("gh auth token")) return "token\n"
+    if (command.startsWith("git worktree add")) return ""
+    if (command.startsWith("git config --worktree")) return ""
+    if (command.startsWith("git push")) return ""
+    if (command.startsWith("git worktree remove")) return ""
+    if (command.startsWith("gh pr create")) {
+      return "https://github.com/owner/repo/pull/30"
+    }
     if (
       command.includes("repos/owner/repo/issues/1/comments") &&
       command.includes("--method POST")
@@ -212,12 +219,14 @@ function createExec(input: {
       })
     }
     if (
-      command.includes("repos/owner/repo/issues/comments/9001") &&
+      command.includes("repos/owner/repo/issues/comments/") &&
       command.includes("--method PATCH")
     ) {
+      const id = Number(command.match(/issues\/comments\/(\d+)/)?.[1] ?? "9001")
+
       return JSON.stringify({
-        id: 9001,
-        url: "https://github.com/owner/repo/issues/1#issuecomment-9001",
+        id,
+        url: `https://github.com/owner/repo/issues/1#issuecomment-${id}`,
       })
     }
     if (command.startsWith("gh issue close 1")) return "closed"
@@ -622,11 +631,137 @@ describe("triage orchestration", () => {
           id: 10,
         }),
       ],
+      issue: issue({ labels: [] }),
       outputs: [],
     })
 
     expect(result.result.result).toBe("BUG_ACCEPTED")
     expect(result.sessionTitles).toEqual([])
+  })
+
+  test("resumes unfinished PR automation from a previous marker", async () => {
+    const result = await runScenario({
+      comments: [
+        comment({
+          author: "magi-bot",
+          body: "Previous comment\n\n<!-- opencode-magi:triage v=1 issue=1 result=FEATURE_ACCEPTED action=PR checkpoint=10 pr=none processed= -->",
+          id: 10,
+        }),
+      ],
+      dryRun: false,
+      issue: issue({ type: "Feature" }),
+      outputs: [
+        action("PR"),
+        JSON.stringify({
+          commitMessage: "fix: address issue #1",
+          commitSha: "abcdef1234567890",
+          filesTouched: ["src/app.ts"],
+          mode: "EDITED",
+          responses: [],
+        }),
+      ],
+      repository: {
+        ...repositoryWithTriage({
+          automation: { close: false, clear: ["triage"], pr: true },
+        }),
+        agents: {
+          ...repository.agents,
+          triageCreator: {
+            account: "creator-bot",
+            author: { email: "bot@example.com", name: "Magi Bot" },
+            model: "mock/model",
+            permission: "deny",
+          },
+        },
+      },
+    })
+
+    expect(result.result.result).toBe("FEATURE_ACCEPTED")
+    expect(result.result.report).toContain(
+      "Created PR: https://github.com/owner/repo/pull/30",
+    )
+    expect(result.sessionTitles).toEqual([
+      "Magi triage action #1",
+      "Magi triage create PR #1",
+    ])
+    expect(
+      result.commands.some((command) =>
+        command.includes("--remove-label 'triage'"),
+      ),
+    ).toBe(true)
+  })
+
+  test("resumes unfinished close automation from a previous marker", async () => {
+    const result = await runScenario({
+      comments: [
+        comment({
+          author: "magi-bot",
+          body: "Previous comment\n\n<!-- opencode-magi:triage v=1 issue=1 result=BUG_REJECTED action=CLOSE checkpoint=10 pr=none processed= -->",
+          id: 10,
+        }),
+      ],
+      dryRun: false,
+      outputs: [action("CLOSE")],
+      repository: repositoryWithTriage({
+        automation: { close: true, clear: ["triage"], pr: false },
+      }),
+    })
+
+    expect(result.result.result).toBe("BUG_REJECTED")
+    expect(
+      result.commands.some((command) => command.startsWith("gh issue close 1")),
+    ).toBe(true)
+    expect(
+      result.commands.some((command) =>
+        command.includes("--remove-label 'triage'"),
+      ),
+    ).toBe(true)
+  })
+
+  test("clears labels before creating implementation PRs", async () => {
+    const result = await runScenario({
+      dryRun: false,
+      issue: issue({ type: "Feature" }),
+      outputs: [
+        vote("YES"),
+        vote("YES"),
+        vote("YES"),
+        action("PR"),
+        "Feature accepted comment",
+        JSON.stringify({
+          commitMessage: "fix: address issue #1",
+          commitSha: "abcdef1234567890",
+          filesTouched: ["src/app.ts"],
+          mode: "EDITED",
+          responses: [],
+        }),
+      ],
+      repository: {
+        ...repositoryWithTriage({
+          automation: { close: false, clear: ["triage"], pr: true },
+        }),
+        agents: {
+          ...repository.agents,
+          triageCreator: {
+            account: "creator-bot",
+            author: { email: "bot@example.com", name: "Magi Bot" },
+            model: "mock/model",
+            permission: "deny",
+          },
+        },
+      },
+    })
+
+    const removeLabelIndex = result.commands.findIndex((command) =>
+      command.includes("--remove-label 'triage'"),
+    )
+    const worktreeIndex = result.commands.findIndex((command) =>
+      command.startsWith("git worktree add"),
+    )
+
+    expect(removeLabelIndex).toBeGreaterThan(-1)
+    expect(worktreeIndex).toBeGreaterThan(-1)
+    expect(removeLabelIndex).toBeLessThan(worktreeIndex)
   })
 
   test("runs reconsideration for eligible mention replies", async () => {

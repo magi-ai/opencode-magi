@@ -432,6 +432,7 @@ describe("validateConfig", () => {
     const result = await validateConfig(config, {
       checkAuth: true,
       exec: async (command) => {
+        if (command.startsWith("git config --bool --get")) return "true"
         if (command.includes("bot-b")) throw new Error("not logged in")
 
         return "token"
@@ -448,6 +449,7 @@ describe("validateConfig", () => {
     const result = await validateConfig(config, {
       checkAuth: true,
       exec: async (command, options) => {
+        if (command.startsWith("git config --bool --get")) return "true"
         if (command.startsWith("gh auth token")) {
           const account = command.match(/--user "([^"]+)"/)?.[1]
           return `${account}-token`
@@ -482,6 +484,7 @@ describe("validateConfig", () => {
     const result = await validateConfig(config, {
       checkAuth: true,
       exec: async (command) => {
+        if (command.startsWith("git config --bool --get")) return "true"
         if (command.startsWith("gh auth token")) return "token"
         if (command.includes("gh api repos/owner/repo")) {
           throw new Error("api failed")
@@ -494,6 +497,59 @@ describe("validateConfig", () => {
     expect(result.ok).toBe(true)
     expect(result.warnings).toContain(
       "Could not validate repository permissions for GitHub account: bot-a (api failed)",
+    )
+  })
+
+  test("requires worktree config for editor identity configuration", async () => {
+    const result = await validateConfig(config, {
+      exec: async (command) => {
+        if (command.startsWith("git config --bool --get")) return "false"
+
+        throw new Error(`unexpected command: ${command}`)
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain(
+      "git config extensions.worktreeConfig must be true when editor or triage PR creator is configured",
+    )
+  })
+
+  test("requires worktree config for triage PR creator identity configuration", async () => {
+    const result = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: {
+          account: "magi-bot",
+          agents: [
+            { model: "openai/gpt" },
+            { model: "anthropic/claude" },
+            { model: "google/gemini" },
+          ],
+          automation: { pr: true },
+          creator: {
+            account: "creator-bot",
+            author: { email: "bot@example.com", name: "Magi Bot" },
+            model: "openai/gpt",
+          },
+        },
+      },
+      {
+        exec: async (command) => {
+          if (command.startsWith("git config --bool --get")) {
+            throw new Error("unset")
+          }
+
+          throw new Error(`unexpected command: ${command}`)
+        },
+        requireReview: false,
+        requireTriage: true,
+      },
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain(
+      "git config extensions.worktreeConfig must be true when editor or triage PR creator is configured",
     )
   })
 })
