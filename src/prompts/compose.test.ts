@@ -520,7 +520,7 @@ describe("prompt composer", () => {
         concurrency: { runs: 3 },
         prompts: {
           comment: "triage-comment.md",
-          createPr: "triage-create-pr.md",
+          create: "triage-create-pr.md",
           question: "triage-question.md",
         },
         safety: {

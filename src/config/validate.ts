@@ -174,7 +174,7 @@ const TRIAGE_PROMPT_KEYS = new Set([
   "category",
   "comment",
   "commentClassification",
-  "createPr",
+  "create",
   "duplicate",
   "existingPr",
   "question",
