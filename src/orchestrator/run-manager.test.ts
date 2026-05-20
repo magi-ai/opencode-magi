@@ -820,6 +820,45 @@ describe("MagiRunManager notifications", () => {
     }
   })
 
+  test("passes the resolved approval policy to review runs", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-run-"))
+    const { manager } = managerWithPromptCapture(directory)
+    const state = sampleReviewState(join(directory, "run"))
+    const repository = sampleRepository()
+    const privateManager = manager as unknown as {
+      active: Map<string, MagiRunState>
+      executeReview(input: Record<string, unknown>): Promise<void>
+    }
+
+    repository.merge.approvalPolicy = "unanimous"
+    state.status = "running"
+    privateManager.active.set("run", state)
+    runReviewMock.mockResolvedValueOnce({
+      outputs: {
+        security: { findings: [], verdict: "MERGE" },
+      },
+      posted: { security: "approved" },
+      report: "Report",
+      sessionIds: {},
+      verdict: "MERGE",
+    })
+
+    try {
+      await privateManager.executeReview({
+        config: { agents: { reviewers: [] } },
+        pr: 7557,
+        repository,
+        runId: "run",
+      })
+
+      expect(runReviewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ approvalPolicy: "unanimous" }),
+      )
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
   test("notifies CI classifier progress and reports", async () => {
     await withTrackedSession(async ({ manager, prompts }) => {
       const privateManager = manager as unknown as {
