@@ -352,6 +352,7 @@ export async function validateMagiConfigFiles(
         : undefined,
       modelCatalog: options.modelCatalog,
       requireGithub: hasProjectConfig && Boolean(mergedConfig.review?.agents),
+      requireWorktreeConfig: true,
     })
 
     loadedFrom = existing.map((status) => status.path).join(", ")

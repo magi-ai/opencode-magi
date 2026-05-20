@@ -30,6 +30,7 @@ export interface ValidationOptions {
   requireGithub?: boolean
   requireReview?: boolean
   requireTriage?: boolean
+  requireWorktreeConfig?: boolean
 }
 
 export interface ValidationResult {
@@ -992,6 +993,41 @@ async function fetchPermissions(
   return JSON.parse(raw) as { pull?: boolean; push?: boolean }
 }
 
+async function validateWorktreeConfig(
+  config: MagiConfig,
+  exec: Exec | undefined,
+  options: ValidationOptions,
+  errors: string[],
+): Promise<void> {
+  const agents = resolveAgents(config)
+  const checkEditor = Boolean(
+    agents.editor && (options.requireEditor || options.requireWorktreeConfig),
+  )
+  const checkTriageCreator = Boolean(
+    config.triage?.automation?.pr &&
+    agents.triageCreator &&
+    (options.requireTriage || options.requireWorktreeConfig),
+  )
+
+  if (!checkEditor && !checkTriageCreator) return
+  if (!exec) return
+
+  const error =
+    "git config extensions.worktreeConfig must be true when editor or triage PR creator is configured"
+
+  try {
+    const value = (
+      await exec("git config --bool --get extensions.worktreeConfig")
+    )
+      .trim()
+      .toLowerCase()
+
+    if (value !== "true") errors.push(error)
+  } catch {
+    errors.push(error)
+  }
+}
+
 async function validateRepositoryPermissions(
   config: MagiConfig,
   exec: Exec,
@@ -1171,6 +1207,7 @@ export async function validateConfig(
 
   validateString(config.review?.output, "review.output", errors)
   validateString(config.review?.worktree, "review.worktree", errors)
+  await validateWorktreeConfig(config, options.exec, options, errors)
 
   if (options.checkAuth && !errors.length) {
     if (!options.exec) {
