@@ -436,6 +436,56 @@ describe("check handling", () => {
     expect(result?.ciFailureContext).toContain("new head failure")
   })
 
+  test("keeps polling when target-head checks are not reported yet", async () => {
+    let checksCalls = 0
+    const passed = {
+      bucket: "pass",
+      link: "https://github.com/owner/repo/actions/runs/2/job/456",
+      name: "Test",
+      state: "SUCCESS",
+      workflow: "CI",
+    }
+
+    const result = await waitForChecksWithClassification({
+      client: {
+        session: {
+          create: async () => ({ id: "session" }),
+          prompt: async () => {
+            throw new Error("passing checks should not be classified")
+          },
+        },
+      },
+      directory: ".",
+      exec: async (command) => {
+        if (command.includes("actions/runs/2")) {
+          return JSON.stringify({ head_sha: "new-head", status: "completed" })
+        }
+        if (command.includes("--json")) {
+          checksCalls += 1
+          if (checksCalls === 1) {
+            throw Object.assign(new Error("Command failed"), {
+              stderr: "no checks reported on the 'feature-branch' branch",
+            })
+          }
+
+          return JSON.stringify([passed])
+        }
+
+        return ""
+      },
+      headSha: "new-head",
+      pr: 1,
+      repairAttempts: 0,
+      repository,
+      wait: true,
+      waitPollIntervalMs: 0,
+    })
+
+    expect(checksCalls).toBe(2)
+    expect(result?.report.failed).toEqual([])
+    expect(result?.ciFailureContext).toBe("")
+  })
+
   test("ignores old-head failures when a target head is provided", async () => {
     const commands: string[] = []
     const oldFailure = {
