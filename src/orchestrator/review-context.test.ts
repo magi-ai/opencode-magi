@@ -102,7 +102,9 @@ describe("review context", () => {
           return JSON.stringify({
             data: {
               repository: {
-                pullRequest: { comments: { nodes: comments(21) } },
+                pullRequest: {
+                  comments: { nodes: comments(21), totalCount: 21 },
+                },
               },
             },
           })
@@ -114,6 +116,7 @@ describe("review context", () => {
                 issue: {
                   comments: {
                     nodes: comments(25),
+                    totalCount: 25,
                   },
                 },
               },
@@ -141,8 +144,10 @@ describe("review context", () => {
 
     expect(snapshot.pullRequest.comments).toHaveLength(20)
     expect(snapshot.pullRequest.comments[0].id).toBe(2)
+    expect(snapshot.pullRequest.commentsOmitted).toBe(1)
     expect(snapshot.closingIssues[0].comments).toHaveLength(20)
     expect(snapshot.closingIssues[0].comments[0].id).toBe(6)
+    expect(snapshot.closingIssues[0].commentsOmitted).toBe(5)
   })
 
   test("detects closing and referenced issue relationships", () => {
@@ -222,6 +227,7 @@ describe("review context", () => {
               truncated: true,
             },
           ],
+          commentsOmitted: 2,
           number: 47,
           relationship: "closing",
           source: 'PR body "Closes #47"',
@@ -237,6 +243,7 @@ describe("review context", () => {
         body: "Closes #47",
         changedFiles: ["src/app.ts"],
         comments: [],
+        commentsOmitted: 0,
         headRef: "feature",
         headSha: "head",
         number: 52,
@@ -249,23 +256,27 @@ describe("review context", () => {
       referencedIssues: [],
       reviewDiscussion: {
         prComments: [],
+        prCommentsOmitted: 0,
         reviewThreads: [
           {
             commentId: 1,
             comments: [
               {
                 author: "bot",
-                body: "Please fix this.",
+                body: longBody,
                 commentId: 1,
                 createdAt: "2026-01-01T00:00:00Z",
+                truncated: true,
               },
             ],
             isResolved: false,
             line: 10,
+            omittedComments: 3,
             path: "src/app.ts",
             threadId: "thread-id",
           },
         ],
+        reviewThreadsOmitted: 4,
       },
     }
     const rendered = renderReviewContext(snapshot)
@@ -274,6 +285,13 @@ describe("review context", () => {
     expect(rendered).toContain("<closing_issues>")
     expect(rendered).toContain("changedFiles:\n- src/app.ts")
     expect(rendered).toContain("[truncated]")
+    expect(rendered).toContain("[omitted 2 older comments due to limit 20]")
+    expect(rendered).toContain(
+      "[omitted 3 older thread comments due to limit 20]",
+    )
+    expect(rendered).toContain(
+      "[omitted 4 older review threads due to limit 50]",
+    )
     expect(rendered).toContain("threadId: thread-id")
   })
 })

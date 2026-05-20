@@ -1,10 +1,10 @@
 import type { Exec, ResolvedRepository } from "../types"
 import {
   fetchIssue,
-  fetchIssueComments,
+  fetchIssueCommentPage,
   fetchPullRequestClosingIssues,
-  fetchPullRequestComments,
-  fetchPullRequestReviewThreads,
+  fetchPullRequestCommentPage,
+  fetchPullRequestReviewThreadPage,
   fetchPullRequestSafetyMeta,
   type IssueComment,
   type IssueMeta,
@@ -34,6 +34,7 @@ export interface ReviewContextIssue {
   author: string
   body: string
   comments: ReviewContextComment[]
+  commentsOmitted: number
   number: number
   relationship: "closing" | "referenced"
   source: string
@@ -57,6 +58,7 @@ export interface ReviewContextSnapshot {
     body: string
     changedFiles: string[]
     comments: ReviewContextComment[]
+    commentsOmitted: number
     headRef: string
     headSha: string
     number: number
@@ -69,7 +71,9 @@ export interface ReviewContextSnapshot {
   referencedIssues: ReviewContextIssue[]
   reviewDiscussion: {
     prComments: ReviewContextComment[]
+    prCommentsOmitted: number
     reviewThreads: ReviewThread[]
+    reviewThreadsOmitted: number
   }
 }
 
@@ -100,6 +104,14 @@ function boundedComments(
       url: comment.url,
       ...truncateBody(comment.body),
     }))
+}
+
+function omittedCommentCount(input: {
+  comments: IssueComment[]
+  limit: number
+  omitted: number
+}): number {
+  return input.omitted + Math.max(0, input.comments.length - input.limit)
 }
 
 function quoteEvidence(value: string): string {
@@ -250,7 +262,7 @@ async function contextIssue(input: {
   const issue =
     input.issue ??
     (await fetchIssue(input.exec, input.repository, input.relationship.number))
-  const comments = await fetchIssueComments(
+  const commentPage = await fetchIssueCommentPage(
     input.exec,
     input.repository,
     issue.number,
@@ -260,7 +272,12 @@ async function contextIssue(input: {
   return {
     author: issue.author,
     body: issue.body,
-    comments: boundedComments(comments, input.limit),
+    comments: boundedComments(commentPage.comments, input.limit),
+    commentsOmitted: omittedCommentCount({
+      comments: commentPage.comments,
+      limit: input.limit,
+      omitted: commentPage.omitted,
+    }),
     number: issue.number,
     relationship: input.relationship.relationship,
     source: input.relationship.sources.join("; "),
@@ -297,15 +314,15 @@ export async function buildReviewContextSnapshot(input: {
   pr: PullRequestMeta
   repository: ResolvedRepository
 }): Promise<ReviewContextSnapshot> {
-  const [prComments, reviewThreads, safetyMeta, closingIssues] =
+  const [prCommentPage, reviewThreadPage, safetyMeta, closingIssues] =
     await Promise.all([
-      fetchPullRequestComments(
+      fetchPullRequestCommentPage(
         input.exec,
         input.repository,
         input.pr.number,
         LIMITS.prComments,
       ),
-      fetchPullRequestReviewThreads(
+      fetchPullRequestReviewThreadPage(
         input.exec,
         input.repository,
         input.pr.number,
@@ -319,7 +336,13 @@ export async function buildReviewContextSnapshot(input: {
         input.pr.number,
       ).catch(() => []),
     ])
-  const orderedReviewThreads = orderReviewThreads(reviewThreads)
+  const prComments = prCommentPage.comments
+  const orderedReviewThreads = orderReviewThreads(reviewThreadPage.threads)
+  const prCommentsOmitted = omittedCommentCount({
+    comments: prComments,
+    limit: LIMITS.prComments,
+    omitted: prCommentPage.omitted,
+  })
   const relationships = collectIssueRelationships({
     closingIssues,
     pr: input.pr,
@@ -356,6 +379,7 @@ export async function buildReviewContextSnapshot(input: {
       body: input.pr.body ?? "",
       changedFiles: safetyMeta.files,
       comments: boundedComments(prComments, LIMITS.prComments),
+      commentsOmitted: prCommentsOmitted,
       headRef: input.pr.headRefName,
       headSha: input.pr.headRefOid,
       number: input.pr.number,
@@ -377,7 +401,9 @@ export async function buildReviewContextSnapshot(input: {
     ),
     reviewDiscussion: {
       prComments: boundedComments(prComments, LIMITS.prComments),
+      prCommentsOmitted,
       reviewThreads: orderedReviewThreads,
+      reviewThreadsOmitted: reviewThreadPage.omitted,
     },
   }
 }
@@ -386,16 +412,33 @@ function indented(value: string): string {
   return value.trim() ? value : "(empty)"
 }
 
-function renderComments(comments: ReviewContextComment[]): string {
-  if (!comments.length) return "(none)"
+function renderOmissionNote(
+  omitted: number,
+  label: string,
+  limit: number,
+): string {
+  return omitted > 0
+    ? `\n[omitted ${omitted} older ${label} due to limit ${limit}]`
+    : ""
+}
 
-  return comments
-    .map((comment) => {
-      const suffix = comment.truncated ? " [truncated]" : ""
+function renderComments(
+  comments: ReviewContextComment[],
+  omitted = 0,
+  limit = comments.length,
+): string {
+  if (!comments.length)
+    return `(none)${renderOmissionNote(omitted, "comments", limit)}`
 
-      return `- ${comment.createdAt} @${comment.author} (${comment.id})${suffix}\n${indented(comment.body)}`
-    })
-    .join("\n")
+  return (
+    comments
+      .map((comment) => {
+        const suffix = comment.truncated ? " [truncated]" : ""
+
+        return `- ${comment.createdAt} @${comment.author} (${comment.id})${suffix}\n${indented(comment.body)}`
+      })
+      .join("\n") + renderOmissionNote(omitted, "comments", limit)
+  )
 }
 
 function renderIssue(issue: ReviewContextIssue): string {
@@ -410,24 +453,37 @@ source: ${issue.source}
 body:
 ${indented(issue.body)}
 comments:
-${renderComments(issue.comments)}
+${renderComments(issue.comments, issue.commentsOmitted, issue.relationship === "closing" ? LIMITS.closingIssueComments : LIMITS.referencedIssueComments)}
 </issue>`
 }
 
-function renderThreads(threads: ReviewThread[]): string {
-  if (!threads.length) return "(none)"
+function renderThreads(threads: ReviewThread[], omitted = 0): string {
+  if (!threads.length) {
+    return `(none)${renderOmissionNote(omitted, "review threads", LIMITS.reviewThreads)}`
+  }
 
-  return threads
-    .map((thread) => {
-      const comments = thread.comments
-        .map((comment) => {
-          return `  - ${comment.createdAt} @${comment.author} (${comment.commentId})\n${indented(comment.body)}`
-        })
-        .join("\n")
+  return (
+    threads
+      .map((thread) => {
+        const comments =
+          thread.comments
+            .map((comment) => {
+              const suffix = comment.truncated ? " [truncated]" : ""
 
-      return `- threadId: ${thread.threadId}\n  resolved: ${Boolean(thread.isResolved)}\n  path: ${thread.path}:${thread.line}\n  comments:\n${comments}`
-    })
-    .join("\n")
+              return `  - ${comment.createdAt} @${comment.author} (${comment.commentId})${suffix}\n${indented(comment.body)}`
+            })
+            .join("\n") +
+          renderOmissionNote(
+            thread.omittedComments ?? 0,
+            "thread comments",
+            LIMITS.reviewThreadComments,
+          )
+
+        return `- threadId: ${thread.threadId}\n  resolved: ${Boolean(thread.isResolved)}\n  path: ${thread.path}:${thread.line}\n  comments:\n${comments}`
+      })
+      .join("\n") +
+    renderOmissionNote(omitted, "review threads", LIMITS.reviewThreads)
+  )
 }
 
 export function renderReviewContext(snapshot: ReviewContextSnapshot): string {
@@ -447,7 +503,7 @@ headSha: ${snapshot.pullRequest.headSha}
 body:
 ${indented(snapshot.pullRequest.body)}
 comments:
-${renderComments(snapshot.pullRequest.comments)}
+${renderComments(snapshot.pullRequest.comments, snapshot.pullRequest.commentsOmitted, LIMITS.prComments)}
 changedFiles:
 ${snapshot.pullRequest.changedFiles.length ? snapshot.pullRequest.changedFiles.map((file) => `- ${file}`).join("\n") : "(none)"}
 </pull_request_context>`,
@@ -459,9 +515,9 @@ ${snapshot.referencedIssues.length ? snapshot.referencedIssues.map(renderIssue).
 </referenced_issues>`,
     `<review_discussion>
 prComments:
-${renderComments(snapshot.reviewDiscussion.prComments)}
+${renderComments(snapshot.reviewDiscussion.prComments, snapshot.reviewDiscussion.prCommentsOmitted, LIMITS.prComments)}
 reviewThreads:
-${renderThreads(snapshot.reviewDiscussion.reviewThreads)}
+${renderThreads(snapshot.reviewDiscussion.reviewThreads, snapshot.reviewDiscussion.reviewThreadsOmitted)}
 </review_discussion>`,
   ].join("\n\n")
 }

@@ -57,6 +57,7 @@ export interface ReviewThread {
   isResolved?: boolean
   latestBody?: string
   line: number
+  omittedComments?: number
   path: string
   threadId: string
 }
@@ -66,6 +67,7 @@ export interface ReviewThreadComment {
   body: string
   commentId: number
   createdAt: string
+  truncated?: boolean
 }
 
 export interface PullRequestReview {
@@ -97,6 +99,16 @@ export interface IssueComment {
   createdAt: string
   id: number
   url: string
+}
+
+export interface IssueCommentPage {
+  comments: IssueComment[]
+  omitted: number
+}
+
+export interface PullRequestReviewThreadPage {
+  omitted: number
+  threads: ReviewThread[]
 }
 
 export interface PostedIssueComment {
@@ -478,7 +490,16 @@ export async function fetchIssueComments(
   issue: number,
   limit = 50,
 ): Promise<IssueComment[]> {
-  const query = `query($owner: String!, $repo: String!, $issue: Int!, $limit: Int!) { repository(owner: $owner, name: $repo) { issue(number: $issue) { comments(last: $limit) { nodes { databaseId author { login } authorAssociation body createdAt url } } } } }`
+  return (await fetchIssueCommentPage(exec, repository, issue, limit)).comments
+}
+
+export async function fetchIssueCommentPage(
+  exec: Exec,
+  repository: ResolvedRepository,
+  issue: number,
+  limit = 50,
+): Promise<IssueCommentPage> {
+  const query = `query($owner: String!, $repo: String!, $issue: Int!, $limit: Int!) { repository(owner: $owner, name: $repo) { issue(number: $issue) { comments(last: $limit) { totalCount nodes { databaseId author { login } authorAssociation body createdAt url } } } } }`
   const raw = await exec(
     `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F issue=${issue} -F limit=${limit}`,
   )
@@ -487,6 +508,7 @@ export async function fetchIssueComments(
       repository?: {
         issue?: {
           comments?: {
+            totalCount?: number
             nodes?: {
               author?: { login?: string }
               authorAssociation?: string
@@ -500,9 +522,9 @@ export async function fetchIssueComments(
       }
     }
   }
-
-  return (
-    data.data?.repository?.issue?.comments?.nodes?.map((comment) => ({
+  const connection = data.data?.repository?.issue?.comments
+  const comments =
+    connection?.nodes?.map((comment) => ({
       author: comment.author?.login ?? "",
       authorAssociation: comment.authorAssociation,
       body: comment.body ?? "",
@@ -510,7 +532,14 @@ export async function fetchIssueComments(
       id: comment.databaseId,
       url: comment.url,
     })) ?? []
-  )
+
+  return {
+    comments,
+    omitted: Math.max(
+      0,
+      (connection?.totalCount ?? comments.length) - comments.length,
+    ),
+  }
 }
 
 export async function fetchPullRequestComments(
@@ -519,7 +548,17 @@ export async function fetchPullRequestComments(
   pr: number,
   limit = 50,
 ): Promise<IssueComment[]> {
-  const query = `query($owner: String!, $repo: String!, $pr: Int!, $limit: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { comments(last: $limit) { nodes { databaseId author { login } authorAssociation body createdAt url } } } } }`
+  return (await fetchPullRequestCommentPage(exec, repository, pr, limit))
+    .comments
+}
+
+export async function fetchPullRequestCommentPage(
+  exec: Exec,
+  repository: ResolvedRepository,
+  pr: number,
+  limit = 50,
+): Promise<IssueCommentPage> {
+  const query = `query($owner: String!, $repo: String!, $pr: Int!, $limit: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { comments(last: $limit) { totalCount nodes { databaseId author { login } authorAssociation body createdAt url } } } } }`
   const raw = await exec(
     `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F pr=${pr} -F limit=${limit}`,
   )
@@ -528,6 +567,7 @@ export async function fetchPullRequestComments(
       repository?: {
         pullRequest?: {
           comments?: {
+            totalCount?: number
             nodes?: {
               author?: { login?: string }
               authorAssociation?: string
@@ -541,9 +581,9 @@ export async function fetchPullRequestComments(
       }
     }
   }
-
-  return (
-    data.data?.repository?.pullRequest?.comments?.nodes?.map((comment) => ({
+  const connection = data.data?.repository?.pullRequest?.comments
+  const comments =
+    connection?.nodes?.map((comment) => ({
       author: comment.author?.login ?? "",
       authorAssociation: comment.authorAssociation,
       body: comment.body ?? "",
@@ -551,7 +591,14 @@ export async function fetchPullRequestComments(
       id: comment.databaseId,
       url: comment.url,
     })) ?? []
-  )
+
+  return {
+    comments,
+    omitted: Math.max(
+      0,
+      (connection?.totalCount ?? comments.length) - comments.length,
+    ),
+  }
 }
 
 export async function fetchRelatedPullRequests(
@@ -1502,7 +1549,25 @@ export async function fetchPullRequestReviewThreads(
   threadLimit = 50,
   commentsPerThread = 20,
 ): Promise<ReviewThread[]> {
-  const query = `query($owner: String!, $repo: String!, $pr: Int!, $threadLimit: Int!, $commentsPerThread: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviewThreads(last: $threadLimit) { nodes { id isResolved comments(last: $commentsPerThread) { nodes { databaseId author { login } path line body createdAt } } } } } } }`
+  return (
+    await fetchPullRequestReviewThreadPage(
+      exec,
+      repository,
+      pr,
+      threadLimit,
+      commentsPerThread,
+    )
+  ).threads
+}
+
+export async function fetchPullRequestReviewThreadPage(
+  exec: Exec,
+  repository: ResolvedRepository,
+  pr: number,
+  threadLimit = 50,
+  commentsPerThread = 20,
+): Promise<PullRequestReviewThreadPage> {
+  const query = `query($owner: String!, $repo: String!, $pr: Int!, $threadLimit: Int!, $commentsPerThread: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviewThreads(last: $threadLimit) { totalCount nodes { id isResolved comments(last: $commentsPerThread) { totalCount nodes { databaseId author { login } path line body createdAt } } } } } } }`
   const raw = await exec(
     `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F pr=${pr} -F threadLimit=${threadLimit} -F commentsPerThread=${commentsPerThread}`,
   )
@@ -1511,8 +1576,10 @@ export async function fetchPullRequestReviewThreads(
       repository?: {
         pullRequest?: {
           reviewThreads?: {
+            totalCount?: number
             nodes?: Array<{
               comments: {
+                totalCount?: number
                 nodes: Array<{
                   author?: { login?: string }
                   body?: string
@@ -1530,36 +1597,45 @@ export async function fetchPullRequestReviewThreads(
       }
     }
   }
+  const connection = data.data?.repository?.pullRequest?.reviewThreads
+  const nodes = connection?.nodes ?? []
+  const threads = nodes.flatMap((thread) => {
+    const comments = [...thread.comments.nodes]
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .map((comment) => ({
+        author: comment.author?.login ?? "",
+        body: comment.body ?? "",
+        commentId: comment.databaseId,
+        createdAt: comment.createdAt,
+      }))
+    const first = thread.comments.nodes[0]
 
-  return (
-    data.data?.repository?.pullRequest?.reviewThreads?.nodes?.flatMap(
-      (thread) => {
-        const comments = [...thread.comments.nodes]
-          .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-          .map((comment) => ({
-            author: comment.author?.login ?? "",
-            body: comment.body ?? "",
-            commentId: comment.databaseId,
-            createdAt: comment.createdAt,
-          }))
-        const first = thread.comments.nodes[0]
+    if (!first) return []
 
-        if (!first) return []
-
-        return [
-          {
-            body: first.body ?? "",
-            commentId: first.databaseId,
-            comments,
-            isResolved: thread.isResolved,
-            line: first.line,
-            path: first.path,
-            threadId: thread.id,
-          },
-        ]
+    return [
+      {
+        body: first.body ?? "",
+        commentId: first.databaseId,
+        comments,
+        isResolved: thread.isResolved,
+        line: first.line,
+        omittedComments: Math.max(
+          0,
+          (thread.comments.totalCount ?? comments.length) - comments.length,
+        ),
+        path: first.path,
+        threadId: thread.id,
       },
-    ) ?? []
-  )
+    ]
+  })
+
+  return {
+    omitted: Math.max(
+      0,
+      (connection?.totalCount ?? threads.length) - threads.length,
+    ),
+    threads,
+  }
 }
 
 export async function postReply(
