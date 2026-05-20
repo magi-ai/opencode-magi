@@ -126,6 +126,23 @@ Add the following content to the configuration file.
         "email": "your-email@example.com"
       }
     }
+  },
+  "triage": {
+    "account": "your-triage-account",
+    "agents": [
+      {
+        "id": "general",
+        "model": "openai/gpt-5.5"
+      },
+      {
+        "id": "maintenance",
+        "model": "anthropic/claude-opus-4-7"
+      },
+      {
+        "id": "product",
+        "model": "opencode/kimi-k2-6"
+      }
+    ]
   }
 }
 ```
