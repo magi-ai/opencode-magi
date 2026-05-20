@@ -27,6 +27,16 @@ Merge prompts:
 - [Edit Guidelines](merge/edit-guidelines.md) - Shared editor guidance.
 - [CI Classification](merge/ci-classification.md) - Failed check classification after editor changes.
 
+Triage prompts:
+
+- Existing PR - Decide whether a related PR already handles an issue.
+- Duplicate - Decide whether an issue duplicates another issue.
+- Kind - Decide whether an issue is a bug, feature request, or needs more information.
+- Bug - Decide whether a bug report is reproduced or otherwise valid.
+- Feature - Decide whether a feature request should be implemented.
+- Comment Classification - Classify mention replies for reconsideration.
+- Create PR - Create an implementation PR from an accepted issue.
+
 ## Final Prompt Shape
 
 For each model call, Magi builds one final prompt from several parts.

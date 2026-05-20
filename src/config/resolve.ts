@@ -6,6 +6,7 @@ import type {
   ResolvedAgents,
   ResolvedRepository,
   ResolvedReviewer,
+  ResolvedTriageAgent,
 } from "../types"
 import editorPermission from "../permissions/editor.json" with { type: "json" }
 import commonPermission from "../permissions/common.json" with { type: "json" }
@@ -21,6 +22,10 @@ const DEFAULT_EDITOR_PERMISSION = mergePermissions(
 
 export function reviewerKey(reviewer: { id?: string }, index: number): string {
   return reviewer.id ?? `reviewer-${index + 1}`
+}
+
+export function triageAgentKey(agent: { id?: string }, index: number): string {
+  return agent.id ?? `triage-${index + 1}`
 }
 
 export function validateReviewerId(id: string): boolean {
@@ -96,9 +101,30 @@ export function resolveEditorPermission(
   )
 }
 
+export function resolveTriageAgentPermission(
+  agents: AgentsConfig,
+  agent: { permissions?: PermissionConfig },
+): PermissionConfig {
+  return mergePermissions(
+    mergePermissions(DEFAULT_REVIEWER_PERMISSION, agents.permissions),
+    agent.permissions,
+  )
+}
+
+export function resolveTriageCreatorPermission(
+  agents: AgentsConfig,
+  creator: { permissions?: PermissionConfig },
+): PermissionConfig {
+  return mergePermissions(
+    mergePermissions(DEFAULT_EDITOR_PERMISSION, agents.permissions),
+    creator.permissions,
+  )
+}
+
 export function resolveAgents(config: MagiConfig): ResolvedAgents {
   const agents = config.agents ?? {}
   const editor = config.merge?.editor
+  const creator = config.triage?.creator
 
   return {
     editor: editor
@@ -115,6 +141,21 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
         permission: resolveReviewerPermission(agents, reviewer),
       }),
     ),
+    triage: (config.triage?.agents ?? []).map<ResolvedTriageAgent>(
+      (agent, index) => ({
+        ...agent,
+        key: triageAgentKey(agent, index),
+        index,
+        permission: resolveTriageAgentPermission(agents, agent),
+      }),
+    ),
+    triageCreator: creator
+      ? {
+          ...creator,
+          account: creator.account ?? config.triage?.account ?? "",
+          permission: resolveTriageCreatorPermission(agents, creator),
+        }
+      : undefined,
   }
 }
 
@@ -176,6 +217,42 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
       blockedPaths: config.review?.safety?.blockedPaths ?? [],
       maxChangedFiles: config.review?.safety?.maxChangedFiles,
       requiredLabels: config.review?.safety?.requiredLabels ?? [],
+    },
+    triage: {
+      account: config.triage?.account,
+      automation: {
+        clear: config.triage?.automation?.clear ?? ["triage"],
+        close: config.triage?.automation?.close ?? false,
+        pr: config.triage?.automation?.pr ?? false,
+      },
+      concurrency: {
+        runs: config.triage?.concurrency?.runs ?? 3,
+      },
+      kind: {
+        bug: {
+          label: config.triage?.kind?.bug?.label ?? ["bug"],
+          type: config.triage?.kind?.bug?.type ?? ["Bug"],
+        },
+        feature: {
+          label: config.triage?.kind?.feature?.label ?? ["enhancement"],
+          type: config.triage?.kind?.feature?.type ?? ["Feature"],
+        },
+      },
+      output: config.triage?.output,
+      prompts: config.triage?.prompts ?? {},
+      safety: {
+        allowAuthors: config.triage?.safety?.allowAuthors ?? [],
+        allowMentionActors: config.triage?.safety?.allowMentionActors ?? [],
+        allowMentionRoles: config.triage?.safety?.allowMentionRoles ?? [
+          "AUTHOR",
+          "OWNER",
+          "MEMBER",
+          "COLLABORATOR",
+        ],
+        blockedLabels: config.triage?.safety?.blockedLabels ?? [],
+        requiredLabels: config.triage?.safety?.requiredLabels ?? ["triage"],
+      },
+      worktree: config.triage?.worktree,
     },
   }
 }

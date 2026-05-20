@@ -149,6 +149,8 @@ Run commands from OpenCode.
 /magi:review --dry-run 123
 /magi:merge 123
 /magi:merge --dry-run 123
+/magi:triage 47 48
+/magi:triage --dry-run 47
 /magi:clear
 ```
 

@@ -1,9 +1,10 @@
 import type { MagiConfig } from "../types"
 import { isAbsolute, join } from "node:path"
 
-export type OutputKind = "pr"
+export type OutputKind = "issue" | "pr"
 
 const DEFAULT_OUTPUT_DIRS: Record<OutputKind, string> = {
+  issue: ".magi/runs/issue",
   pr: ".magi/runs/pr",
 }
 
@@ -18,7 +19,9 @@ export function outputBaseDir(
 ): string {
   return resolvePath(
     directory,
-    config.review?.output ?? DEFAULT_OUTPUT_DIRS[kind],
+    kind === "issue"
+      ? (config.triage?.output ?? DEFAULT_OUTPUT_DIRS[kind])
+      : (config.review?.output ?? DEFAULT_OUTPUT_DIRS[kind]),
   )
 }
 
@@ -26,7 +29,10 @@ export function outputBaseDirs(
   directory: string,
   config: MagiConfig,
 ): string[] {
-  return [outputBaseDir(directory, config, "pr")]
+  return [
+    outputBaseDir(directory, config, "pr"),
+    outputBaseDir(directory, config, "issue"),
+  ]
 }
 
 export function prRunOutputDir(input: {
@@ -38,6 +44,19 @@ export function prRunOutputDir(input: {
   return join(
     outputBaseDir(input.directory, input.config, "pr"),
     String(input.pr),
+    ...(input.runId ? [input.runId] : []),
+  )
+}
+
+export function issueRunOutputDir(input: {
+  config: MagiConfig
+  directory: string
+  issue: number
+  runId?: string
+}): string {
+  return join(
+    outputBaseDir(input.directory, input.config, "issue"),
+    String(input.issue),
     ...(input.runId ? [input.runId] : []),
   )
 }

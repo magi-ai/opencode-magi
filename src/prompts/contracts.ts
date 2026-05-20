@@ -179,6 +179,51 @@ Rules:
 - If uncertain, choose SCOPE_IN.
 </output_contract>`.trim()
 
+export function triageVoteOutputContract(votes: string): string {
+  return `
+<output_contract>
+Return exactly one JSON object and nothing else. Do not wrap it in markdown.
+
+The object must match this shape:
+{
+  "vote": ${votes},
+  "reason": "Short rationale."
+}
+</output_contract>`.trim()
+}
+
+export const triageDuplicateOutputContract = `
+<output_contract>
+Return exactly one JSON object and nothing else. Do not wrap it in markdown.
+
+The object must match this shape:
+{
+  "vote": "DUPLICATE" | "NOT_DUPLICATE",
+  "duplicateOf": 123,
+  "reason": "Short rationale."
+}
+
+Rules:
+- duplicateOf is required only when vote is DUPLICATE.
+- duplicateOf must be one of the provided duplicate candidate issue numbers.
+</output_contract>`.trim()
+
+export const triageCommentClassificationOutputContract = `
+<output_contract>
+Return exactly one JSON object and nothing else. Do not wrap it in markdown.
+
+The object must match this shape:
+{
+  "comments": [
+    {
+      "commentId": 123,
+      "classification": "OBJECTION" | "NEW_EVIDENCE" | "CLARIFICATION" | "ACKNOWLEDGEMENT" | "UNRELATED",
+      "reason": "Short rationale."
+    }
+  ]
+}
+</output_contract>`.trim()
+
 const outputContractsBySchemaName: Record<string, string> = {
   "CI classification": ciClassificationOutputContract,
   "close reconsideration": closeReconsiderationOutputContract,
@@ -187,6 +232,14 @@ const outputContractsBySchemaName: Record<string, string> = {
   rereview: rereviewOutputContract,
   "rereview close reconsideration": rereviewCloseReconsiderationOutputContract,
   review: reviewOutputContract,
+  "triage bug": triageVoteOutputContract('"YES" | "NO" | "ASK"'),
+  "triage comment classification": triageCommentClassificationOutputContract,
+  "triage duplicate": triageDuplicateOutputContract,
+  "triage existing PR": triageVoteOutputContract(
+    '"RELATED_PR_HANDLES_ISSUE" | "RELATED_PR_DOES_NOT_HANDLE_ISSUE"',
+  ),
+  "triage feature": triageVoteOutputContract('"YES" | "NO" | "ASK"'),
+  "triage kind": triageVoteOutputContract('"BUG" | "FEATURE" | "ASK"'),
 }
 
 export function repairPrompt(schemaName: string): string {

@@ -21,6 +21,7 @@ import { type ModelCatalog, validateConfig } from "./config/validate"
 import { withGitHubApiRetry } from "./github/retry"
 import { mapPool } from "./orchestrator/pool"
 import { MagiRunManager } from "./orchestrator/run-manager"
+import { runTriage } from "./orchestrator/triage"
 
 const execAsync = promisify(nodeExec)
 const GLOBAL_CONFIG_PATH = join(homedir(), ".config", "opencode", "magi.json")
@@ -107,6 +108,19 @@ function parsePrToken(value: string): number {
   return pr
 }
 
+function parseIssueToken(value: string): number {
+  const trimmed = value.trim()
+  const issueUrl = trimmed.match(/(?:^|\/)issues\/(\d+)(?:[/?#].*)?$/)
+  const raw = issueUrl?.[1] ?? trimmed.replace(/^#/, "")
+  const issue = Number.parseInt(raw, 10)
+
+  if (!Number.isInteger(issue) || issue <= 0 || String(issue) !== raw) {
+    throw new Error("Specify one or more issue numbers or issue URLs.")
+  }
+
+  return issue
+}
+
 export function parsePrs(value: string): number[] {
   const prs = value
     .split(/[\s,]+/)
@@ -116,6 +130,18 @@ export function parsePrs(value: string): number[] {
   if (!prs.length) throw new Error("Specify one or more PR numbers or PR URLs.")
 
   return prs
+}
+
+export function parseIssues(value: string): number[] {
+  const issues = value
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .map(parseIssueToken)
+
+  if (!issues.length)
+    throw new Error("Specify one or more issue numbers or issue URLs.")
+
+  return issues
 }
 
 export function parseRunArguments(
@@ -136,6 +162,26 @@ export function parseRunArguments(
   })
 
   return { dryRun, prs: parsePrs(prTokens.join(" ")) }
+}
+
+export function parseIssueRunArguments(
+  value: string,
+  dryRun = false,
+): {
+  dryRun: boolean
+  issues: number[]
+} {
+  const tokens = value.split(/[\s,]+/).filter(Boolean)
+  const issueTokens = tokens.filter((token) => {
+    if (token === "--dry-run") {
+      dryRun = true
+      return false
+    }
+
+    return true
+  })
+
+  return { dryRun, issues: parseIssues(issueTokens.join(" ")) }
 }
 
 function parseOptionalPr(value: string | undefined): number | undefined {
@@ -474,6 +520,61 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
                 `Started reviewing ${prMarkdownLink(repository, state.pr as number)}.`,
             )
             .join("\n")
+        },
+      }),
+      magi_triage: tool({
+        description:
+          "Triage one or more GitHub issues with configured Magi triage agents.",
+        args: {
+          issues: tool.schema.string(),
+          dryRun: tool.schema.boolean().optional(),
+        },
+        async execute(args, context) {
+          const parsed = parseIssueRunArguments(
+            args.issues,
+            args.dryRun ?? false,
+          )
+          const loaded = await loadConfig(directory)
+          const retryingExec = withGitHubApiRetry(
+            exec,
+            loaded.config.github?.apiRetryAttempts ?? 3,
+          )
+          const validation = await validateConfig(loaded.config, {
+            checkAuth: true,
+            directory,
+            exec: retryingExec,
+            modelCatalog: await modelCatalog(),
+            requireReview: false,
+            requireTriage: true,
+          })
+
+          if (!validation.ok) return JSON.stringify(validation, null, 2)
+
+          const repository = resolveRepository(loaded.config)
+          if (!repository.triage)
+            return JSON.stringify(
+              { errors: ["triage configuration is required"], ok: false },
+              null,
+              2,
+            )
+          const results = await mapPool(
+            parsed.issues,
+            repository.triage.concurrency.runs,
+            (issue) =>
+              runTriage({
+                client: modelClient,
+                config: loaded.config,
+                directory,
+                dryRun: parsed.dryRun,
+                exec: retryingExec,
+                issue,
+                repository,
+                signal: context.abort,
+              }),
+            { signal: context.abort },
+          )
+
+          return results.map((result) => result.report).join("\n\n")
         },
       }),
       magi_status: tool({

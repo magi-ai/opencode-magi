@@ -1,7 +1,13 @@
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { beforeEach, describe, expect, test, vi } from "vitest"
-import { MagiPlugin, parsePrs, parseRunArguments } from "./index"
+import {
+  MagiPlugin,
+  parseIssueRunArguments,
+  parseIssues,
+  parsePrs,
+  parseRunArguments,
+} from "./index"
 
 const mockState = vi.hoisted(() => ({ home: "" }))
 
@@ -45,6 +51,22 @@ describe("parsePrs", () => {
     expect(parseRunArguments("7581", true)).toEqual({
       dryRun: true,
       prs: [7581],
+    })
+  })
+})
+
+describe("parseIssues", () => {
+  test("parses issue numbers and URLs", () => {
+    expect(parseIssues("47 #48")).toEqual([47, 48])
+    expect(
+      parseIssues("https://github.com/magi-ai/opencode-magi/issues/49"),
+    ).toEqual([49])
+  })
+
+  test("parses dry-run flag from issue arguments", () => {
+    expect(parseIssueRunArguments("--dry-run 47", false)).toEqual({
+      dryRun: true,
+      issues: [47],
     })
   })
 })

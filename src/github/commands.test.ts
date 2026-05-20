@@ -15,6 +15,7 @@ import {
   postCloseComment,
   pushHead,
   repoSpecifier,
+  searchDuplicateIssues,
   shellQuote,
   waitForChecks,
   waitForMergeQueue,
@@ -85,6 +86,40 @@ describe("GitHub command helpers", () => {
     expect(ghHostOption(repository)).toBe("")
     expect(repoSpecifier(enterprise)).toBe("github.example.com/owner/repo")
     expect(ghHostOption(enterprise)).toBe(" --hostname 'github.example.com'")
+  })
+
+  test("excludes the current issue from duplicate search candidates", async () => {
+    const result = await searchDuplicateIssues(
+      async () =>
+        JSON.stringify([
+          {
+            body: "same issue",
+            number: 42,
+            state: "OPEN",
+            title: "Bug report",
+            url: "https://github.com/owner/repo/issues/42",
+          },
+          {
+            body: "related issue",
+            number: 43,
+            state: "OPEN",
+            title: "Bug report",
+            url: "https://github.com/owner/repo/issues/43",
+          },
+        ]),
+      repository,
+      {
+        author: "author",
+        body: "body",
+        labels: [],
+        number: 42,
+        state: "OPEN",
+        title: "Bug report",
+        url: "https://github.com/owner/repo/issues/42",
+      },
+    )
+
+    expect(result.map((item) => item.number)).toEqual([43])
   })
 
   test("pushes detached HEAD to the PR head repository", async () => {

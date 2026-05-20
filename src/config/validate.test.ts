@@ -85,6 +85,48 @@ describe("validateConfig", () => {
     ).resolves.toMatchObject({ ok: true })
   })
 
+  test("accepts triage-only config when required", async () => {
+    const result = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: {
+          account: "magi-bot",
+          agents: [
+            { model: "openai/gpt" },
+            { id: "product", model: "anthropic/claude" },
+            { id: "maintainer", model: "google/gemini" },
+          ],
+        },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+
+    expect(result).toMatchObject({ errors: [], ok: true })
+  })
+
+  test("requires triage creator when PR automation is enabled", async () => {
+    const result = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: {
+          account: "magi-bot",
+          agents: [
+            { model: "openai/gpt" },
+            { model: "anthropic/claude" },
+            { model: "google/gemini" },
+          ],
+          automation: { pr: true },
+        },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain(
+      "triage.creator is required when triage.automation.pr is true",
+    )
+  })
+
   test("rejects even reviewer config", async () => {
     const result = await validateConfig({
       ...config,
