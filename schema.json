@@ -201,7 +201,7 @@
         "comment": { "type": "string" },
         "commentClassification": { "type": "string" },
         "reconsider": { "type": "string" },
-        "createPr": { "type": "string" }
+        "create": { "type": "string" }
       }
     },
     "triageCategory": {

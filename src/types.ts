@@ -143,7 +143,7 @@ export interface TriagePromptConfig {
   category?: string
   comment?: string
   commentClassification?: string
-  createPr?: string
+  create?: string
   duplicate?: string
   existingPr?: string
   question?: string

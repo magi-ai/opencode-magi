@@ -176,6 +176,29 @@ describe("validateConfig", () => {
     expect(result.errors).toContain("triage.automation.pr is not supported")
   })
 
+  test("rejects old triage PR creation prompt key", async () => {
+    const result = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: {
+          account: "magi-bot",
+          agents: [
+            { model: "openai/gpt" },
+            { model: "anthropic/claude" },
+            { model: "google/gemini" },
+          ],
+          prompts: {
+            createPr: "triage-create.md",
+          } as unknown as NonNullable<MagiConfig["triage"]>["prompts"],
+        },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain("triage.prompts.createPr is not supported")
+  })
+
   test("rejects invalid triage categories", async () => {
     const result = await validateConfig(
       {

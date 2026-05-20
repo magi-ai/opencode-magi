@@ -615,8 +615,8 @@ export async function composeTriageCreatePrPrompt(
 ): Promise<string> {
   const values = triageValues(input)
   const task = await taskBlock({
-    builtin: "triage/create-pr",
-    customPath: input.repository.triage?.prompts.createPr,
+    builtin: "triage/create",
+    customPath: input.repository.triage?.prompts.create,
     directory: input.directory,
     values,
   })
