@@ -89,6 +89,11 @@ export interface IssueComment {
   url: string
 }
 
+export interface PostedIssueComment {
+  id: number
+  url: string
+}
+
 export interface IssueMeta {
   author: string
   body: string
@@ -112,6 +117,7 @@ export interface RelatedPullRequest {
 
 export interface DuplicateIssueCandidate {
   body?: string
+  createdAt?: string
   number: number
   state: string
   title: string
@@ -487,7 +493,68 @@ export async function fetchRelatedPullRequests(
     })
   }
 
+  const searchQuery = `repo:${repoSlug(repository)} is:pr ${issue}`
+  const searchRaw = await exec(
+    `gh search prs ${shellQuote(searchQuery)} --json number,title,url,state,body,author --limit 10`,
+  ).catch(() => "[]")
+  const searchData = JSON.parse(searchRaw) as {
+    author?: { login?: string }
+    body?: string
+    number: number
+    state: string
+    title: string
+    url: string
+  }[]
+  const closingReference = new RegExp(
+    `\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\s+#${issue}\\b`,
+    "i",
+  )
+
+  for (const item of searchData) {
+    if (!closingReference.test(item.body ?? "")) continue
+
+    prs.set(item.number, {
+      author: item.author?.login ?? "",
+      body: item.body,
+      number: item.number,
+      state: item.state === "CLOSED" ? "CLOSED" : "OPEN",
+      title: item.title,
+      url: item.url,
+    })
+  }
+
   return [...prs.values()]
+}
+
+function duplicateReferences(text: string): number[] {
+  const refs = new Set<number>()
+  const pattern = /duplicate(?:s)?\s+(?:of\s+)?#(\d+)/gi
+
+  for (const match of text.matchAll(pattern)) refs.add(Number(match[1]))
+
+  return [...refs]
+}
+
+async function fetchIssueCandidate(
+  exec: Exec,
+  repository: ResolvedRepository,
+  number: number,
+  whyCandidate: string,
+): Promise<DuplicateIssueCandidate | undefined> {
+  const raw = await exec(
+    `gh issue view ${number} --repo ${shellQuote(repoSpecifier(repository))} --json number,title,url,state,body,createdAt`,
+  ).catch(() => undefined)
+  if (!raw) return undefined
+  const data = JSON.parse(raw) as {
+    body?: string
+    createdAt?: string
+    number: number
+    state: string
+    title: string
+    url: string
+  }
+
+  return { ...data, whyCandidate }
 }
 
 export async function searchDuplicateIssues(
@@ -497,6 +564,18 @@ export async function searchDuplicateIssues(
   limit = 5,
 ): Promise<DuplicateIssueCandidate[]> {
   const query = `${issue.title} repo:${repoSlug(repository)} is:issue -${issue.number}`
+  const explicitCandidates = await Promise.all(
+    duplicateReferences(issue.body)
+      .filter((number) => number !== issue.number)
+      .map((number) =>
+        fetchIssueCandidate(
+          exec,
+          repository,
+          number,
+          "Issue body explicitly references a duplicate target.",
+        ),
+      ),
+  )
   const raw = await exec(
     `gh search issues ${shellQuote(query)} --json number,title,url,state,body --limit ${limit}`,
   )
@@ -508,12 +587,20 @@ export async function searchDuplicateIssues(
     url: string
   }[]
 
-  return data
+  const candidates = new Map<number, DuplicateIssueCandidate>()
+  for (const candidate of explicitCandidates) {
+    if (candidate) candidates.set(candidate.number, candidate)
+  }
+  for (const item of data
     .filter((item) => item.number !== issue.number)
     .map((item) => ({
       ...item,
       whyCandidate: "GitHub issue search matched the title.",
-    }))
+    }))) {
+    if (!candidates.has(item.number)) candidates.set(item.number, item)
+  }
+
+  return [...candidates.values()].slice(0, limit)
 }
 
 export async function postIssueComment(
@@ -522,7 +609,7 @@ export async function postIssueComment(
   issue: number,
   account: string,
   body: string,
-): Promise<string> {
+): Promise<PostedIssueComment> {
   const token = await ghToken(exec, repository, account)
   const payloadPath = join(
     tmpdir(),
@@ -532,10 +619,51 @@ export async function postIssueComment(
   await writeFile(payloadPath, JSON.stringify({ body }))
 
   try {
-    return await exec(
-      `gh api${ghHostOption(repository)} repos/${repository.github.owner}/${repository.github.repo}/issues/${issue}/comments --method POST --input ${shellQuote(payloadPath)} --jq .html_url`,
+    const raw = await exec(
+      `gh api${ghHostOption(repository)} repos/${repository.github.owner}/${repository.github.repo}/issues/${issue}/comments --method POST --input ${shellQuote(payloadPath)} --jq '{id: .id, url: .html_url}'`,
       ghTokenEnv(token),
     )
+    const data = JSON.parse(raw) as { id?: number; url?: string }
+
+    if (!data.id || !data.url)
+      throw new Error(
+        "GitHub issue comment response did not include id and url",
+      )
+
+    return { id: data.id, url: data.url }
+  } finally {
+    await rm(payloadPath, { force: true })
+  }
+}
+
+export async function updateIssueComment(
+  exec: Exec,
+  repository: ResolvedRepository,
+  commentId: number,
+  account: string,
+  body: string,
+): Promise<PostedIssueComment> {
+  const token = await ghToken(exec, repository, account)
+  const payloadPath = join(
+    tmpdir(),
+    `magi-issue-comment-${process.pid}-${Date.now()}.json`,
+  )
+
+  await writeFile(payloadPath, JSON.stringify({ body }))
+
+  try {
+    const raw = await exec(
+      `gh api${ghHostOption(repository)} repos/${repository.github.owner}/${repository.github.repo}/issues/comments/${commentId} --method PATCH --input ${shellQuote(payloadPath)} --jq '{id: .id, url: .html_url}'`,
+      ghTokenEnv(token),
+    )
+    const data = JSON.parse(raw) as { id?: number; url?: string }
+
+    if (!data.id || !data.url)
+      throw new Error(
+        "GitHub issue comment response did not include id and url",
+      )
+
+    return { id: data.id, url: data.url }
   } finally {
     await rm(payloadPath, { force: true })
   }

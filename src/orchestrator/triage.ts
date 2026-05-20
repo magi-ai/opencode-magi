@@ -10,10 +10,14 @@ import type {
   MagiConfig,
   ResolvedRepository,
   ResolvedTriageAgent,
+  TriageAction,
+  TriageActionOutput,
   TriageBinaryVote,
+  TriageCommentClassification,
   TriageDuplicateOutput,
   TriageDuplicateVote,
   TriageExistingPrVote,
+  TriageFinalVote,
   TriageKindVote,
   TriageVoteOutput,
 } from "../types"
@@ -35,20 +39,29 @@ import {
   removeWorktree,
   searchDuplicateIssues,
   shellQuote,
+  updateIssueComment,
 } from "../github/commands"
 import {
   composeTriageBugPrompt,
+  composeTriageActionPrompt,
+  composeTriageCommentClassificationPrompt,
   composeTriageCommentPrompt,
+  composeTriageCreatePrPrompt,
   composeTriageDuplicatePrompt,
   composeTriageExistingPrPrompt,
   composeTriageFeaturePrompt,
   composeTriageKindPrompt,
+  composeTriageQuestionPrompt,
+  composeTriageReconsiderPrompt,
 } from "../prompts/compose"
 import {
   parseEditOutput,
+  parseTriageActionOutput,
   parseTriageBinaryOutput,
+  parseTriageCommentClassificationOutput,
   parseTriageDuplicateOutput,
   parseTriageExistingPrOutput,
+  parseTriageFinalOutput,
   parseTriageKindOutput,
 } from "../prompts/output"
 import { aggregateStringMajority, majorityThreshold } from "./majority"
@@ -86,6 +99,7 @@ export interface TriageRunResult {
 interface TriageMarker {
   action?: string
   checkpoint?: number
+  commentId?: number
   issue?: number
   pr?: string
   processed: number[]
@@ -96,8 +110,18 @@ interface TriageMarker {
 interface RelationshipSummary {
   comments: IssueComment[]
   duplicateCandidates: DuplicateIssueCandidate[]
+  mentionReplies: IssueComment[]
   previousMarker?: TriageMarker
   relatedPullRequests: RelatedPullRequest[]
+}
+
+interface ActionPlan {
+  action: TriageAction
+  allowedActions: TriageAction[]
+  clearLabels: boolean
+  closeIssue: boolean
+  createPr: boolean
+  postComment: boolean
 }
 
 type TriagePromptComposer = (input: {
@@ -116,15 +140,29 @@ const EXISTING_PR_VOTES = [
   "RELATED_PR_DOES_NOT_HANDLE_ISSUE",
   "RELATED_PR_HANDLES_ISSUE",
 ] as const
+const FINAL_VOTES = [
+  "ASK",
+  "BUG_ACCEPTED",
+  "BUG_REJECTED",
+  "DUPLICATE",
+  "FEATURE_ACCEPTED",
+  "FEATURE_REJECTED",
+] as const
+const RECONSIDERATION_CLASSES = new Set<TriageCommentClassification>([
+  "CLARIFICATION",
+  "NEW_EVIDENCE",
+  "OBJECTION",
+])
 
 function marker(input: {
   action: string
+  checkpoint?: number | "pending"
   issue: number
   pr?: number
   processed?: number[]
   result: string
 }): string {
-  return `<!-- ${MARKER_PREFIX} v=1 issue=${input.issue} result=${input.result} action=${input.action} checkpoint=pending pr=${input.pr ?? "none"} processed=${(input.processed ?? []).join(",")} -->`
+  return `<!-- ${MARKER_PREFIX} v=1 issue=${input.issue} result=${input.result} action=${input.action} checkpoint=${input.checkpoint ?? "pending"} pr=${input.pr ?? "none"} processed=${(input.processed ?? []).join(",")} -->`
 }
 
 export function parseTriageMarker(body: string): TriageMarker | undefined {
@@ -148,7 +186,10 @@ export function parseTriageMarker(body: string): TriageMarker | undefined {
 
   return {
     action: entries.action,
-    checkpoint: entries.checkpoint ? Number(entries.checkpoint) : undefined,
+    checkpoint:
+      entries.checkpoint && Number.isFinite(Number(entries.checkpoint))
+        ? Number(entries.checkpoint)
+        : undefined,
     issue: entries.issue ? Number(entries.issue) : undefined,
     pr: entries.pr,
     processed: entries.processed
@@ -187,12 +228,18 @@ export function resolveIssueKind(
 function issueContext(input: {
   issue: IssueMeta
   relationship: RelationshipSummary
+  reconsideration?: {
+    classifications?: unknown
+    previousMarker: TriageMarker
+    triggeringComments: IssueComment[]
+  }
 }): string {
   return JSON.stringify(
     {
       duplicateCandidates: input.relationship.duplicateCandidates,
       issue: input.issue,
       recentComments: input.relationship.comments.slice(-20),
+      reconsideration: input.reconsideration,
       relatedPullRequests: input.relationship.relatedPullRequests,
     },
     null,
@@ -204,18 +251,21 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`)
 }
 
-async function runVote<T extends string>(input: {
+async function runVote<
+  T extends string,
+  O extends TriageVoteOutput<T> = TriageVoteOutput<T>,
+>(input: {
   agent: ResolvedTriageAgent
   client: ModelClient
   context: string
   directory: string
   issue: number
-  parse: (text: string) => TriageVoteOutput<T>
+  parse: (text: string) => O
   prompt: TriagePromptComposer
   repository: ResolvedRepository
   schemaName: string
   signal?: AbortSignal
-}): Promise<TriageVoteOutput<T> & { raw: string; sessionId: string }> {
+}): Promise<O & { promptText: string; raw: string; sessionId: string }> {
   const prompt = await input.prompt({
     context: input.context,
     directory: input.directory,
@@ -236,7 +286,28 @@ async function runVote<T extends string>(input: {
     title: `Magi triage ${input.schemaName} #${input.issue} (${input.agent.key})`,
   })
 
-  return { ...result.value, raw: result.raw, sessionId: result.sessionId }
+  return {
+    ...result.value,
+    promptText: prompt,
+    raw: result.raw,
+    sessionId: result.sessionId,
+  }
+}
+
+async function writeVoteArtifacts(input: {
+  output: TriageVoteOutput & { promptText: string; raw: string }
+  outputDir: string
+  phase: string
+  reviewer: string
+}): Promise<void> {
+  const base = join(input.outputDir, `${input.reviewer}.${input.phase}`)
+
+  await writeFile(`${base}.prompt.txt`, `${input.output.promptText}\n`)
+  await writeFile(`${base}.raw.txt`, `${input.output.raw}\n`)
+  await writeJson(`${base}.json`, {
+    reason: input.output.reason,
+    vote: input.output.vote,
+  })
 }
 
 export function chooseDuplicateOutput(input: {
@@ -279,7 +350,7 @@ async function runDuplicateVote(input: {
 
   const outputs = await Promise.all(
     agents.map((agent) =>
-      runVote<TriageDuplicateVote>({
+      runVote<TriageDuplicateVote, TriageDuplicateOutput>({
         agent,
         client: input.input.client,
         context: input.context,
@@ -299,6 +370,26 @@ async function runDuplicateVote(input: {
       vote: output.vote,
     })),
     DUPLICATE_VOTES,
+  )
+
+  await Promise.all(
+    outputs.map((output, index) =>
+      writeVoteArtifacts({
+        output,
+        outputDir: input.outputDir,
+        phase: "duplicate",
+        reviewer: agents[index].key,
+      }),
+    ),
+  )
+  await Promise.all(
+    outputs.map((output, index) =>
+      writeJson(join(input.outputDir, `${agents[index].key}.duplicate.json`), {
+        duplicateOf: output.duplicateOf,
+        reason: output.reason,
+        vote: output.vote,
+      }),
+    ),
   )
 
   await writeJson(join(input.outputDir, "duplicate-majority.json"), majority)
@@ -348,6 +439,17 @@ async function runPhaseVote<T extends string>(input: {
     input.votes,
   )
 
+  await Promise.all(
+    outputs.map((output, index) =>
+      writeVoteArtifacts({
+        output,
+        outputDir: input.outputDir,
+        phase: input.phase,
+        reviewer: agents[index].key,
+      }),
+    ),
+  )
+
   await writeJson(
     join(input.outputDir, `${input.phase}-majority.json`),
     majority,
@@ -363,12 +465,436 @@ async function relationshipScan(input: TriageRunInput, issue: IssueMeta) {
       fetchRelatedPullRequests(input.exec, input.repository, input.issue),
       searchDuplicateIssues(input.exec, input.repository, issue),
     ])
-  const previousMarker = comments
-    .map((comment) => parseTriageMarker(comment.body))
-    .filter((item): item is TriageMarker => Boolean(item))
-    .at(-1)
+  const markers = comments
+    .filter((comment) => comment.author === input.repository.triage?.account)
+    .map((comment) => {
+      const parsed = parseTriageMarker(comment.body)
+      return parsed ? { ...parsed, commentId: comment.id } : undefined
+    })
+    .filter(Boolean) as TriageMarker[]
+  const previousMarker = markers.at(-1)
+  const mentionReplies = previousMarker
+    ? eligibleMentionReplies({
+        account: input.repository.triage?.account ?? "",
+        comments,
+        marker: previousMarker,
+        processed: previousMarker.processed,
+        repository: input.repository,
+      })
+    : []
 
-  return { comments, duplicateCandidates, previousMarker, relatedPullRequests }
+  return {
+    comments,
+    duplicateCandidates,
+    mentionReplies,
+    previousMarker,
+    relatedPullRequests,
+  }
+}
+
+function mentionsAccount(body: string, account: string): boolean {
+  return new RegExp(
+    `@${account.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+    "i",
+  ).test(body)
+}
+
+function markerCheckpoint(marker: TriageMarker): number | undefined {
+  return marker.checkpoint ?? marker.commentId
+}
+
+export function mentionAllowed(
+  comment: IssueComment,
+  repository: ResolvedRepository,
+): boolean {
+  const safety = repository.triage?.safety
+  if (!safety) return false
+
+  const actorAllowed = safety.allowMentionActors.length
+    ? safety.allowMentionActors.includes(comment.author)
+    : false
+  const roleAllowed = safety.allowMentionRoles.length
+    ? safety.allowMentionRoles.includes(comment.authorAssociation ?? "")
+    : false
+
+  return safety.allowMentionActors.length || safety.allowMentionRoles.length
+    ? actorAllowed || roleAllowed
+    : true
+}
+
+export function eligibleMentionReplies(input: {
+  account: string
+  comments: IssueComment[]
+  marker: TriageMarker
+  processed: number[]
+  repository: ResolvedRepository
+}): IssueComment[] {
+  const checkpoint = markerCheckpoint(input.marker)
+  const processed = new Set(input.processed)
+
+  return input.comments.filter((comment) => {
+    if (checkpoint != null && comment.id <= checkpoint) return false
+    if (processed.has(comment.id)) return false
+    if (!mentionsAccount(comment.body, input.account)) return false
+
+    return mentionAllowed(comment, input.repository)
+  })
+}
+
+function finalResultFromMarker(marker: TriageMarker): FinalResult {
+  if (marker.result === "RESOLVED_BY_MERGED_PR") return "BUG_ACCEPTED"
+
+  return isFinalResult(marker.result) ? marker.result : "FAILED"
+}
+
+function isFinalResult(value: unknown): value is FinalResult {
+  return (
+    value === "ASK" ||
+    value === "BUG_ACCEPTED" ||
+    value === "BUG_REJECTED" ||
+    value === "CLEAR_ONLY" ||
+    value === "DUPLICATE" ||
+    value === "FEATURE_ACCEPTED" ||
+    value === "FEATURE_REJECTED" ||
+    value === "FAILED"
+  )
+}
+
+function actionPlan(input: {
+  result: FinalResult
+  triage: NonNullable<ResolvedRepository["triage"]>
+}): ActionPlan {
+  if (input.result === "CLEAR_ONLY") {
+    return {
+      action: "CLEAR_ONLY",
+      allowedActions: ["CLEAR_ONLY"],
+      clearLabels: true,
+      closeIssue: false,
+      createPr: false,
+      postComment: false,
+    }
+  }
+  if (input.result === "ASK") {
+    return {
+      action: "ASK",
+      allowedActions: ["ASK"],
+      clearLabels: false,
+      closeIssue: false,
+      createPr: false,
+      postComment: true,
+    }
+  }
+
+  const closeIssue =
+    input.triage.automation.close &&
+    (input.result === "BUG_REJECTED" ||
+      input.result === "DUPLICATE" ||
+      input.result === "FEATURE_REJECTED")
+  const createPr =
+    input.triage.automation.pr &&
+    (input.result === "BUG_ACCEPTED" || input.result === "FEATURE_ACCEPTED")
+
+  return {
+    action: closeIssue ? "CLOSE" : createPr ? "PR" : "COMMENT",
+    allowedActions: [closeIssue ? "CLOSE" : createPr ? "PR" : "COMMENT"],
+    clearLabels: true,
+    closeIssue,
+    createPr,
+    postComment: true,
+  }
+}
+
+async function runActionPrompt(input: {
+  context: string
+  input: TriageRunInput
+  outputDir: string
+  plan: ActionPlan
+  result: FinalResult
+}): Promise<TriageActionOutput> {
+  const agent = input.input.repository.agents.triage?.[0]
+  if (!agent) throw new Error("triage.agents is required")
+  const context = JSON.stringify(
+    {
+      allowedActions: input.plan.allowedActions,
+      deterministicPlan: input.plan,
+      result: input.result,
+      triageContext: input.context,
+    },
+    null,
+    2,
+  )
+  const prompt = await composeTriageActionPrompt({
+    context,
+    directory: input.input.directory,
+    issue: input.input.issue,
+    repository: input.input.repository,
+    reviewer: agent,
+  })
+  const result = await runModelWithRepair<TriageActionOutput>({
+    client: input.input.client,
+    model: agent.model,
+    options: agent.options,
+    parse: parseTriageActionOutput,
+    permission: agent.permission,
+    prompt,
+    repairAttempts: 3,
+    schemaName: "triage action",
+    signal: input.input.signal,
+    title: `Magi triage action #${input.input.issue}`,
+  })
+
+  await writeJson(join(input.outputDir, "action.json"), {
+    model: result.value,
+    plan: input.plan,
+  })
+
+  return result.value
+}
+
+async function classifyMentionReplies(input: {
+  context: string
+  input: TriageRunInput
+  outputDir: string
+  replies: IssueComment[]
+}) {
+  const agent = input.input.repository.agents.triage?.[0]
+  if (!agent) throw new Error("triage.agents is required")
+  const prompt = await composeTriageCommentClassificationPrompt({
+    context: JSON.stringify(
+      { context: input.context, mentionReplies: input.replies },
+      null,
+      2,
+    ),
+    directory: input.input.directory,
+    issue: input.input.issue,
+    repository: input.input.repository,
+    reviewer: agent,
+  })
+  const result = await runModelWithRepair({
+    client: input.input.client,
+    model: agent.model,
+    options: agent.options,
+    parse: parseTriageCommentClassificationOutput,
+    permission: agent.permission,
+    prompt,
+    repairAttempts: 3,
+    schemaName: "triage comment classification",
+    signal: input.input.signal,
+    title: `Magi triage comment classification #${input.input.issue}`,
+  })
+
+  await writeJson(
+    join(input.outputDir, "comment-classification.json"),
+    result.value,
+  )
+
+  return result.value
+}
+
+async function runReconsiderationVote(input: {
+  context: string
+  input: TriageRunInput
+  outputDir: string
+}): Promise<TriageFinalVote | undefined> {
+  return runPhaseVote<TriageFinalVote>({
+    context: input.context,
+    input: input.input,
+    outputDir: input.outputDir,
+    parse: parseTriageFinalOutput,
+    phase: "reconsider",
+    prompt: composeTriageReconsiderPrompt,
+    schemaName: "triage reconsider",
+    votes: FINAL_VOTES,
+  })
+}
+
+async function composeResultComment(input: {
+  action: string
+  context: string
+  input: TriageRunInput
+  issue: IssueMeta
+  outputDir: string
+  processed?: number[]
+  result: FinalResult
+}): Promise<string> {
+  const agents = input.input.repository.agents.triage
+  if (!agents?.length) throw new Error("triage.agents is required")
+  const prompt = await (
+    input.result === "ASK"
+      ? composeTriageQuestionPrompt
+      : composeTriageCommentPrompt
+  )({
+    author: input.issue.author,
+    context: input.context,
+    directory: input.input.directory,
+    issue: input.issue.number,
+    repository: input.input.repository,
+  })
+  const comment =
+    (
+      await runModelText({
+        allowEmpty: false,
+        client: input.input.client,
+        model: agents[0].model,
+        options: agents[0].options,
+        permission: agents[0].permission,
+        prompt,
+        signal: input.input.signal,
+        title: `Magi triage comment #${input.issue.number}`,
+      })
+    ).raw +
+    `\n\n${marker({
+      action: input.action,
+      checkpoint: "pending",
+      issue: input.issue.number,
+      processed: input.processed,
+      result: input.result,
+    })}`
+
+  await writeFile(join(input.outputDir, "comment.md"), `${comment}\n`)
+
+  return comment
+}
+
+async function postMarkedIssueComment(input: {
+  account: string
+  body: string
+  exec: Exec
+  issue: number
+  outputDir: string
+  repository: ResolvedRepository
+}): Promise<{ id: number; url: string }> {
+  const posted = await postIssueComment(
+    input.exec,
+    input.repository,
+    input.issue,
+    input.account,
+    input.body,
+  )
+  const body = input.body.replace(
+    "checkpoint=pending",
+    `checkpoint=${posted.id}`,
+  )
+  const updated =
+    body === input.body
+      ? posted
+      : await updateIssueComment(
+          input.exec,
+          input.repository,
+          posted.id,
+          input.account,
+          body,
+        )
+
+  await writeJson(join(input.outputDir, "posted.json"), updated)
+
+  return updated
+}
+
+async function finishWithResult(input: {
+  context: string
+  input: TriageRunInput
+  issue: IssueMeta
+  outputDir: string
+  processed?: number[]
+  relationship: RelationshipSummary
+  result: FinalResult
+}): Promise<TriageRunResult> {
+  const triage = input.input.repository.triage
+  if (!triage) throw new Error("triage configuration is required")
+  const plan = actionPlan({ result: input.result, triage })
+  await runActionPrompt({
+    context: input.context,
+    input: input.input,
+    outputDir: input.outputDir,
+    plan,
+    result: input.result,
+  })
+
+  let prUrl: string | undefined
+  const comment = plan.postComment
+    ? await composeResultComment({
+        action: plan.action,
+        context: `Result: ${input.result}\nAction: ${plan.action}\n\n${input.context}`,
+        input: input.input,
+        issue: input.issue,
+        outputDir: input.outputDir,
+        processed: input.processed,
+        result: input.result,
+      })
+    : undefined
+
+  if (!input.input.dryRun) {
+    if (comment) {
+      await postMarkedIssueComment({
+        account: triage.account ?? "",
+        body: comment,
+        exec: input.input.exec,
+        issue: input.issue.number,
+        outputDir: input.outputDir,
+        repository: input.input.repository,
+      })
+    }
+    if (plan.closeIssue) {
+      const closedPrs: number[] = []
+      for (const pr of input.relationship.relatedPullRequests.filter(
+        (pr) => pr.state === "OPEN",
+      )) {
+        await closePullRequest(
+          input.input.exec,
+          input.input.repository,
+          pr.number,
+          triage.account ?? "",
+        )
+        closedPrs.push(pr.number)
+      }
+      if (closedPrs.length)
+        await writeJson(join(input.outputDir, "closed-prs.json"), closedPrs)
+      await closeIssue(
+        input.input.exec,
+        input.input.repository,
+        input.issue.number,
+        triage.account ?? "",
+      )
+    }
+    if (plan.createPr) {
+      prUrl = await createImplementationPr({
+        context: input.context,
+        input: input.input,
+        issue: input.issue,
+        outputDir: input.outputDir,
+      })
+      if (prUrl)
+        await writeJson(join(input.outputDir, "pr.json"), { url: prUrl })
+    }
+    if (plan.clearLabels) {
+      await removeIssueLabels(
+        input.input.exec,
+        input.input.repository,
+        input.issue.number,
+        triage.automation.clear,
+        triage.account ?? "",
+      )
+    }
+  }
+
+  const report = [
+    `Magi triage result for #${input.issue.number}: ${input.result}`,
+    prUrl ? `Created PR: ${prUrl}` : undefined,
+    input.input.dryRun
+      ? "Dry run: no GitHub mutations were performed."
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n")
+  await writeFile(join(input.outputDir, "report.md"), `${report}\n`)
+
+  return {
+    issue: input.issue.number,
+    outputDir: input.outputDir,
+    report,
+    result: input.result,
+  }
 }
 
 function safetyBlocked(
@@ -422,7 +948,13 @@ async function createImplementationPr(input: {
   )
   try {
     await configureGitIdentity(input.input.exec, worktreePath, creator.author)
-    const prompt = `Implement issue #${input.issue.number}.\n\n${input.context}\n\nReturn the edit output contract.`
+    const prompt = await composeTriageCreatePrPrompt({
+      context: input.context,
+      directory: input.input.directory,
+      issue: input.issue.number,
+      repository: input.input.repository,
+      worktreePath,
+    })
     const result = await runModelWithRepair<EditOutput>({
       client: input.input.client,
       model: creator.model,
@@ -492,7 +1024,13 @@ export async function runTriage(
   )
 
   await writeJson(join(outputDir, "issue.json"), issue)
+  await writeJson(join(outputDir, "comments.json"), relationship.comments)
   await writeJson(join(outputDir, "relationship-summary.json"), relationship)
+  if (relationship.previousMarker)
+    await writeJson(
+      join(outputDir, "previous-triage.json"),
+      relationship.previousMarker,
+    )
 
   if (block) {
     const report = `Magi triage blocked for #${input.issue}: ${block}`
@@ -500,9 +1038,61 @@ export async function runTriage(
     return { issue: input.issue, outputDir, report, result: "FAILED" }
   }
 
-  const context = issueContext({ issue, relationship })
+  let context = issueContext({ issue, relationship })
+  await writeFile(join(outputDir, "context.md"), `${context}\n`)
+  let processed = relationship.previousMarker?.processed ?? []
+  let result: FinalResult | undefined
 
-  if (relationship.relatedPullRequests.length) {
+  if (relationship.previousMarker) {
+    if (!relationship.mentionReplies.length) {
+      const result = finalResultFromMarker(relationship.previousMarker)
+      const report = `Magi triage skipped #${issue.number} because no eligible mention replies were found for reconsideration.`
+      await writeFile(join(outputDir, "report.md"), `${report}\n`)
+      return { issue: issue.number, outputDir, report, result }
+    }
+
+    const classifications = await classifyMentionReplies({
+      context,
+      input,
+      outputDir,
+      replies: relationship.mentionReplies,
+    })
+    const triggeringComments = relationship.mentionReplies.filter((comment) =>
+      classifications.comments.some(
+        (item) =>
+          item.commentId === comment.id &&
+          RECONSIDERATION_CLASSES.has(item.classification),
+      ),
+    )
+    processed = [
+      ...new Set([
+        ...processed,
+        ...classifications.comments.map((comment) => comment.commentId),
+      ]),
+    ]
+
+    if (!triggeringComments.length) {
+      const result = finalResultFromMarker(relationship.previousMarker)
+      const report = `Magi triage skipped #${issue.number} because allowed mention replies did not request reconsideration.`
+      await writeFile(join(outputDir, "report.md"), `${report}\n`)
+      return { issue: issue.number, outputDir, report, result }
+    }
+
+    context = issueContext({
+      issue,
+      relationship,
+      reconsideration: {
+        classifications,
+        previousMarker: relationship.previousMarker,
+        triggeringComments,
+      },
+    })
+    await writeFile(join(outputDir, "context.md"), `${context}\n`)
+    result =
+      (await runReconsiderationVote({ context, input, outputDir })) ?? "ASK"
+  }
+
+  if (!result && relationship.relatedPullRequests.length) {
     const vote = await runPhaseVote<TriageExistingPrVote>({
       context,
       input,
@@ -518,15 +1108,53 @@ export async function runTriage(
         (pr) => pr.state === "MERGED",
       )
       if (merged && triage.automation.close) {
-        const body = `@${issue.author} Magi found a related merged pull request that appears to resolve this issue.\n\n${marker({ action: "CLOSE", issue: issue.number, result: "RESOLVED_BY_MERGED_PR" })}`
+        const plan: ActionPlan = {
+          action: "CLOSE",
+          allowedActions: ["CLOSE"],
+          clearLabels: true,
+          closeIssue: true,
+          createPr: false,
+          postComment: true,
+        }
+        await runActionPrompt({
+          context,
+          input,
+          outputDir,
+          plan,
+          result: "BUG_ACCEPTED",
+        })
+        const body = await composeResultComment({
+          action: "CLOSE",
+          context: `Result: BUG_ACCEPTED\nAction: CLOSE\n\n${context}`,
+          input,
+          issue,
+          outputDir,
+          processed,
+          result: "BUG_ACCEPTED",
+        })
         if (!input.dryRun) {
-          await postIssueComment(
-            input.exec,
-            input.repository,
-            issue.number,
-            triage.account,
+          await postMarkedIssueComment({
+            account: triage.account,
             body,
-          )
+            exec: input.exec,
+            issue: issue.number,
+            outputDir,
+            repository: input.repository,
+          })
+          const closedPrs: number[] = []
+          for (const pr of relationship.relatedPullRequests.filter(
+            (pr) => pr.state === "OPEN",
+          )) {
+            await closePullRequest(
+              input.exec,
+              input.repository,
+              pr.number,
+              triage.account,
+            )
+            closedPrs.push(pr.number)
+          }
+          if (closedPrs.length)
+            await writeJson(join(outputDir, "closed-prs.json"), closedPrs)
           await closeIssue(
             input.exec,
             input.repository,
@@ -550,22 +1178,19 @@ export async function runTriage(
           result: "BUG_ACCEPTED",
         }
       }
-      if (!input.dryRun) {
-        await removeIssueLabels(
-          input.exec,
-          input.repository,
-          issue.number,
-          triage.automation.clear,
-          triage.account,
-        )
-      }
-      const report = `Magi triage cleared #${issue.number} because a related PR handles it.`
-      await writeFile(join(outputDir, "report.md"), `${report}\n`)
-      return { issue: issue.number, outputDir, report, result: "CLEAR_ONLY" }
+      return finishWithResult({
+        context,
+        input,
+        issue,
+        outputDir,
+        processed,
+        relationship,
+        result: "CLEAR_ONLY",
+      })
     }
   }
 
-  if (relationship.duplicateCandidates.length) {
+  if (!result && relationship.duplicateCandidates.length) {
     const duplicate = await runDuplicateVote({
       candidateNumbers: relationship.duplicateCandidates.map(
         (candidate) => candidate.number,
@@ -575,173 +1200,73 @@ export async function runTriage(
       outputDir,
     })
     if (duplicate) {
-      const body = `@${issue.author} Magi triage found this issue duplicates #${duplicate.duplicateOf}.\n\nReason: ${duplicate.reason}\n\n${marker({ action: "CLOSE", issue: issue.number, result: "DUPLICATE" })}`
-      if (!input.dryRun) {
-        await postIssueComment(
-          input.exec,
-          input.repository,
-          issue.number,
-          triage.account,
-          body,
-        )
-      }
-      if (!input.dryRun && triage.automation.close) {
-        for (const pr of relationship.relatedPullRequests.filter(
-          (pr) => pr.state === "OPEN",
-        )) {
-          await closePullRequest(
-            input.exec,
-            input.repository,
-            pr.number,
-            triage.account,
-          )
-        }
-        await closeIssue(
-          input.exec,
-          input.repository,
-          issue.number,
-          triage.account,
-        )
-      }
-      if (!input.dryRun) {
-        await removeIssueLabels(
-          input.exec,
-          input.repository,
-          issue.number,
-          triage.automation.clear,
-          triage.account,
-        )
-      }
-      const report = `Magi triage marked #${issue.number} duplicate of #${duplicate.duplicateOf}.`
-      await writeFile(join(outputDir, "report.md"), `${report}\n`)
-      return { issue: issue.number, outputDir, report, result: "DUPLICATE" }
+      context = `${context}\n\nDuplicate decision: ${JSON.stringify(duplicate)}`
+      result = "DUPLICATE"
     }
   }
 
-  const kind =
-    resolveIssueKind(issue, input.repository) ??
-    (await runPhaseVote<TriageKindVote>({
-      context,
-      input,
-      outputDir,
-      parse: parseTriageKindOutput,
-      phase: "kind",
-      prompt: composeTriageKindPrompt,
-      schemaName: "triage kind",
-      votes: KIND_VOTES,
-    })) ??
-    "ASK"
-
-  let result: FinalResult = "ASK"
-  if (kind === "BUG") {
-    const vote = await runPhaseVote<TriageBinaryVote>({
-      context,
-      input,
-      outputDir,
-      parse: parseTriageBinaryOutput,
-      phase: "bug",
-      prompt: composeTriageBugPrompt,
-      schemaName: "triage bug",
-      votes: BINARY_VOTES,
+  if (!result) {
+    const resolvedKind = resolveIssueKind(issue, input.repository)
+    await writeJson(join(outputDir, "kind-resolution.json"), {
+      kind: resolvedKind,
+      source: resolvedKind ? "config" : "vote",
     })
-    result =
-      vote === "YES" ? "BUG_ACCEPTED" : vote === "NO" ? "BUG_REJECTED" : "ASK"
-  }
-  if (kind === "FEATURE") {
-    const vote = await runPhaseVote<TriageBinaryVote>({
-      context,
-      input,
-      outputDir,
-      parse: parseTriageBinaryOutput,
-      phase: "feature",
-      prompt: composeTriageFeaturePrompt,
-      schemaName: "triage feature",
-      votes: BINARY_VOTES,
-    })
-    result =
-      vote === "YES"
-        ? "FEATURE_ACCEPTED"
-        : vote === "NO"
-          ? "FEATURE_REJECTED"
-          : "ASK"
-  }
+    const kind =
+      resolvedKind ??
+      (await runPhaseVote<TriageKindVote>({
+        context,
+        input,
+        outputDir,
+        parse: parseTriageKindOutput,
+        phase: "kind",
+        prompt: composeTriageKindPrompt,
+        schemaName: "triage kind",
+        votes: KIND_VOTES,
+      })) ??
+      "ASK"
 
-  const needsClose =
-    triage.automation.close &&
-    (result === "BUG_REJECTED" || result === "FEATURE_REJECTED")
-  const needsPr =
-    triage.automation.pr &&
-    (result === "BUG_ACCEPTED" || result === "FEATURE_ACCEPTED")
-  const commentContext = `Result: ${result}\n\n${context}`
-  const commentPrompt = composeTriageCommentPrompt({
-    author: issue.author,
-    context: commentContext,
-    directory: input.directory,
-    issue: issue.number,
-    repository: input.repository,
-  })
-  const comment =
-    (
-      await runModelText({
-        allowEmpty: false,
-        client: input.client,
-        model: agents[0].model,
-        options: agents[0].options,
-        permission: agents[0].permission,
-        prompt: commentPrompt,
-        signal: input.signal,
-        title: `Magi triage comment #${issue.number}`,
+    result = "ASK"
+    if (kind === "BUG") {
+      const vote = await runPhaseVote<TriageBinaryVote>({
+        context,
+        input,
+        outputDir,
+        parse: parseTriageBinaryOutput,
+        phase: "bug",
+        prompt: composeTriageBugPrompt,
+        schemaName: "triage bug",
+        votes: BINARY_VOTES,
       })
-    ).raw + `\n\n${marker({ action: result, issue: issue.number, result })}`
-
-  let prUrl: string | undefined
-  if (!input.dryRun) {
-    await postIssueComment(
-      input.exec,
-      input.repository,
-      issue.number,
-      triage.account,
-      comment,
-    )
-    if (needsClose) {
-      for (const pr of relationship.relatedPullRequests.filter(
-        (pr) => pr.state === "OPEN",
-      )) {
-        await closePullRequest(
-          input.exec,
-          input.repository,
-          pr.number,
-          triage.account,
-        )
-      }
-      await closeIssue(
-        input.exec,
-        input.repository,
-        issue.number,
-        triage.account,
-      )
+      result =
+        vote === "YES" ? "BUG_ACCEPTED" : vote === "NO" ? "BUG_REJECTED" : "ASK"
     }
-    if (needsPr)
-      prUrl = await createImplementationPr({ context, input, issue, outputDir })
-    if (result !== "ASK") {
-      await removeIssueLabels(
-        input.exec,
-        input.repository,
-        issue.number,
-        triage.automation.clear,
-        triage.account,
-      )
+    if (kind === "FEATURE") {
+      const vote = await runPhaseVote<TriageBinaryVote>({
+        context,
+        input,
+        outputDir,
+        parse: parseTriageBinaryOutput,
+        phase: "feature",
+        prompt: composeTriageFeaturePrompt,
+        schemaName: "triage feature",
+        votes: BINARY_VOTES,
+      })
+      result =
+        vote === "YES"
+          ? "FEATURE_ACCEPTED"
+          : vote === "NO"
+            ? "FEATURE_REJECTED"
+            : "ASK"
     }
   }
 
-  const report = [
-    `Magi triage result for #${issue.number}: ${result}`,
-    prUrl ? `Created PR: ${prUrl}` : undefined,
-    input.dryRun ? "Dry run: no GitHub mutations were performed." : undefined,
-  ]
-    .filter(Boolean)
-    .join("\n")
-  await writeFile(join(outputDir, "report.md"), `${report}\n`)
-
-  return { issue: issue.number, outputDir, report, result }
+  return finishWithResult({
+    context,
+    input,
+    issue,
+    outputDir,
+    processed,
+    relationship,
+    result: result ?? "ASK",
+  })
 }

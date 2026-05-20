@@ -5,7 +5,10 @@ import {
   parseRereviewOutput,
   parseReviewOutput,
   parseTriageBinaryOutput,
+  parseTriageActionOutput,
+  parseTriageCommentClassificationOutput,
   parseTriageDuplicateOutput,
+  parseTriageFinalOutput,
   parseTriageKindOutput,
 } from "./output"
 
@@ -161,5 +164,26 @@ describe("triage output parsing", () => {
     expect(() =>
       parseTriageDuplicateOutput('{"vote":"DUPLICATE","reason":"same"}'),
     ).toThrow("DUPLICATE requires duplicateOf")
+  })
+
+  test("parses triage action, final, and comment classification output", () => {
+    expect(
+      parseTriageActionOutput('{"action":"PR","reason":"accepted"}'),
+    ).toEqual({
+      action: "PR",
+      reason: "accepted",
+    })
+    expect(
+      parseTriageFinalOutput('{"vote":"FEATURE_ACCEPTED","reason":"valuable"}'),
+    ).toEqual({ reason: "valuable", vote: "FEATURE_ACCEPTED" })
+    expect(
+      parseTriageCommentClassificationOutput(
+        '{"comments":[{"commentId":123,"classification":"NEW_EVIDENCE","reason":"log"}]}',
+      ),
+    ).toEqual({
+      comments: [
+        { classification: "NEW_EVIDENCE", commentId: 123, reason: "log" },
+      ],
+    })
   })
 })

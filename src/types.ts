@@ -374,6 +374,14 @@ export type TriageCommentClassification =
   | "NEW_EVIDENCE"
   | "OBJECTION"
   | "UNRELATED"
+export type TriageAction = "ASK" | "CLEAR_ONLY" | "CLOSE" | "COMMENT" | "PR"
+export type TriageFinalVote =
+  | "ASK"
+  | "BUG_ACCEPTED"
+  | "BUG_REJECTED"
+  | "DUPLICATE"
+  | "FEATURE_ACCEPTED"
+  | "FEATURE_REJECTED"
 
 export interface TriageVoteOutput<T extends string = string> {
   reason: string
@@ -390,6 +398,11 @@ export interface TriageCommentClassificationOutput {
     commentId: number
     reason: string
   }[]
+}
+
+export interface TriageActionOutput {
+  action: TriageAction
+  reason: string
 }
 
 export type EditResponseAction = "ASK" | "DISAGREE" | "FIXED"

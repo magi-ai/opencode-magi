@@ -15,7 +15,11 @@ import {
   writeFile,
 } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
-import { outputBaseDirs, prRunOutputDir } from "../config/output"
+import {
+  issueRunOutputDir,
+  outputBaseDirs,
+  prRunOutputDir,
+} from "../config/output"
 import { worktreeBaseDirs } from "../config/worktree"
 import {
   removeBranch,
@@ -30,6 +34,7 @@ import {
 } from "./merge"
 import type { ModelClient } from "./model"
 import { runReview, type ReviewRunProgress } from "./review"
+import { runTriage } from "./triage"
 
 export type MagiAgentStatus =
   | "blocked"
@@ -77,7 +82,7 @@ export interface MagiRunAgentState {
 }
 
 export interface MagiRunState {
-  command: "merge" | "review"
+  command: "merge" | "review" | "triage"
   ciReports?: CheckWaitReport[]
   ciClassifiers?: Record<
     string,
@@ -99,6 +104,8 @@ export interface MagiRunState {
   posted?: Record<string, string>
   pr?: number
   prUrl?: string
+  issue?: number
+  issueUrl?: string
   reportPath?: string
   repository: string
   reviewers: Record<string, MagiRunAgentState>
@@ -226,13 +233,29 @@ function prUrl(repository: ResolvedRepository, pr: number): string {
   return `https://${host}/${repository.github.owner}/${repository.github.repo}/pull/${pr}`
 }
 
+function issueUrl(repository: ResolvedRepository, issue: number): string {
+  const host = repository.github.host || "github.com"
+
+  return `https://${host}/${repository.github.owner}/${repository.github.repo}/issues/${issue}`
+}
+
 function prMarkdownLink(state: MagiRunState): string {
   if (state.pr == null) return state.runId
   return state.prUrl ? `[#${state.pr}](${state.prUrl})` : `#${state.pr}`
 }
 
+function issueMarkdownLink(state: MagiRunState): string {
+  if (state.issue == null) return state.runId
+  return state.issueUrl
+    ? `[#${state.issue}](${state.issueUrl})`
+    : `#${state.issue}`
+}
+
 function runLabel(state: MagiRunState): string {
-  return state.pr == null ? state.runId : prMarkdownLink(state)
+  if (state.pr != null) return prMarkdownLink(state)
+  if (state.issue != null) return issueMarkdownLink(state)
+
+  return state.runId
 }
 
 function reviewerCompletionText(input: {
@@ -772,9 +795,76 @@ export class MagiRunManager {
     return state
   }
 
+  async startTriage(input: {
+    config: MagiConfig
+    dryRun?: boolean
+    issue: number
+    parentSessionId?: string
+    repository: ResolvedRepository
+    signal?: AbortSignal
+  }): Promise<MagiRunState> {
+    const runId = createRunId()
+    const outputDir = issueRunOutputDir({
+      config: input.config,
+      directory: this.input.directory,
+      issue: input.issue,
+      runId,
+    })
+    const createdAt = now()
+    const state: MagiRunState = {
+      command: "triage",
+      createdAt,
+      dryRun: input.dryRun,
+      issue: input.issue,
+      issueUrl: issueUrl(input.repository, input.issue),
+      outputDir,
+      parentSessionId: input.parentSessionId,
+      phase: "queued",
+      repository: input.repository.alias,
+      reviewers: Object.fromEntries(
+        (input.repository.agents.triage ?? []).map((agent) => [
+          agent.key,
+          {
+            account: "",
+            repairAttempts: 0,
+            status: "pending" as const,
+            toolCalls: 0,
+          },
+        ]),
+      ),
+      runId,
+      status: "preparing",
+      updatedAt: createdAt,
+    }
+
+    this.active.set(runId, state)
+    this.runPaths.set(runId, join(outputDir, "state.json"))
+    for (const dir of outputBaseDirs(this.input.directory, input.config))
+      this.outputDirs.add(dir)
+    await this.persist(state)
+    await this.notify(
+      state,
+      `Started Magi triage for ${issueMarkdownLink(state)}.`,
+    )
+
+    const controller = new AbortController()
+    this.controllers.set(runId, controller)
+
+    void this.executeTriage({
+      ...input,
+      runId,
+      signal: controller.signal,
+    }).catch(async (error) => {
+      await this.failRun(runId, error)
+    })
+
+    return state
+  }
+
   async status(
     input: {
       block?: boolean
+      issue?: number
       outputDir?: string | string[]
       pr?: number
       runId?: string
@@ -804,6 +894,7 @@ export class MagiRunManager {
 
   async output(input: {
     command?: MagiRunState["command"]
+    issue?: number
     outputDir?: string | string[]
     pr?: number
     reviewer?: string
@@ -863,7 +954,12 @@ export class MagiRunManager {
   async cancel(
     input:
       | string
-      | { outputDir?: string | string[]; pr?: number; runId?: string },
+      | {
+          issue?: number
+          outputDir?: string | string[]
+          pr?: number
+          runId?: string
+        },
   ): Promise<MagiRunState | undefined> {
     const selector = typeof input === "string" ? { runId: input } : input
     const state = await this.selectState(selector)
@@ -934,6 +1030,7 @@ export class MagiRunManager {
   }
 
   async clear(input: {
+    issue?: number
     options?: ClearConfig
     outputDir?: string | string[]
     pr?: number
@@ -1734,6 +1831,63 @@ export class MagiRunManager {
     this.controllers.delete(input.runId)
   }
 
+  private async executeTriage(input: {
+    config: MagiConfig
+    dryRun?: boolean
+    issue: number
+    parentSessionId?: string
+    repository: ResolvedRepository
+    runId: string
+    signal?: AbortSignal
+  }): Promise<void> {
+    const state = this.active.get(input.runId)
+    if (state) {
+      state.status = "running"
+      state.phase = "triaging"
+      await this.persist(state)
+    }
+
+    const result = await runTriage({
+      client: this.input.client,
+      config: input.config,
+      directory: this.input.directory,
+      dryRun: input.dryRun,
+      exec: withGitHubApiRetry(
+        this.input.exec,
+        input.config.github?.apiRetryAttempts ?? 3,
+      ),
+      issue: input.issue,
+      repository: input.repository,
+      runId: input.runId,
+      signal: input.signal,
+    })
+
+    const completed = this.active.get(input.runId)
+    if (!completed || completed.status === "cancelled") return
+
+    completed.status = result.result === "FAILED" ? "failed" : "completed"
+    completed.phase = result.result
+    completed.completedAt = now()
+    completed.verdict = result.result
+    completed.reportPath = join(completed.outputDir, "report.md")
+    for (const agent of Object.values(completed.reviewers)) {
+      if (agent.status === "pending") agent.status = "completed"
+    }
+
+    await this.persist(completed)
+    await this.notify(
+      completed,
+      [
+        `Finished triage for ${issueMarkdownLink(completed)}.`,
+        "",
+        result.report,
+      ].join("\n"),
+      { reply: true },
+    )
+    this.active.delete(input.runId)
+    this.controllers.delete(input.runId)
+  }
+
   private async applyReviewProgress(
     runId: string,
     progress: ReviewRunProgress,
@@ -2254,6 +2408,7 @@ export class MagiRunManager {
 
   private async filteredStates(input: {
     command?: MagiRunState["command"]
+    issue?: number
     outputDir?: string | string[]
     pr?: number
     runId?: string
@@ -2268,12 +2423,14 @@ export class MagiRunManager {
       .filter(
         (state) => input.command == null || state.command === input.command,
       )
+      .filter((state) => input.issue == null || state.issue === input.issue)
       .filter((state) => input.pr == null || state.pr === input.pr)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   }
 
   private async selectState(input: {
     command?: MagiRunState["command"]
+    issue?: number
     outputDir?: string | string[]
     pr?: number
     runId?: string
@@ -2283,9 +2440,14 @@ export class MagiRunManager {
     return (await this.filteredStates(input))[0]
   }
 
-  private selectorText(input: { pr?: number; runId?: string }): string {
+  private selectorText(input: {
+    issue?: number
+    pr?: number
+    runId?: string
+  }): string {
     if (input.runId) return input.runId
     if (input.pr != null) return `PR #${input.pr}`
+    if (input.issue != null) return `issue #${input.issue}`
 
     return "all runs"
   }
