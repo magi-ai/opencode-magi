@@ -7,6 +7,7 @@ import {
   parseTriageBinaryOutput,
   parseTriageActionOutput,
   parseTriageCommentClassificationOutput,
+  parseTriageCreatePrOutput,
   parseTriageDuplicateOutput,
   parseTriageFinalOutput,
   parseTriageKindOutput,
@@ -138,6 +139,26 @@ describe("review output", () => {
         }),
       ),
     ).toThrow("REPLIED cannot include FIXED responses")
+  })
+
+  test("allows triage PR creation output without comment responses", () => {
+    expect(
+      parseTriageCreatePrOutput(
+        JSON.stringify({
+          commitMessage: "fix: address issue",
+          commitSha: "abcdef1234567890",
+          filesTouched: ["src/app.ts"],
+          mode: "EDITED",
+          responses: [],
+        }),
+      ),
+    ).toEqual({
+      commitMessage: "fix: address issue",
+      commitSha: "abcdef1234567890",
+      filesTouched: ["src/app.ts"],
+      mode: "EDITED",
+      responses: [],
+    })
   })
 })
 

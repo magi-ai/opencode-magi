@@ -56,10 +56,10 @@ import {
   composeTriageReconsiderPrompt,
 } from "../prompts/compose"
 import {
-  parseEditOutput,
   parseTriageActionOutput,
   parseTriageBinaryOutput,
   parseTriageCommentClassificationOutput,
+  parseTriageCreatePrOutput,
   parseTriageDuplicateOutput,
   parseTriageExistingPrOutput,
   parseTriageFinalOutput,
@@ -205,6 +205,12 @@ function labelsContain(labels: string[], targets: string[]): boolean {
   const set = new Set(labels.map((label) => label.toLowerCase()))
 
   return targets.some((target) => set.has(target.toLowerCase()))
+}
+
+function existingClearLabels(issue: IssueMeta, labels: string[]): string[] {
+  const existing = new Set(issue.labels.map((label) => label.toLowerCase()))
+
+  return labels.filter((label) => existing.has(label.toLowerCase()))
 }
 
 export function resolveIssueKind(
@@ -510,6 +516,13 @@ function markerPr(marker: TriageMarker): number | undefined {
   return Number.isInteger(pr) && pr > 0 ? pr : undefined
 }
 
+function pullRequestNumberFromUrl(url: string): number | undefined {
+  const match = url.match(/\/pull\/(\d+)(?:\D|$)/)
+  const number = match ? Number(match[1]) : undefined
+
+  return number && Number.isInteger(number) ? number : undefined
+}
+
 export function mentionAllowed(
   comment: IssueComment,
   repository: ResolvedRepository,
@@ -608,6 +621,42 @@ function actionPlan(input: {
     closeIssue,
     createPr,
     postComment: true,
+  }
+}
+
+function previousAutomationPlan(input: {
+  issue: IssueMeta
+  marker: TriageMarker
+  relationship: RelationshipSummary
+  result: FinalResult
+  triage: NonNullable<ResolvedRepository["triage"]>
+}): ActionPlan | undefined {
+  const base = actionPlan({ result: input.result, triage: input.triage })
+  const clearLabels =
+    base.clearLabels &&
+    existingClearLabels(input.issue, input.triage.automation.clear).length > 0
+  const closeIssue =
+    input.marker.action === "CLOSE" &&
+    base.closeIssue &&
+    input.issue.state === "OPEN"
+  const createPr =
+    input.marker.action === "PR" &&
+    base.createPr &&
+    !markerPr(input.marker) &&
+    !input.relationship.relatedPullRequests.length
+
+  if (!clearLabels && !closeIssue && !createPr) return undefined
+
+  const action = closeIssue ? "CLOSE" : createPr ? "PR" : "CLEAR_ONLY"
+
+  return {
+    ...base,
+    action,
+    allowedActions: [action],
+    clearLabels,
+    closeIssue,
+    createPr,
+    postComment: false,
   }
 }
 
@@ -806,6 +855,7 @@ async function persistProcessedMarker(input: {
   marker: TriageMarker
   outputDir: string
   processed: number[]
+  pr?: number
   repository: ResolvedRepository
 }): Promise<void> {
   if (!input.marker.commentId) return
@@ -817,7 +867,7 @@ async function persistProcessedMarker(input: {
     action: input.marker.action ?? input.marker.result ?? "ASK",
     checkpoint: markerCheckpoint(input.marker),
     issue: input.issue.number,
-    pr: markerPr(input.marker),
+    pr: input.pr ?? markerPr(input.marker),
     processed: input.processed,
     result: input.marker.result ?? "ASK",
   })
@@ -846,13 +896,15 @@ async function finishWithResult(input: {
   input: TriageRunInput
   issue: IssueMeta
   outputDir: string
+  plan?: ActionPlan
   processed?: number[]
+  previousMarker?: TriageMarker
   relationship: RelationshipSummary
   result: FinalResult
 }): Promise<TriageRunResult> {
   const triage = input.input.repository.triage
   if (!triage) throw new Error("triage configuration is required")
-  const plan = actionPlan({ result: input.result, triage })
+  const plan = input.plan ?? actionPlan({ result: input.result, triage })
   await runActionPrompt({
     context: input.context,
     input: input.input,
@@ -884,6 +936,22 @@ async function finishWithResult(input: {
         outputDir: input.outputDir,
         repository: input.input.repository,
       })
+    }
+    if (plan.clearLabels) {
+      const clearLabels = existingClearLabels(
+        input.issue,
+        triage.automation.clear,
+      )
+
+      if (clearLabels.length) {
+        await removeIssueLabels(
+          input.input.exec,
+          input.input.repository,
+          input.issue.number,
+          clearLabels,
+          triage.account ?? "",
+        )
+      }
     }
     if (plan.closeIssue) {
       const closedPrs: number[] = []
@@ -917,14 +985,18 @@ async function finishWithResult(input: {
       if (prUrl)
         await writeJson(join(input.outputDir, "pr.json"), { url: prUrl })
     }
-    if (plan.clearLabels) {
-      await removeIssueLabels(
-        input.input.exec,
-        input.input.repository,
-        input.issue.number,
-        triage.automation.clear,
-        triage.account ?? "",
-      )
+    if (input.previousMarker && prUrl) {
+      await persistProcessedMarker({
+        account: triage.account ?? "",
+        comments: input.relationship.comments,
+        exec: input.input.exec,
+        issue: input.issue,
+        marker: input.previousMarker,
+        outputDir: input.outputDir,
+        pr: pullRequestNumberFromUrl(prUrl),
+        processed: input.processed ?? input.previousMarker.processed,
+        repository: input.input.repository,
+      })
     }
   }
 
@@ -1018,7 +1090,7 @@ async function createImplementationPr(input: {
       client: input.input.client,
       model: creator.model,
       options: creator.options,
-      parse: parseEditOutput,
+      parse: parseTriageCreatePrOutput,
       permission: creator.permission,
       prompt,
       repairAttempts: 3,
@@ -1105,6 +1177,28 @@ export async function runTriage(
   if (relationship.previousMarker) {
     if (!relationship.mentionReplies.length) {
       const result = finalResultFromMarker(relationship.previousMarker)
+      const plan = previousAutomationPlan({
+        issue,
+        marker: relationship.previousMarker,
+        relationship,
+        result,
+        triage,
+      })
+
+      if (plan) {
+        return finishWithResult({
+          context,
+          input,
+          issue,
+          outputDir,
+          plan,
+          previousMarker: relationship.previousMarker,
+          processed,
+          relationship,
+          result,
+        })
+      }
+
       const report = `Magi triage skipped #${issue.number} because no eligible mention replies were found for reconsideration.`
       await writeFile(join(outputDir, "report.md"), `${report}\n`)
       return { issue: issue.number, outputDir, report, result }
@@ -1212,6 +1306,20 @@ export async function runTriage(
             outputDir,
             repository: input.repository,
           })
+          const clearLabels = existingClearLabels(
+            issue,
+            triage.automation.clear,
+          )
+
+          if (clearLabels.length) {
+            await removeIssueLabels(
+              input.exec,
+              input.repository,
+              issue.number,
+              clearLabels,
+              triage.account,
+            )
+          }
           const closedPrs: number[] = []
           for (const pr of relationship.relatedPullRequests.filter(
             (pr) => pr.state === "OPEN",
@@ -1230,13 +1338,6 @@ export async function runTriage(
             input.exec,
             input.repository,
             issue.number,
-            triage.account,
-          )
-          await removeIssueLabels(
-            input.exec,
-            input.repository,
-            issue.number,
-            triage.automation.clear,
             triage.account,
           )
         }

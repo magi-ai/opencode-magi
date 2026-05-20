@@ -459,7 +459,10 @@ export function parseCiClassificationOutput(
   }
 }
 
-export function parseEditOutput(text: string): EditOutput {
+function parseEditOutputWithOptions(
+  text: string,
+  options: { requireResponses: boolean },
+): EditOutput {
   const data = extractJson(text) as Record<string, unknown>
 
   if (!data || typeof data !== "object")
@@ -491,7 +494,8 @@ export function parseEditOutput(text: string): EditOutput {
     },
   )
 
-  if (!responses.length) throw new Error("responses must not be empty")
+  if (options.requireResponses && !responses.length)
+    throw new Error("responses must not be empty")
 
   if (data.mode === "EDITED") {
     if (!filesTouched.length) throw new Error("EDITED requires filesTouched")
@@ -519,4 +523,12 @@ export function parseEditOutput(text: string): EditOutput {
     mode: data.mode,
     responses,
   }
+}
+
+export function parseEditOutput(text: string): EditOutput {
+  return parseEditOutputWithOptions(text, { requireResponses: true })
+}
+
+export function parseTriageCreatePrOutput(text: string): EditOutput {
+  return parseEditOutputWithOptions(text, { requireResponses: false })
 }
