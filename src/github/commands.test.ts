@@ -199,9 +199,13 @@ describe("GitHub command helpers", () => {
   })
 
   test("normalizes searched related pull request states", async () => {
+    let graphqlCommand = ""
+
     const result = await fetchRelatedPullRequests(
       async (command) => {
         if (command.includes("graphql")) {
+          graphqlCommand = command
+
           return JSON.stringify({
             data: {
               repository: {
@@ -244,6 +248,7 @@ describe("GitHub command helpers", () => {
       58,
     )
 
+    expectBalancedBraces(extractGraphqlQuery(graphqlCommand))
     expect(result.map((pr) => [pr.number, pr.state])).toEqual([
       [10, "MERGED"],
       [11, "CLOSED"],

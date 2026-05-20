@@ -462,7 +462,7 @@ export async function fetchRelatedPullRequests(
   repository: ResolvedRepository,
   issue: number,
 ): Promise<RelatedPullRequest[]> {
-  const query = `query($owner: String!, $repo: String!, $issue: Int!) { repository(owner: $owner, name: $repo) { issue(number: $issue) { timelineItems(first: 50, itemTypes: [CONNECTED_EVENT, CROSS_REFERENCED_EVENT]) { nodes { __typename ... on ConnectedEvent { subject { __typename ... on PullRequest { number title url state mergedAt body author { login } } } } ... on CrossReferencedEvent { source { __typename ... on PullRequest { number title url state mergedAt body author { login } } } } } } } } } }`
+  const query = `query($owner: String!, $repo: String!, $issue: Int!) { repository(owner: $owner, name: $repo) { issue(number: $issue) { timelineItems(first: 50, itemTypes: [CONNECTED_EVENT, CROSS_REFERENCED_EVENT]) { nodes { __typename ... on ConnectedEvent { subject { __typename ... on PullRequest { number title url state mergedAt body author { login } } } } ... on CrossReferencedEvent { source { __typename ... on PullRequest { number title url state mergedAt body author { login } } } } } } } } }`
   const raw = await exec(
     `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F issue=${issue}`,
   )
