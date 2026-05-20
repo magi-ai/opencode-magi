@@ -199,6 +199,10 @@ describe("review output", () => {
           commitSha: "abcdef1234567890",
           filesTouched: ["src/app.ts"],
           mode: "EDITED",
+          pullRequest: {
+            body: "Closes #1",
+            title: "fix: address issue #1",
+          },
           responses: [],
         }),
       ),
@@ -207,8 +211,26 @@ describe("review output", () => {
       commitSha: "abcdef1234567890",
       filesTouched: ["src/app.ts"],
       mode: "EDITED",
+      pullRequest: {
+        body: "Closes #1",
+        title: "fix: address issue #1",
+      },
       responses: [],
     })
+  })
+
+  test("requires triage PR metadata for edited PR creation output", () => {
+    expect(() =>
+      parseTriageCreatePrOutput(
+        JSON.stringify({
+          commitMessage: "fix: address issue",
+          commitSha: "abcdef1234567890",
+          filesTouched: ["src/app.ts"],
+          mode: "EDITED",
+          responses: [],
+        }),
+      ),
+    ).toThrow("pullRequest is required")
   })
 })
 

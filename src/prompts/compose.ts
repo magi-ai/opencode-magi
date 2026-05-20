@@ -15,8 +15,9 @@ import {
   rereviewCloseReconsiderationOutputContract,
   rereviewOutputContract,
   reviewOutputContract,
-  triageCommentClassificationOutputContract,
   triageActionOutputContract,
+  triageCommentClassificationOutputContract,
+  triageCreatePrOutputContract,
   triageDuplicateOutputContract,
   triageVoteOutputContract,
 } from "./contracts"
@@ -625,7 +626,7 @@ export async function composeTriageCreatePrPrompt(
     task,
     languageBlock(input.repository.language),
     personaBlock(persona),
-    editOutputContract,
+    triageCreatePrOutputContract,
   ]
     .filter(Boolean)
     .join("\n\n")

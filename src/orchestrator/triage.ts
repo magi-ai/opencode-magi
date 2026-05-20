@@ -1305,7 +1305,7 @@ async function createImplementationPr(input: {
         permission: creator.permission,
         prompt,
         repairAttempts: 3,
-        schemaName: "edit",
+        schemaName: "triage create PR",
         signal: input.input.signal,
         title: `Magi triage create PR #${input.issue.number}`,
       })
@@ -1316,6 +1316,8 @@ async function createImplementationPr(input: {
 
       await writeJson(join(input.outputDir, "create-pr.json"), result.value)
       if (result.value.mode !== "EDITED") return undefined
+      const pullRequest = result.value.pullRequest
+      if (!pullRequest) throw new Error("EDITED requires pullRequest")
 
       await pushHead(
         input.input.exec,
@@ -1334,9 +1336,9 @@ async function createImplementationPr(input: {
         input.input.repository,
         creator.account,
         {
-          body: `Closes #${input.issue.number}`,
+          body: pullRequest.body,
           head: branch,
-          title: `fix: address issue #${input.issue.number}`,
+          title: pullRequest.title,
         },
       )
     } finally {

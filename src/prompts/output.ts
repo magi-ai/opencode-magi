@@ -501,9 +501,28 @@ export function parseCiClassificationOutput(
   }
 }
 
+function parsePullRequest(
+  value: unknown,
+  options: { required: boolean },
+): EditOutput["pullRequest"] {
+  if (value == null) {
+    if (options.required) throw new Error("pullRequest is required")
+    return undefined
+  }
+  if (typeof value !== "object")
+    throw new Error("pullRequest must be an object")
+
+  const pullRequest = value as Record<string, unknown>
+
+  return {
+    body: requireString(pullRequest.body, "pullRequest.body"),
+    title: requireString(pullRequest.title, "pullRequest.title"),
+  }
+}
+
 function parseEditOutputWithOptions(
   text: string,
-  options: { requireResponses: boolean },
+  options: { requirePullRequest: boolean; requireResponses: boolean },
 ): EditOutput {
   const data = extractJson(text) as Record<string, unknown>
 
@@ -541,12 +560,16 @@ function parseEditOutputWithOptions(
 
   if (data.mode === "EDITED") {
     if (!filesTouched.length) throw new Error("EDITED requires filesTouched")
+    const pullRequest = parsePullRequest(data.pullRequest, {
+      required: options.requirePullRequest,
+    })
 
     return {
       commitMessage: requireString(data.commitMessage, "commitMessage"),
       commitSha: requireString(data.commitSha, "commitSha"),
       filesTouched,
       mode: data.mode,
+      ...(pullRequest ? { pullRequest } : {}),
       responses,
     }
   }
@@ -568,9 +591,15 @@ function parseEditOutputWithOptions(
 }
 
 export function parseEditOutput(text: string): EditOutput {
-  return parseEditOutputWithOptions(text, { requireResponses: true })
+  return parseEditOutputWithOptions(text, {
+    requirePullRequest: false,
+    requireResponses: true,
+  })
 }
 
 export function parseTriageCreatePrOutput(text: string): EditOutput {
-  return parseEditOutputWithOptions(text, { requireResponses: false })
+  return parseEditOutputWithOptions(text, {
+    requirePullRequest: true,
+    requireResponses: false,
+  })
 }

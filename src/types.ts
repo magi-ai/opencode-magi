@@ -436,6 +436,10 @@ export interface EditOutput {
   commitSha?: string
   filesTouched: string[]
   mode: "EDITED" | "REPLIED"
+  pullRequest?: {
+    body: string
+    title: string
+  }
   responses: EditResponse[]
 }
 
