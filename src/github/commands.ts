@@ -513,6 +513,47 @@ export async function fetchIssueComments(
   )
 }
 
+export async function fetchPullRequestComments(
+  exec: Exec,
+  repository: ResolvedRepository,
+  pr: number,
+  limit = 50,
+): Promise<IssueComment[]> {
+  const query = `query($owner: String!, $repo: String!, $pr: Int!, $limit: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { comments(last: $limit) { nodes { databaseId author { login } authorAssociation body createdAt url } } } } }`
+  const raw = await exec(
+    `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F pr=${pr} -F limit=${limit}`,
+  )
+  const data = JSON.parse(raw) as {
+    data?: {
+      repository?: {
+        pullRequest?: {
+          comments?: {
+            nodes?: {
+              author?: { login?: string }
+              authorAssociation?: string
+              body?: string
+              createdAt: string
+              databaseId: number
+              url: string
+            }[]
+          }
+        }
+      }
+    }
+  }
+
+  return (
+    data.data?.repository?.pullRequest?.comments?.nodes?.map((comment) => ({
+      author: comment.author?.login ?? "",
+      authorAssociation: comment.authorAssociation,
+      body: comment.body ?? "",
+      createdAt: comment.createdAt,
+      id: comment.databaseId,
+      url: comment.url,
+    })) ?? []
+  )
+}
+
 export async function fetchRelatedPullRequests(
   exec: Exec,
   repository: ResolvedRepository,

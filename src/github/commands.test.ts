@@ -8,6 +8,7 @@ import {
   fetchIssue,
   fetchRelatedPullRequests,
   fetchPullRequest,
+  fetchPullRequestComments,
   fetchPullRequestCommits,
   fetchPullRequestReviews,
   fetchPullRequestSafetyMeta,
@@ -584,6 +585,53 @@ describe("GitHub command helpers", () => {
     )
 
     expectBalancedBraces(extractGraphqlQuery(graphqlCommand))
+  })
+
+  test("fetches pull request comments through pullRequest GraphQL", async () => {
+    let graphqlCommand = ""
+    const result = await fetchPullRequestComments(
+      async (command) => {
+        graphqlCommand = command
+
+        return JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                comments: {
+                  nodes: [
+                    {
+                      author: { login: "commenter" },
+                      authorAssociation: "MEMBER",
+                      body: "PR comment",
+                      createdAt: "2026-01-01T00:00:00Z",
+                      databaseId: 123,
+                      url: "https://github.com/owner/repo/pull/1#issuecomment-123",
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        })
+      },
+      repository,
+      7557,
+      20,
+    )
+
+    expect(graphqlCommand).toContain("pullRequest(number: $pr)")
+    expect(graphqlCommand).not.toContain("issue(number:")
+    expectBalancedBraces(extractGraphqlQuery(graphqlCommand))
+    expect(result).toEqual([
+      {
+        author: "commenter",
+        authorAssociation: "MEMBER",
+        body: "PR comment",
+        createdAt: "2026-01-01T00:00:00Z",
+        id: 123,
+        url: "https://github.com/owner/repo/pull/1#issuecomment-123",
+      },
+    ])
   })
 
   test("paginates PR files for safety metadata", async () => {

@@ -3,6 +3,7 @@ import {
   fetchIssue,
   fetchIssueComments,
   fetchPullRequestClosingIssues,
+  fetchPullRequestComments,
   fetchPullRequestReviewThreads,
   fetchPullRequestSafetyMeta,
   type IssueComment,
@@ -298,7 +299,7 @@ export async function buildReviewContextSnapshot(input: {
 }): Promise<ReviewContextSnapshot> {
   const [prComments, reviewThreads, safetyMeta, closingIssues] =
     await Promise.all([
-      fetchIssueComments(
+      fetchPullRequestComments(
         input.exec,
         input.repository,
         input.pr.number,

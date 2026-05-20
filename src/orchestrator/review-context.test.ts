@@ -98,15 +98,22 @@ describe("review context", () => {
             },
           })
         }
-        if (command.includes("comments(last:")) {
+        if (command.includes("pullRequest(number: $pr) { comments")) {
+          return JSON.stringify({
+            data: {
+              repository: {
+                pullRequest: { comments: { nodes: comments(21) } },
+              },
+            },
+          })
+        }
+        if (command.includes("issue(number: $issue) { comments")) {
           return JSON.stringify({
             data: {
               repository: {
                 issue: {
                   comments: {
-                    nodes: command.includes("-F issue=47")
-                      ? comments(25)
-                      : comments(21),
+                    nodes: comments(25),
                   },
                 },
               },
