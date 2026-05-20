@@ -209,7 +209,11 @@
       "additionalProperties": false,
       "required": ["id"],
       "properties": {
-        "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "not": { "enum": ["ASK", "none"] }
+        },
         "labels": { "type": "array", "items": { "type": "string" } },
         "types": { "type": "array", "items": { "type": "string" } },
         "description": { "type": "string" }

@@ -44,6 +44,7 @@ const PERMISSION_ACTIONS = new Set(["allow", "ask", "deny"])
 const AJV = new Ajv2020({ allErrors: true, strict: false })
 const validateSchema = AJV.compile(schema)
 const TRIAGE_CATEGORY_ID_PATTERN = /^[A-Za-z0-9_-]+$/
+const RESERVED_TRIAGE_CATEGORY_IDS = new Set(["ASK", "none"])
 const CONFIG_KEYS = new Set([
   "$schema",
   "agents",
@@ -740,6 +741,8 @@ function validateTriageCategories(
       errors.push(`${itemPath}.id must be a string`)
     } else if (!TRIAGE_CATEGORY_ID_PATTERN.test(category.id)) {
       errors.push(`${itemPath}.id must match /^[A-Za-z0-9_-]+$/`)
+    } else if (RESERVED_TRIAGE_CATEGORY_IDS.has(category.id)) {
+      errors.push(`${itemPath}.id is reserved: ${category.id}`)
     } else if (ids.has(category.id)) {
       errors.push(`${itemPath}.id must be unique`)
     } else {

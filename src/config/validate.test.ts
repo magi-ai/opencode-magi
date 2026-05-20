@@ -160,6 +160,34 @@ describe("validateConfig", () => {
     expect(result.errors).toContain("triage.categories[3].id must be unique")
   })
 
+  test("rejects reserved triage category ids", async () => {
+    const result = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: {
+          account: "magi-bot",
+          agents: [
+            { model: "openai/gpt" },
+            { model: "anthropic/claude" },
+            { model: "google/gemini" },
+          ],
+          categories: [{ id: "ASK" }, { id: "none" }],
+        },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain(
+      "schema /triage/categories/0/id: must NOT be valid",
+    )
+    expect(result.errors).toContain(
+      "schema /triage/categories/1/id: must NOT be valid",
+    )
+    expect(result.errors).toContain("triage.categories[0].id is reserved: ASK")
+    expect(result.errors).toContain("triage.categories[1].id is reserved: none")
+  })
+
   test("rejects non-array triage categories", async () => {
     const result = await validateConfig(
       {
