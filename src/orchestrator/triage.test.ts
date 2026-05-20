@@ -718,6 +718,48 @@ describe("triage orchestration", () => {
     ).toBe(true)
   })
 
+  test("does not create a PR from a previous comment-only marker", async () => {
+    const result = await runScenario({
+      comments: [
+        comment({
+          author: "magi-bot",
+          body: "Previous comment\n\n<!-- opencode-magi:triage v=1 issue=1 result=FEATURE_ACCEPTED action=COMMENT checkpoint=10 pr=none processed= -->",
+          id: 10,
+        }),
+      ],
+      dryRun: false,
+      issue: issue({ type: "Feature" }),
+      outputs: [action("CLEAR_ONLY")],
+      repository: {
+        ...repositoryWithTriage({
+          automation: { close: false, clear: ["triage"], pr: true },
+        }),
+        agents: {
+          ...repository.agents,
+          triageCreator: {
+            account: "creator-bot",
+            author: { email: "bot@example.com", name: "Magi Bot" },
+            model: "mock/model",
+            permission: "deny",
+          },
+        },
+      },
+    })
+
+    expect(result.result.result).toBe("FEATURE_ACCEPTED")
+    expect(
+      result.commands.some((command) => command.startsWith("git worktree add")),
+    ).toBe(false)
+    expect(
+      result.commands.some((command) => command.startsWith("gh pr create")),
+    ).toBe(false)
+    expect(
+      result.commands.some((command) =>
+        command.includes("--remove-label 'triage'"),
+      ),
+    ).toBe(true)
+  })
+
   test("clears labels before creating implementation PRs", async () => {
     const result = await runScenario({
       dryRun: false,

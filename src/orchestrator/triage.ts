@@ -635,8 +635,12 @@ function previousAutomationPlan(input: {
   const clearLabels =
     base.clearLabels &&
     existingClearLabels(input.issue, input.triage.automation.clear).length > 0
-  const closeIssue = base.closeIssue && input.issue.state === "OPEN"
+  const closeIssue =
+    input.marker.action === "CLOSE" &&
+    base.closeIssue &&
+    input.issue.state === "OPEN"
   const createPr =
+    input.marker.action === "PR" &&
     base.createPr &&
     !markerPr(input.marker) &&
     !input.relationship.relatedPullRequests.length
