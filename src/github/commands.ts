@@ -115,6 +115,17 @@ export interface RelatedPullRequest {
   url: string
 }
 
+function normalizeRelatedPullRequestState(
+  state?: string,
+): RelatedPullRequest["state"] {
+  const normalized = state?.toUpperCase()
+
+  if (normalized === "MERGED") return "MERGED"
+  if (normalized === "CLOSED") return "CLOSED"
+
+  return "OPEN"
+}
+
 export interface DuplicateIssueCandidate {
   body?: string
   createdAt?: string
@@ -479,9 +490,7 @@ export async function fetchRelatedPullRequests(
     if (!source?.number || !source.url) continue
     const state = source.mergedAt
       ? "MERGED"
-      : source.state === "CLOSED"
-        ? "CLOSED"
-        : "OPEN"
+      : normalizeRelatedPullRequestState(source.state)
     prs.set(source.number, {
       author: source.author?.login ?? "",
       body: source.body,
@@ -517,7 +526,7 @@ export async function fetchRelatedPullRequests(
       author: item.author?.login ?? "",
       body: item.body,
       number: item.number,
-      state: item.state === "CLOSED" ? "CLOSED" : "OPEN",
+      state: normalizeRelatedPullRequestState(item.state),
       title: item.title,
       url: item.url,
     })

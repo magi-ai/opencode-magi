@@ -503,6 +503,12 @@ function markerCheckpoint(marker: TriageMarker): number | undefined {
   return marker.checkpoint ?? marker.commentId
 }
 
+function markerPr(marker: TriageMarker): number | undefined {
+  const pr = Number(marker.pr)
+
+  return Number.isInteger(pr) && pr > 0 ? pr : undefined
+}
+
 export function mentionAllowed(
   comment: IssueComment,
   repository: ResolvedRepository,
@@ -791,6 +797,49 @@ async function postMarkedIssueComment(input: {
   return updated
 }
 
+async function persistProcessedMarker(input: {
+  account: string
+  comments: IssueComment[]
+  exec: Exec
+  issue: IssueMeta
+  marker: TriageMarker
+  outputDir: string
+  processed: number[]
+  repository: ResolvedRepository
+}): Promise<void> {
+  if (!input.marker.commentId) return
+  const previousComment = input.comments.find(
+    (comment) => comment.id === input.marker.commentId,
+  )
+  if (!previousComment) return
+  const updatedMarker = marker({
+    action: input.marker.action ?? input.marker.result ?? "ASK",
+    checkpoint: markerCheckpoint(input.marker),
+    issue: input.issue.number,
+    pr: markerPr(input.marker),
+    processed: input.processed,
+    result: input.marker.result ?? "ASK",
+  })
+  const body = previousComment.body.replace(
+    /<!--\s*opencode-magi:triage\s+[^>]+?\s*-->/,
+    updatedMarker,
+  )
+
+  if (body === previousComment.body) return
+
+  const updated = await updateIssueComment(
+    input.exec,
+    input.repository,
+    input.marker.commentId,
+    input.account,
+    body,
+  )
+  await writeJson(join(input.outputDir, "processed.json"), {
+    processed: input.processed,
+    updated,
+  })
+}
+
 async function finishWithResult(input: {
   context: string
   input: TriageRunInput
@@ -1072,6 +1121,18 @@ export async function runTriage(
     ]
 
     if (!triggeringComments.length) {
+      if (!input.dryRun) {
+        await persistProcessedMarker({
+          account: triage.account,
+          comments: relationship.comments,
+          exec: input.exec,
+          issue,
+          marker: relationship.previousMarker,
+          outputDir,
+          processed,
+          repository: input.repository,
+        })
+      }
       const result = finalResultFromMarker(relationship.previousMarker)
       const report = `Magi triage skipped #${issue.number} because allowed mention replies did not request reconsideration.`
       await writeFile(join(outputDir, "report.md"), `${report}\n`)
