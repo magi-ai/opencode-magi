@@ -26,6 +26,8 @@ When performing one of the actions below, read the linked rule first.
 
 When editing or reviewing files that match a pattern below, read the linked rule first.
 
+- [Skills](.agents/rules/skills.md):
+  - `.agents/skills/**/*.md`
 - [Changesets](.agents/rules/changesets.md):
   - `src/**/*.{ts,md,json}`
   - `!src/**/*.test.ts`
