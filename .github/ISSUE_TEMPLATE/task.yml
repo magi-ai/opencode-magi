@@ -1,0 +1,65 @@
+name: "Task"
+description: "Track internal maintenance work that is not a bug report or feature request."
+labels: ["triage"]
+type: Task
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for creating a task 😎!
+
+        Use this template for internal maintenance work that is not a bug report or feature request.
+        Examples include AGENTS.md updates, GitHub workflow improvements, documentation cleanup,
+        repository hygiene, release/package maintenance, or process improvements.
+
+        If the work describes broken behavior, documentation drift, or workflow failures, use the bug report template instead.
+        If the work introduces new user-facing behavior, use the feature request template instead.
+  - type: textarea
+    id: description
+    attributes:
+      label: "Description"
+      description: "Describe the task in one or two sentences."
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: "Context"
+      description: "Explain why this task is needed."
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: "Scope"
+      description: "List the expected changes or checks."
+      placeholder: |
+        - [ ] Update AGENTS.md / agent instructions
+        - [ ] Improve GitHub workflows / automation
+        - [ ] Clean up documentation
+    validations:
+      required: true
+  - type: textarea
+    id: additional-information
+    attributes:
+      label: "Additional Information"
+      description: "Add links, references, notes, constraints, or anything else useful."
+  - type: dropdown
+    id: participate
+    attributes:
+      label: Are you willing to participate in completing this task and create a pull request with the changes?
+      options:
+        - "Yes"
+        - "No"
+  - type: checkboxes
+    id: ai-used
+    attributes:
+      label: "AI used"
+      options:
+        - label: "I did not use AI to create this issue."
+        - label: "(If there is no check above) I checked the generated content before submitting."
+  - type: markdown
+    attributes:
+      value: |
+        This issue will be automatically unassigned after one week has passed since it was assigned.
+        Once unassigned, it may be picked up by someone else for work.
