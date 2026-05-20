@@ -23,6 +23,8 @@ When performing one of the actions below, read the linked rule first.
 - Reviewing PRs:
   - [PR Merge Guidelines](.agents/references/pr-merge-guidelines.md)
   - [PR Review Guidelines](.agents/references/pr-review-guidelines.md)
+- Adding or changing tests:
+  - [Test Rules](.agents/rules/test.md)
 
 When editing or reviewing files that match a pattern below, read the linked rule first.
 
@@ -67,5 +69,6 @@ pnpm test
 
 ## Testing
 
+- Read [Test Rules](.agents/rules/test.md) before adding or changing tests.
 - Add or update unit tests for config validation, majority logic, prompt composition, and output parsing when changing those areas.
 - Do not rely on live GitHub calls in unit tests; mock command execution instead.
