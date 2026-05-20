@@ -35,11 +35,6 @@ Triage prompts:
 - [Bug](triage/bug.md) - Decide whether a bug report is reproduced or otherwise valid.
 - [Feature](triage/feature.md) - Decide whether a feature request should be implemented.
 - [Comment Classification](triage/comment-classification.md) - Classify mention replies for reconsideration.
-- [Comment](triage/comment.md) - Compose a final triage comment.
-- [Question](triage/question.md) - Compose follow-up questions.
-- [Reconsider](triage/reconsider.md) - Reconsider a previous triage result.
-- [Action](triage/action.md) - Decide the next action from a triage result.
-- [Create PR](triage/create-pr.md) - Create an implementation PR from an accepted issue.
 
 ## Final Prompt Shape
 
