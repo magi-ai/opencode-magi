@@ -317,9 +317,17 @@ export interface Finding {
   startLine?: number
 }
 
+export interface RequirementFinding {
+  evidence: string
+  fix: string
+  issueNumber: number
+  requirement: string
+}
+
 export interface ReviewOutput {
   findings: Finding[]
   reason?: string
+  requirementFindings: RequirementFinding[]
   verdict: Verdict
 }
 
@@ -332,12 +340,14 @@ export interface RereviewOutput {
     body: string
   }[]
   reason?: string
+  requirementFindings: RequirementFinding[]
   resolve: { commentId: number; threadId: string }[]
   verdict: Verdict
 }
 
 export interface CloseReconsiderationOutput {
   findings: Finding[]
+  requirementFindings: RequirementFinding[]
   verdict: Exclude<Verdict, "CLOSE">
 }
 

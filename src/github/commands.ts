@@ -1,17 +1,26 @@
-import type { Exec, Finding, ResolvedRepository } from "../types"
+import type {
+  Exec,
+  Finding,
+  RequirementFinding,
+  ResolvedRepository,
+} from "../types"
 import { mkdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 
 export interface PullRequestMeta {
+  author?: { login?: string }
   baseRefName: string
   baseRefOid: string
+  body?: string
+  changedFiles?: number
   headRepository?: { name?: string }
   headRepositoryOwner?: { login?: string }
   headRefName: string
   headRefOid: string
   isDraft: boolean
   number: number
+  state?: string
   title: string
   url: string
 }
@@ -45,6 +54,7 @@ export interface ReviewThread {
   body?: string
   commentId: number
   comments: ReviewThreadComment[]
+  isResolved?: boolean
   latestBody?: string
   line: number
   path: string
@@ -335,10 +345,56 @@ export async function fetchPullRequest(
   pr: number,
 ): Promise<PullRequestMeta> {
   const json = await exec(
-    `gh pr view ${pr} --repo ${shellQuote(repoSpecifier(repository))} --json number,title,url,isDraft,baseRefOid,headRefOid,baseRefName,headRefName,headRepository,headRepositoryOwner`,
+    `gh pr view ${pr} --repo ${shellQuote(repoSpecifier(repository))} --json number,title,body,url,state,author,isDraft,baseRefOid,headRefOid,baseRefName,headRefName,headRepository,headRepositoryOwner,changedFiles`,
   )
 
   return JSON.parse(json) as PullRequestMeta
+}
+
+export async function fetchPullRequestClosingIssues(
+  exec: Exec,
+  repository: ResolvedRepository,
+  pr: number,
+): Promise<IssueMeta[]> {
+  const query = `query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { closingIssuesReferences(first: 20) { nodes { number title body url state author { login } labels(first: 100) { nodes { name } } issueType { name } } } } } }`
+  const raw = await exec(
+    `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F pr=${pr}`,
+  )
+  const data = JSON.parse(raw) as {
+    data?: {
+      repository?: {
+        pullRequest?: {
+          closingIssuesReferences?: {
+            nodes?: {
+              author?: { login?: string }
+              body?: string
+              issueType?: { name?: string } | null
+              labels?: { nodes?: { name: string }[] }
+              number: number
+              state: string
+              title: string
+              url: string
+            }[]
+          }
+        }
+      }
+    }
+  }
+
+  return (
+    data.data?.repository?.pullRequest?.closingIssuesReferences?.nodes?.map(
+      (issue) => ({
+        author: issue.author?.login ?? "",
+        body: issue.body ?? "",
+        labels: issue.labels?.nodes?.map((label) => label.name) ?? [],
+        number: issue.number,
+        state: issue.state,
+        title: issue.title,
+        type: issue.issueType?.name,
+        url: issue.url,
+      }),
+    ) ?? []
+  )
 }
 
 export async function fetchIssue(
@@ -1107,12 +1163,21 @@ function findingComment(finding: Finding): Record<string, unknown> {
   return comment
 }
 
+function requirementFindingSummary(finding: RequirementFinding): string {
+  return [
+    `- Missing issue #${finding.issueNumber} requirement: ${finding.requirement}`,
+    `  Evidence: ${finding.evidence}`,
+    `  Fix: ${finding.fix}`,
+  ].join("\n")
+}
+
 export async function postChangesRequested(
   exec: Exec,
   repository: ResolvedRepository,
   pr: number,
   account: string,
   findings: Finding[],
+  requirementFindings: RequirementFinding[] = [],
 ): Promise<string> {
   const token = await ghToken(exec, repository, account)
   const payloadPath = join(
@@ -1121,6 +1186,7 @@ export async function postChangesRequested(
   )
   const body = findings
     .map((finding) => `- ${finding.issue.split("\n")[0]}`)
+    .concat(requirementFindings.map(requirementFindingSummary))
     .join("\n")
 
   await writeFile(
@@ -1386,6 +1452,73 @@ export async function fetchUnresolvedThreads(
       },
     ]
   })
+}
+
+export async function fetchPullRequestReviewThreads(
+  exec: Exec,
+  repository: ResolvedRepository,
+  pr: number,
+  threadLimit = 50,
+  commentsPerThread = 20,
+): Promise<ReviewThread[]> {
+  const query = `query($owner: String!, $repo: String!, $pr: Int!, $threadLimit: Int!, $commentsPerThread: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviewThreads(last: $threadLimit) { nodes { id isResolved comments(last: $commentsPerThread) { nodes { databaseId author { login } path line body createdAt } } } } } } }`
+  const raw = await exec(
+    `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F pr=${pr} -F threadLimit=${threadLimit} -F commentsPerThread=${commentsPerThread}`,
+  )
+  const data = JSON.parse(raw) as {
+    data?: {
+      repository?: {
+        pullRequest?: {
+          reviewThreads?: {
+            nodes?: Array<{
+              comments: {
+                nodes: Array<{
+                  author?: { login?: string }
+                  body?: string
+                  createdAt: string
+                  databaseId: number
+                  line: number
+                  path: string
+                }>
+              }
+              id: string
+              isResolved: boolean
+            }>
+          }
+        }
+      }
+    }
+  }
+
+  return (
+    data.data?.repository?.pullRequest?.reviewThreads?.nodes?.flatMap(
+      (thread) => {
+        const comments = [...thread.comments.nodes]
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+          .map((comment) => ({
+            author: comment.author?.login ?? "",
+            body: comment.body ?? "",
+            commentId: comment.databaseId,
+            createdAt: comment.createdAt,
+          }))
+        const first = thread.comments.nodes[0]
+
+        if (!first) return []
+
+        return [
+          {
+            body: first.body ?? "",
+            commentId: first.databaseId,
+            comments,
+            isResolved: thread.isResolved,
+            line: first.line,
+            path: first.path,
+            threadId: thread.id,
+          },
+        ]
+      },
+    ) ?? []
+  )
 }
 
 export async function postReply(

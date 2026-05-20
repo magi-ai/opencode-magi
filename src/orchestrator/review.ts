@@ -58,6 +58,10 @@ import {
 import { type ModelClient, runModelWithRepair } from "./model"
 import { mapPool } from "./pool"
 import { formatReviewReport } from "./report"
+import {
+  buildReviewContextSnapshot,
+  renderReviewContext,
+} from "./review-context"
 import { checkSafetyGate, hasSafetyGate } from "./safety"
 
 export interface ReviewRunInput {
@@ -209,6 +213,7 @@ async function postReviewOutput(
     input.pr,
     reviewer.account,
     output.findings,
+    output.requirementFindings,
   )
 }
 
@@ -350,8 +355,13 @@ function reviewOutputFromState(review: PullRequestReview): ReviewOutput {
   const verdict = reviewStateToVerdict(review.state)
 
   return verdict === "CLOSE"
-    ? { findings: [], reason: review.body || "Close requested.", verdict }
-    : { findings: [], verdict }
+    ? {
+        findings: [],
+        reason: review.body || "Close requested.",
+        requirementFindings: [],
+        verdict,
+      }
+    : { findings: [], requirementFindings: [], verdict }
 }
 
 export function hasPendingThreadReply(
@@ -427,7 +437,8 @@ async function postRereviewOutput(
       output.reason ?? "Close requested.",
     )
 
-  if (!output.newFindings.length) return ""
+  if (!output.newFindings.length && !output.requirementFindings.length)
+    return ""
 
   return postChangesRequested(
     input.exec,
@@ -441,6 +452,7 @@ async function postRereviewOutput(
       path: finding.path,
       startLine: finding.startLine,
     })),
+    output.requirementFindings,
   )
 }
 
@@ -454,6 +466,7 @@ async function runFindingValidation(input: {
   entries: ReviewEntry[]
   meta: { baseRefOid: string; headRefOid: string }
   outputDir: string
+  reviewContext: string
   reviewInput: ReviewRunInput
   sessionIds: Record<string, string>
   worktreePath: string
@@ -503,6 +516,7 @@ async function runFindingValidation(input: {
           includeSessionContext: !hasReviewerSession,
           pr: input.reviewInput.pr,
           repository: input.reviewInput.repository,
+          reviewContext: input.reviewContext,
           reviewer,
           worktreePath: input.worktreePath,
         })
@@ -624,6 +638,7 @@ async function runCloseReconsideration(input: {
   entries: ReviewEntry[]
   meta: { baseRefOid: string; headRefOid: string }
   outputDir: string
+  reviewContext: string
   reviewInput: ReviewRunInput
   sessionIds: Record<string, string>
   targets?: string[]
@@ -668,6 +683,7 @@ async function runCloseReconsideration(input: {
         includeSessionContext: !hasReviewerSession,
         pr: input.reviewInput.pr,
         repository: input.reviewInput.repository,
+        reviewContext: input.reviewContext,
         reviewer,
         worktreePath: input.worktreePath,
       })
@@ -884,6 +900,19 @@ export async function runReview(
 
   await mkdir(outputDir, { recursive: true })
 
+  await input.onProgress?.({ phase: "fetching review context", type: "phase" })
+  const reviewContextSnapshot = await buildReviewContextSnapshot({
+    exec,
+    pr: meta,
+    repository: input.repository,
+  })
+  const reviewContext = renderReviewContext(reviewContextSnapshot)
+  await writeFile(
+    join(outputDir, "review-context.json"),
+    JSON.stringify(reviewContextSnapshot, null, 2),
+  )
+  await writeFile(join(outputDir, "review-context.md"), `${reviewContext}\n`)
+
   await input.onProgress?.({ phase: "waiting for checks", type: "phase" })
   const checkResult = await waitForChecksWithClassification({
     client: input.client,
@@ -1013,6 +1042,7 @@ export async function runReview(
             previousReview: previousReviewText(previous),
             previousHeadSha: previous.commit.oid,
             repository: input.repository,
+            reviewContext,
             reviewer,
             unresolvedThreads: JSON.stringify(unresolved, null, 2),
             worktreePath,
@@ -1092,6 +1122,7 @@ export async function runReview(
           headSha: meta.headRefOid,
           pr: input.pr,
           repository: input.repository,
+          reviewContext,
           reviewer,
           worktreePath,
         })
@@ -1212,6 +1243,7 @@ export async function runReview(
       entries: [...entries, ...skippedCloseEntries],
       meta,
       outputDir,
+      reviewContext,
       reviewInput: { ...input, exec },
       sessionIds,
       targets: closeTargets,
@@ -1221,6 +1253,7 @@ export async function runReview(
       entries,
       meta,
       outputDir,
+      reviewContext,
       reviewInput: { ...input, exec },
       sessionIds,
       worktreePath,

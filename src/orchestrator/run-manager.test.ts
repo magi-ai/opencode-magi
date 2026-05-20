@@ -791,7 +791,11 @@ describe("MagiRunManager notifications", () => {
 
         return {
           outputs: {
-            security: { findings: [], verdict: "MERGE" },
+            security: {
+              findings: [],
+              requirementFindings: [],
+              verdict: "MERGE",
+            },
           },
           posted: { security: "approved" },
           report: "Report",
@@ -835,7 +839,7 @@ describe("MagiRunManager notifications", () => {
     privateManager.active.set("run", state)
     runReviewMock.mockResolvedValueOnce({
       outputs: {
-        security: { findings: [], verdict: "MERGE" },
+        security: { findings: [], requirementFindings: [], verdict: "MERGE" },
       },
       posted: { security: "approved" },
       report: "Report",

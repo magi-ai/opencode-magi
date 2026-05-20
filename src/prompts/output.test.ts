@@ -17,6 +17,7 @@ describe("review output", () => {
     expect(parseReviewOutput('{"verdict":"MERGE","findings":[]}')).toEqual({
       findings: [],
       reason: undefined,
+      requirementFindings: [],
       verdict: "MERGE",
     })
   })
@@ -24,7 +25,55 @@ describe("review output", () => {
   test("rejects changes requested without findings", () => {
     expect(() =>
       parseReviewOutput('{"verdict":"CHANGES_REQUESTED","findings":[]}'),
-    ).toThrow("CHANGES_REQUESTED requires findings")
+    ).toThrow("CHANGES_REQUESTED requires findings or requirementFindings")
+  })
+
+  test("parses requirement findings", () => {
+    expect(
+      parseReviewOutput(
+        JSON.stringify({
+          findings: [],
+          requirementFindings: [
+            {
+              evidence: "Runtime path is missing.",
+              fix: "Wire the handler.",
+              issueNumber: 47,
+              requirement: "Support reconsideration.",
+            },
+          ],
+          verdict: "CHANGES_REQUESTED",
+        }),
+      ),
+    ).toMatchObject({
+      requirementFindings: [
+        {
+          evidence: "Runtime path is missing.",
+          fix: "Wire the handler.",
+          issueNumber: 47,
+          requirement: "Support reconsideration.",
+        },
+      ],
+      verdict: "CHANGES_REQUESTED",
+    })
+  })
+
+  test("rejects merge with requirement findings", () => {
+    expect(() =>
+      parseReviewOutput(
+        JSON.stringify({
+          findings: [],
+          requirementFindings: [
+            {
+              evidence: "Missing behavior.",
+              fix: "Implement it.",
+              issueNumber: 47,
+              requirement: "Required behavior.",
+            },
+          ],
+          verdict: "MERGE",
+        }),
+      ),
+    ).toThrow("MERGE requires no findings or requirementFindings")
   })
 
   test("extracts json from noisy output", () => {
@@ -52,6 +101,7 @@ describe("review output", () => {
     expect(result).toEqual({
       findings: [],
       reason: undefined,
+      requirementFindings: [],
       verdict: "MERGE",
     })
   })
@@ -65,6 +115,7 @@ describe("review output", () => {
       followUps: [],
       newFindings: [],
       reason: "invalid premise",
+      requirementFindings: [],
       resolve: [],
       verdict: "CLOSE",
     })
