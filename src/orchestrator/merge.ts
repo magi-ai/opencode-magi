@@ -25,6 +25,7 @@ import {
   pushHead,
   removeWorktree,
   resolveThread,
+  shellQuote,
   type ReviewThread,
   waitForMergeQueue,
   type CheckWaitReport,
@@ -41,6 +42,11 @@ import {
 } from "../prompts/output"
 import { throwIfAborted, withAbortSignal } from "./abort"
 import { waitForChecksWithClassification } from "./ci"
+import {
+  parseRightSideDiffTargets,
+  validateInlineCommentTargets,
+  type InlineCommentTargets,
+} from "./inline-comments"
 import { closeMinorityReviewers, mergeVerdictForPolicy } from "./majority"
 import { type ModelClient, runModelWithRepair } from "./model"
 import { mapPool } from "./pool"
@@ -359,6 +365,17 @@ async function postRereviewOutput(
   return replies[0] ?? ""
 }
 
+function parseRereviewOutputWithInlineTargets(
+  text: string,
+  targets: InlineCommentTargets,
+): RereviewOutput {
+  const output = parseRereviewOutput(text)
+
+  validateInlineCommentTargets(output.newFindings, targets, "newFindings")
+
+  return output
+}
+
 async function runRereview(
   input: MergeRunInput,
   worktreePath: string,
@@ -379,6 +396,12 @@ async function runRereview(
 
   const meta = await fetchPullRequest(input.exec, input.repository, input.pr)
   const headSha = options.dryRunHeadSha ?? meta.headRefOid
+  const inlineCommentTargets = parseRightSideDiffTargets(
+    await input.exec(
+      `git diff --no-ext-diff --unified=3 ${shellQuote(meta.baseRefOid)} ${shellQuote(headSha)}`,
+      { cwd: worktreePath },
+    ),
+  )
   const artifactDir = outputDir(input)
   let entries = await mapPool(
     input.repository.agents.reviewers,
@@ -444,7 +467,8 @@ async function runRereview(
               }
             },
             options: reviewer.options,
-            parse: parseRereviewOutput,
+            parse: (text) =>
+              parseRereviewOutputWithInlineTargets(text, inlineCommentTargets),
             permission: reviewer.permission,
             prompt,
             repairAttempts: input.config.output?.repairAttempts ?? 3,
@@ -549,7 +573,17 @@ async function runRereview(
                 }
               },
               options: reviewer.options,
-              parse: parseRereviewCloseReconsiderationOutput,
+              parse: (text) => {
+                const output = parseRereviewCloseReconsiderationOutput(text)
+
+                validateInlineCommentTargets(
+                  output.newFindings,
+                  inlineCommentTargets,
+                  "newFindings",
+                )
+
+                return output
+              },
               permission: reviewer.permission,
               prompt,
               repairAttempts: input.config.output?.repairAttempts ?? 3,
