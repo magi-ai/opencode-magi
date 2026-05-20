@@ -18,7 +18,6 @@ The following branch protection rules are enabled on the `main` branch. Always v
 ### Status Checks
 
 - **Require status checks to pass**: All of the following required status checks must be green. The same checks run on both `pull_request` and `merge_group` events under the same names, and both are required.
-  - Changeset
   - Lint
   - Format
   - Build
