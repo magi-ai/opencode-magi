@@ -4,7 +4,7 @@ Magi keeps built-in task prompts as Markdown templates under [`src/prompts/templ
 
 Custom prompt files replace the built-in task template for that phase. They do not replace the fixed output contract, so prompt customization cannot change the required response schema.
 
-Guideline files are additive. Configure `review.prompts.reviewGuidelines` or `merge.prompts.editGuidelines` when you want to keep Magi's built-in task prompts and append shared guidance from a Markdown file.
+Guideline files are additive. Configure `review.prompts.reviewGuidelines`, `merge.prompts.editGuidelines`, or `triage.prompts.createGuidelines` when you want to keep Magi's built-in task prompts and append shared guidance from a Markdown file.
 
 Custom prompt and guideline files are rendered with the same placeholder values as the built-in template for that phase.
 
@@ -39,6 +39,7 @@ Triage prompts:
 - [Comment Classification](triage/comment-classification.md) - Classify mention replies for reconsideration.
 - [Reconsider](triage/reconsider.md) - Vote on mention-triggered reconsideration.
 - [Create PR](triage/create.md) - Instruct the creator agent for implementation PRs.
+- [Create Guidelines](triage/create-guidelines.md) - Shared implementation guidance.
 
 ## Final Prompt Shape
 
@@ -78,6 +79,10 @@ The final prompt has this shape:
 <edit_guidelines>
 ...optional Markdown loaded from merge.prompts.editGuidelines...
 </edit_guidelines>
+
+<create_guidelines>
+...optional Markdown loaded from triage.prompts.createGuidelines...
+</create_guidelines>
 
 <output_contract>
 ...fixed JSON schema rules controlled by Magi...

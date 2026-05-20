@@ -97,7 +97,10 @@ If at least one config exists, Magi validates the merged effective config and re
         "id": "product",
         "model": "opencode/kimi-k2-6"
       }
-    ]
+    ],
+    "prompts": {
+      "createGuidelines": ".agents/references/create-guidelines.md"
+    }
   }
 }
 ```
@@ -197,6 +200,7 @@ If at least one config exists, Magi validates the merged effective config and re
 | `triage.prompts.commentClassification` | Both    | No                               | [md](/docs/prompts/triage/comment-classification.md) | Task template override for classifying mention replies after triage.                                                 |
 | `triage.prompts.reconsider`            | Both    | No                               | [md](/docs/prompts/triage/reconsider.md)             | Task template override for reconsidering previous triage results.                                                    |
 | `triage.prompts.create`                | Both    | No                               | [md](/docs/prompts/triage/create.md)                 | Task template override for creating implementation PRs.                                                              |
+| `triage.prompts.createGuidelines`      | Both    | No                               | -                                                    | Markdown file appended to PR creation prompts as shared implementation guidance.                                     |
 | `triage.output`                        | Both    | No                               | `.magi/runs/issue`                                   | Directory for issue triage run artifacts.                                                                            |
 | `triage.worktree`                      | Both    | No                               | `.magi/worktrees/issue`                              | Directory for issue validation and PR creation worktrees.                                                            |
 | `merge`                                | Both    | No                               | -                                                    | Additional `/magi:merge` configuration.                                                                              |

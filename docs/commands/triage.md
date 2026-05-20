@@ -93,6 +93,7 @@ Important settings:
 | `triage.automation.merge`  | Starts `/magi:merge` after implementation PR creation. Requires `triage.automation.create`.           |
 | `triage.automation.clear`  | Labels removed for non-ASK results.                                                                   |
 | `triage.safety.*`          | Gates for initial triage and reconsideration.                                                         |
+| `triage.prompts.*`         | Triage prompt templates and PR creation guidelines.                                                   |
 | `triage.concurrency.runs`  | Maximum issues processed concurrently.                                                                |
 | `triage.output`            | Issue triage artifact directory.                                                                      |
 | `triage.worktree`          | Worktree directory for validation and PR creation.                                                    |

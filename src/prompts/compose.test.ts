@@ -463,6 +463,10 @@ describe("prompt composer", () => {
       join(dir, "triage-create.md"),
       "Implement in {worktreePath}: {context}",
     )
+    await writeFile(
+      join(dir, "triage-create-guidelines.md"),
+      "Keep issue #{issue} fixes scoped to {owner}/{repo}.",
+    )
 
     const repository: ResolvedRepository = {
       agents: {
@@ -521,6 +525,7 @@ describe("prompt composer", () => {
         prompts: {
           comment: "triage-comment.md",
           create: "triage-create.md",
+          createGuidelines: "triage-create-guidelines.md",
           question: "triage-question.md",
         },
         safety: {
@@ -558,6 +563,12 @@ describe("prompt composer", () => {
     expect(commentPrompt).toContain("Comment for @octocat: accepted")
     expect(questionPrompt).toContain("Question for @octocat: missing logs")
     expect(createPrPrompt).toContain("Implement in /tmp/issue-58: fix issue")
+    expect(createPrPrompt).toContain(
+      "<create_guidelines>\nKeep issue #58 fixes scoped to owner/repo.\n</create_guidelines>",
+    )
+    expect(createPrPrompt.indexOf("<create_guidelines>")).toBeLessThan(
+      createPrPrompt.indexOf("<output_contract>"),
+    )
     expect(createPrPrompt).toContain(
       "<persona>\nKeep the PR minimal.\n</persona>",
     )
