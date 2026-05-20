@@ -1,4 +1,4 @@
-# /magi:clear
+# Clear
 
 ## Usage
 

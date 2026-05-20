@@ -1,4 +1,4 @@
-# /magi:validate
+# Validate
 
 ## Usage
 

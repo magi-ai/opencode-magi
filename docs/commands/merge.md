@@ -1,4 +1,4 @@
-# /magi:merge
+# Merge
 
 ## Usage
 

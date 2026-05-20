@@ -1,4 +1,4 @@
-# /magi:triage
+# Triage
 
 ## Usage
 

@@ -1,4 +1,4 @@
-# /magi:review
+# Review
 
 ## Usage
 
