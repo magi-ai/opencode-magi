@@ -96,6 +96,63 @@ describe("tool descriptions", () => {
   })
 })
 
+describe("magi_status", () => {
+  test("accepts space-separated PR filters", async () => {
+    const directory = await mkdtemp(
+      join(process.env.TMPDIR ?? "/tmp", "magi-status-"),
+    )
+
+    try {
+      for (const pr of [96, 99, 100]) {
+        const outputDir = join(
+          directory,
+          ".magi",
+          "runs",
+          "pr",
+          String(pr),
+          `run-${pr}`,
+        )
+        await mkdir(outputDir, { recursive: true })
+        await writeFile(
+          join(outputDir, "state.json"),
+          JSON.stringify({
+            command: "merge",
+            createdAt: "now",
+            outputDir,
+            phase: "completed",
+            pr,
+            repository: "repo",
+            reviewers: {},
+            runId: `run-${pr}`,
+            status: "completed",
+            updatedAt: `now-${pr}`,
+          }),
+        )
+      }
+
+      const plugin = await MagiPlugin({
+        client: { session: {} },
+        directory,
+      } as never)
+      const result = await plugin.tool?.magi_status.execute(
+        {
+          block: true,
+          pr: "96 99",
+          timeoutSeconds: 1,
+          verbose: false,
+        } as never,
+        { abort: new AbortController().signal, sessionID: "parent" } as never,
+      )
+
+      expect(result).toContain("PR: #96")
+      expect(result).toContain("PR: #99")
+      expect(result).not.toContain("PR: #100")
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+})
+
 describe("magi_validate", () => {
   beforeEach(() => {
     vi.restoreAllMocks()

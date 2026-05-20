@@ -189,6 +189,12 @@ function parseOptionalPr(value: string | undefined): number | undefined {
   return parsePrToken(value)
 }
 
+function parseOptionalPrs(value: string | undefined): number[] | undefined {
+  if (!value?.trim()) return undefined
+
+  return parsePrs(value)
+}
+
 function parseOptionalIssue(value: string | undefined): number | undefined {
   if (!value?.trim()) return undefined
 
@@ -614,7 +620,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
             block: args.block,
             issue: parseOptionalIssue(args.issue),
             outputDir: await configuredOutputDir(),
-            pr: parseOptionalPr(args.pr),
+            pr: parseOptionalPrs(args.pr),
             runId: args.runId,
             timeoutMs:
               args.timeoutSeconds == null
