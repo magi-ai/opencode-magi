@@ -374,6 +374,7 @@ async function checksForHead(input: {
     input.exec,
     input.repository,
     input.pr,
+    { tolerateMissingChecks: Boolean(input.headSha) },
   )
   const targetChecks: PullRequestCheck[] = []
   let hasAnyActionCheck = false

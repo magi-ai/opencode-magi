@@ -92,6 +92,10 @@ export interface PullRequestCheck {
   workflow: string
 }
 
+export interface FetchPullRequestChecksOptions {
+  tolerateMissingChecks?: boolean
+}
+
 export interface IssueComment {
   author: string
   authorAssociation?: string
@@ -1037,10 +1041,24 @@ export async function fetchPullRequestChecks(
   exec: Exec,
   repository: ResolvedRepository,
   pr: number,
+  options: FetchPullRequestChecksOptions = {},
 ): Promise<PullRequestCheck[]> {
-  const raw = await exec(
-    `gh pr checks ${pr} --repo ${shellQuote(repoSpecifier(repository))} --json name,state,bucket,link,workflow`,
-  )
+  let raw: string
+
+  try {
+    raw = await exec(
+      `gh pr checks ${pr} --repo ${shellQuote(repoSpecifier(repository))} --json name,state,bucket,link,workflow`,
+    )
+  } catch (error) {
+    if (
+      options.tolerateMissingChecks &&
+      /no checks reported on the '.+' branch/i.test(errorText(error))
+    ) {
+      return []
+    }
+
+    throw error
+  }
 
   return JSON.parse(raw) as PullRequestCheck[]
 }

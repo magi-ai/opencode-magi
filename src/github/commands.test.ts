@@ -8,6 +8,7 @@ import {
   fetchIssue,
   fetchRelatedPullRequests,
   fetchPullRequest,
+  fetchPullRequestChecks,
   fetchPullRequestComments,
   fetchPullRequestCommits,
   fetchPullRequestReviews,
@@ -472,6 +473,34 @@ describe("GitHub command helpers", () => {
     expect(command).toContain("headRepository,headRepositoryOwner")
     expect(result.headRepository?.name).toBe("fork-repo")
     expect(result.headRepositoryOwner?.login).toBe("fork-owner")
+  })
+
+  test("tolerates transient missing pull request checks when requested", async () => {
+    const result = await fetchPullRequestChecks(
+      async () => {
+        throw Object.assign(new Error("Command failed"), {
+          stderr: "no checks reported on the 'feature-branch' branch",
+        })
+      },
+      repository,
+      1,
+      { tolerateMissingChecks: true },
+    )
+
+    expect(result).toEqual([])
+  })
+
+  test("keeps other pull request check failures fatal", async () => {
+    await expect(
+      fetchPullRequestChecks(
+        async () => {
+          throw new Error("gh pr checks failed")
+        },
+        repository,
+        1,
+        { tolerateMissingChecks: true },
+      ),
+    ).rejects.toThrow("gh pr checks failed")
   })
 
   test("posts close comments as PR review comments", async () => {
