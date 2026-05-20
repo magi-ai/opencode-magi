@@ -460,7 +460,7 @@ describe("prompt composer", () => {
       "Question for @{author}: {context}",
     )
     await writeFile(
-      join(dir, "triage-create-pr.md"),
+      join(dir, "triage-create.md"),
       "Implement in {worktreePath}: {context}",
     )
 
@@ -520,7 +520,7 @@ describe("prompt composer", () => {
         concurrency: { runs: 3 },
         prompts: {
           comment: "triage-comment.md",
-          create: "triage-create-pr.md",
+          create: "triage-create.md",
           question: "triage-question.md",
         },
         safety: {

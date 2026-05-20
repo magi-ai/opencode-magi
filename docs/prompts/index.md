@@ -38,7 +38,7 @@ Triage prompts:
 - [Question](triage/question.md) - Compose author questions for `ASK` results.
 - [Comment Classification](triage/comment-classification.md) - Classify mention replies for reconsideration.
 - [Reconsider](triage/reconsider.md) - Vote on mention-triggered reconsideration.
-- [Create PR](triage/create-pr.md) - Instruct the creator agent for implementation PRs.
+- [Create PR](triage/create.md) - Instruct the creator agent for implementation PRs.
 
 ## Final Prompt Shape
 

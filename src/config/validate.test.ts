@@ -188,7 +188,7 @@ describe("validateConfig", () => {
             { model: "google/gemini" },
           ],
           prompts: {
-            createPr: "triage-create-pr.md",
+            createPr: "triage-create.md",
           } as unknown as NonNullable<MagiConfig["triage"]>["prompts"],
         },
       },

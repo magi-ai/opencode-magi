@@ -4,7 +4,7 @@ Used when the triage creator agent implements an accepted issue and opens an imp
 
 Config key: `triage.prompts.create`
 
-Built-in template: [`triage/create-pr.md`](/src/prompts/templates/triage/create-pr.md)
+Built-in template: [`triage/create.md`](/src/prompts/templates/triage/create.md)
 
 | Placeholder          | Meaning                                                 |
 | -------------------- | ------------------------------------------------------- |
