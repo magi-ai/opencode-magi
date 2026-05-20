@@ -1,7 +1,14 @@
 {
   "bash": {
+    "bun *": "allow",
+    "bunx *": "allow",
+    "corepack *": "allow",
     "git add*": "allow",
-    "git commit*": "allow"
+    "git commit*": "allow",
+    "npm *": "allow",
+    "npx *": "allow",
+    "pnpm *": "allow",
+    "yarn *": "allow"
   },
   "edit": "allow"
 }

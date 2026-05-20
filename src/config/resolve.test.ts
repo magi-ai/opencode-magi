@@ -135,13 +135,42 @@ describe("resolveRepository", () => {
     })
     expect(repo.agents.editor?.permission).toMatchObject({
       bash: {
+        "bun *": "allow",
+        "bunx *": "allow",
+        "corepack *": "allow",
         "git add*": "allow",
         "git commit*": "allow",
+        "npm *": "allow",
+        "npx *": "allow",
+        "pnpm *": "allow",
+        "yarn *": "allow",
       },
       edit: "allow",
     })
-    expect(repo.agents.editor?.permission).not.toMatchObject({
-      bash: { "pnpm test*": "allow" },
+  })
+
+  test("resolves package manager permissions for triage creators", () => {
+    const repo = resolveRepository({
+      ...config,
+      triage: {
+        creator: {
+          model: "openai/gpt",
+          author: { email: "bot-c@example.com", name: "Bot C" },
+        },
+      },
+    })
+
+    expect(repo.agents.triageCreator?.permission).toMatchObject({
+      bash: {
+        "bun *": "allow",
+        "bunx *": "allow",
+        "corepack *": "allow",
+        "npm *": "allow",
+        "npx *": "allow",
+        "pnpm *": "allow",
+        "yarn *": "allow",
+      },
+      edit: "allow",
     })
   })
 
