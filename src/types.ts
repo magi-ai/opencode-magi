@@ -188,7 +188,7 @@ export interface TriageCategoryConfig {
 export interface TriageAutomationConfig {
   clear?: string[]
   close?: boolean
-  pr?: boolean
+  create?: boolean
 }
 
 export interface TriageSafetyConfig {

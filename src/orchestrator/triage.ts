@@ -765,7 +765,7 @@ function actionPlan(input: {
     (input.result.disposition === "rejected" ||
       input.result.disposition === "duplicate")
   const createPr =
-    input.triage.automation.pr && input.result.disposition === "accepted"
+    input.triage.automation.create && input.result.disposition === "accepted"
 
   return {
     action: closeIssue ? "CLOSE" : createPr ? "PR" : "COMMENT",

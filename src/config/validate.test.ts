@@ -104,7 +104,7 @@ describe("validateConfig", () => {
     expect(result).toMatchObject({ errors: [], ok: true })
   })
 
-  test("requires triage creator when PR automation is enabled", async () => {
+  test("requires triage creator when PR creation automation is enabled", async () => {
     const result = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
@@ -115,7 +115,7 @@ describe("validateConfig", () => {
             { model: "anthropic/claude" },
             { model: "google/gemini" },
           ],
-          automation: { pr: true },
+          automation: { create: true },
         },
       },
       { requireReview: false, requireTriage: true },
@@ -123,8 +123,31 @@ describe("validateConfig", () => {
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "triage.creator is required when triage.automation.pr is true",
+      "triage.creator is required when triage.automation.create is true",
     )
+  })
+
+  test("rejects old triage PR creation automation key", async () => {
+    const result = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: {
+          account: "magi-bot",
+          agents: [
+            { model: "openai/gpt" },
+            { model: "anthropic/claude" },
+            { model: "google/gemini" },
+          ],
+          automation: { pr: true } as unknown as NonNullable<
+            MagiConfig["triage"]
+          >["automation"],
+        },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain("triage.automation.pr is not supported")
   })
 
   test("rejects invalid triage categories", async () => {
@@ -619,7 +642,7 @@ describe("validateConfig", () => {
             { model: "anthropic/claude" },
             { model: "google/gemini" },
           ],
-          automation: { pr: true },
+          automation: { create: true },
           creator: {
             account: "creator-bot",
             author: { email: "bot@example.com", name: "Magi Bot" },

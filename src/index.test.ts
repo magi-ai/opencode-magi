@@ -124,12 +124,12 @@ describe("parsePrs", () => {
     expect(repository.concurrency.runs).toBe(2)
   })
 
-  test("rejects command-specific PR flags", () => {
+  test("rejects command-specific create flags", () => {
     expect(() => parseRunArguments("--max-cycles 1 7581")).toThrow(
       "--max-cycles is not supported for /magi:review.",
     )
-    expect(() => parseRunArguments("--pr 7581")).toThrow(
-      "--pr is not supported for /magi:review.",
+    expect(() => parseRunArguments("--create 7581")).toThrow(
+      "--create is not supported for /magi:review.",
     )
   })
 })
@@ -153,19 +153,28 @@ describe("parseIssues", () => {
   test("parses triage config override flags", () => {
     expect(
       parseIssueRunArguments(
-        "--language ja --close --no-close --pr --run-concurrency 2 47",
+        "--language ja --close --no-close --create --run-concurrency 2 47",
       ),
     ).toEqual({
       configOverrides: {
         language: "ja",
         triage: {
-          automation: { close: false, pr: true },
+          automation: { close: false, create: true },
           concurrency: { runs: 2 },
         },
       },
       dryRun: false,
       issues: [47],
     })
+  })
+
+  test("rejects old triage PR creation flags", () => {
+    expect(() => parseIssueRunArguments("--pr 47")).toThrow(
+      "--pr is not supported for /magi:triage.",
+    )
+    expect(() => parseIssueRunArguments("--no-pr 47")).toThrow(
+      "--no-pr is not supported for /magi:triage.",
+    )
   })
 
   test("rejects PR review and merge flags for triage", () => {

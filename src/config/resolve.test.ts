@@ -85,6 +85,11 @@ describe("resolveRepository", () => {
         types: ["Feature"],
       },
     ])
+    expect(repo.triage?.automation).toEqual({
+      clear: ["triage"],
+      close: false,
+      create: false,
+    })
   })
 
   test("defaults triage category labels and types", () => {

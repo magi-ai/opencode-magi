@@ -133,7 +133,7 @@ const AUTOMATION_KEYS = new Set(["close", "merge"])
 const CLEAR_KEYS = new Set(["branch", "output", "session", "worktree"])
 const CONCURRENCY_KEYS = new Set(["reviewers", "runs"])
 const OUTPUT_KEYS = new Set(["repairAttempts"])
-const TRIAGE_AUTOMATION_KEYS = new Set(["clear", "close", "pr"])
+const TRIAGE_AUTOMATION_KEYS = new Set(["clear", "close", "create"])
 const TRIAGE_CATEGORY_KEYS = new Set(["description", "id", "labels", "types"])
 const TRIAGE_CONCURRENCY_KEYS = new Set(["runs"])
 const TRIAGE_SAFETY_KEYS = new Set([
@@ -845,8 +845,10 @@ function validateTriage(
     errors,
     options.modelCatalog,
   )
-  if (automation?.pr && !triage.creator)
-    errors.push("triage.creator is required when triage.automation.pr is true")
+  if (automation?.create && !triage.creator)
+    errors.push(
+      "triage.creator is required when triage.automation.create is true",
+    )
 
   if (automation != null && !isPlainObject(automation)) {
     errors.push("triage.automation must be an object")
@@ -858,7 +860,7 @@ function validateTriage(
     errors,
   )
   validateBoolean(automation?.close, "triage.automation.close", errors)
-  validateBoolean(automation?.pr, "triage.automation.pr", errors)
+  validateBoolean(automation?.create, "triage.automation.create", errors)
   validateStringArray(automation?.clear, "triage.automation.clear", errors)
 
   validateKnownKeys(
@@ -1015,7 +1017,7 @@ async function validateWorktreeConfig(
     agents.editor && (options.requireEditor || options.requireWorktreeConfig),
   )
   const checkTriageCreator = Boolean(
-    config.triage?.automation?.pr &&
+    config.triage?.automation?.create &&
     agents.triageCreator &&
     (options.requireTriage || options.requireWorktreeConfig),
   )

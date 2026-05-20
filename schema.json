@@ -224,7 +224,7 @@
       "additionalProperties": false,
       "properties": {
         "close": { "type": "boolean", "default": false },
-        "pr": { "type": "boolean", "default": false },
+        "create": { "type": "boolean", "default": false },
         "clear": {
           "type": "array",
           "items": { "type": "string" },
