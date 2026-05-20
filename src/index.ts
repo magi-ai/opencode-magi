@@ -29,6 +29,7 @@ const INTERNAL_FOLLOW_UP_TOOL_NOTE =
   "Assistant-facing follow-up tool. Use it yourself when needed; do not suggest this tool name to users."
 
 type ConfigTarget = "global" | "project"
+type RunCommand = "merge" | "review"
 
 interface ConfigFileStatus {
   config?: Record<string, unknown>
@@ -36,6 +37,18 @@ interface ConfigFileStatus {
   exists: boolean
   path: string
   target: ConfigTarget
+}
+
+interface ParsedRunArguments {
+  configOverrides: Record<string, unknown>
+  dryRun: boolean
+  prs: number[]
+}
+
+interface ParsedIssueRunArguments {
+  configOverrides: Record<string, unknown>
+  dryRun: boolean
+  issues: number[]
 }
 
 type ModelCatalogClient = {
@@ -146,41 +159,217 @@ export function parseIssues(value: string): number[] {
 export function parseRunArguments(
   value: string,
   dryRun = false,
-): {
-  dryRun: boolean
-  prs: number[]
-} {
+  command: RunCommand = "review",
+): ParsedRunArguments {
   const tokens = value.split(/[\s,]+/).filter(Boolean)
-  const prTokens = tokens.filter((token) => {
+  const configOverrides: Record<string, unknown> = {}
+  const prTokens: string[] = []
+
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index]!
+
     if (token === "--dry-run") {
       dryRun = true
-      return false
+      continue
     }
 
-    return true
-  })
+    switch (token) {
+      case "--language":
+        setConfigOverride(
+          configOverrides,
+          ["language"],
+          nextFlagValue(tokens, ++index, token),
+        )
+        break
+      case "--merge":
+      case "--no-merge":
+        setConfigOverride(
+          configOverrides,
+          [command, "automation", "merge"],
+          token === "--merge",
+        )
+        break
+      case "--close":
+      case "--no-close":
+        setConfigOverride(
+          configOverrides,
+          [command, "automation", "close"],
+          token === "--close",
+        )
+        break
+      case "--max-cycles":
+        if (command !== "merge") throw unsupportedFlag(token, command)
+        setConfigOverride(
+          configOverrides,
+          ["merge", "maxThreadResolutionCycles"],
+          parseIntegerFlag(nextFlagValue(tokens, ++index, token), token, 0),
+        )
+        break
+      case "--retry-failed-jobs":
+        setConfigOverride(
+          configOverrides,
+          ["review", "checks", "retryFailedJobs"],
+          parseIntegerFlag(nextFlagValue(tokens, ++index, token), token, 0),
+        )
+        break
+      case "--reviewer-concurrency":
+        setConfigOverride(
+          configOverrides,
+          ["review", "concurrency", "reviewers"],
+          parseIntegerFlag(nextFlagValue(tokens, ++index, token), token, 1),
+        )
+        break
+      case "--run-concurrency":
+        setConfigOverride(
+          configOverrides,
+          ["review", "concurrency", "runs"],
+          parseIntegerFlag(nextFlagValue(tokens, ++index, token), token, 1),
+        )
+        break
+      case "--wait-checks":
+      case "--no-wait-checks":
+        setConfigOverride(
+          configOverrides,
+          ["review", "checks", "wait"],
+          token === "--wait-checks",
+        )
+        break
+      case "--wait-checks-after-edit":
+      case "--no-wait-checks-after-edit":
+        if (command !== "merge") throw unsupportedFlag(token, command)
+        setConfigOverride(
+          configOverrides,
+          ["merge", "checks", "wait"],
+          token === "--wait-checks-after-edit",
+        )
+        break
+      case "--pr":
+      case "--no-pr":
+        throw unsupportedFlag(token, command)
+      default:
+        if (token.startsWith("--")) throw unsupportedFlag(token, command)
+        prTokens.push(token)
+    }
+  }
 
-  return { dryRun, prs: parsePrs(prTokens.join(" ")) }
+  return { configOverrides, dryRun, prs: parsePrs(prTokens.join(" ")) }
 }
 
 export function parseIssueRunArguments(
   value: string,
   dryRun = false,
-): {
-  dryRun: boolean
-  issues: number[]
-} {
+): ParsedIssueRunArguments {
   const tokens = value.split(/[\s,]+/).filter(Boolean)
-  const issueTokens = tokens.filter((token) => {
+  const configOverrides: Record<string, unknown> = {}
+  const issueTokens: string[] = []
+
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index]!
+
     if (token === "--dry-run") {
       dryRun = true
-      return false
+      continue
     }
 
-    return true
-  })
+    switch (token) {
+      case "--language":
+        setConfigOverride(
+          configOverrides,
+          ["language"],
+          nextFlagValue(tokens, ++index, token),
+        )
+        break
+      case "--close":
+      case "--no-close":
+        setConfigOverride(
+          configOverrides,
+          ["triage", "automation", "close"],
+          token === "--close",
+        )
+        break
+      case "--pr":
+      case "--no-pr":
+        setConfigOverride(
+          configOverrides,
+          ["triage", "automation", "pr"],
+          token === "--pr",
+        )
+        break
+      case "--run-concurrency":
+        setConfigOverride(
+          configOverrides,
+          ["triage", "concurrency", "runs"],
+          parseIntegerFlag(nextFlagValue(tokens, ++index, token), token, 1),
+        )
+        break
+      case "--merge":
+      case "--no-merge":
+      case "--max-cycles":
+      case "--retry-failed-jobs":
+      case "--reviewer-concurrency":
+      case "--wait-checks":
+      case "--no-wait-checks":
+      case "--wait-checks-after-edit":
+      case "--no-wait-checks-after-edit":
+        throw unsupportedFlag(token, "triage")
+      default:
+        if (token.startsWith("--")) throw unsupportedFlag(token, "triage")
+        issueTokens.push(token)
+    }
+  }
 
-  return { dryRun, issues: parseIssues(issueTokens.join(" ")) }
+  return { configOverrides, dryRun, issues: parseIssues(issueTokens.join(" ")) }
+}
+
+function nextFlagValue(tokens: string[], index: number, flag: string): string {
+  const value = tokens[index]
+
+  if (!value || value.startsWith("--"))
+    throw new Error(`${flag} requires a value.`)
+
+  return value
+}
+
+function parseIntegerFlag(
+  value: string,
+  flag: string,
+  minimum: number,
+): number {
+  const parsed = Number.parseInt(value, 10)
+
+  if (
+    !Number.isInteger(parsed) ||
+    String(parsed) !== value ||
+    parsed < minimum
+  ) {
+    throw new Error(
+      `${flag} must be an integer greater than or equal to ${minimum}.`,
+    )
+  }
+
+  return parsed
+}
+
+function setConfigOverride(
+  target: Record<string, unknown>,
+  path: string[],
+  value: unknown,
+): void {
+  let current = target
+
+  for (const key of path.slice(0, -1)) {
+    const existing = current[key]
+    const next = isPlainObject(existing) ? existing : {}
+
+    current[key] = next
+    current = next
+  }
+
+  current[path[path.length - 1]!] = value
+}
+
+function unsupportedFlag(flag: string, command: string): Error {
+  return new Error(`${flag} is not supported for /magi:${command}.`)
 }
 
 function parseOptionalPr(value: string | undefined): number | undefined {
@@ -455,13 +644,21 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
           dryRun: tool.schema.boolean().optional(),
         },
         async execute(args, context) {
-          const parsed = parseRunArguments(args.prs, args.dryRun ?? false)
+          const parsed = parseRunArguments(
+            args.prs,
+            args.dryRun ?? false,
+            "merge",
+          )
           const loaded = await loadConfig(directory)
+          const config = mergeMagiConfig(
+            loaded.config as unknown as Record<string, unknown>,
+            parsed.configOverrides,
+          ) as unknown as MagiConfig
           const retryingExec = withGitHubApiRetry(
             exec,
-            loaded.config.github?.apiRetryAttempts ?? 3,
+            config.github?.apiRetryAttempts ?? 3,
           )
-          const validation = await validateConfig(loaded.config, {
+          const validation = await validateConfig(config, {
             checkAuth: true,
             directory,
             exec: retryingExec,
@@ -471,13 +668,13 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
 
           if (!validation.ok) return JSON.stringify(validation, null, 2)
 
-          const repository = resolveRepository(loaded.config)
+          const repository = resolveRepository(config)
           const states = await mapPool(
             parsed.prs,
             repository.concurrency.runs,
             (pr) =>
               runManager.startMerge({
-                config: loaded.config,
+                config,
                 dryRun: parsed.dryRun,
                 repository,
                 pr,
@@ -507,11 +704,15 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
         async execute(args, context) {
           const parsed = parseRunArguments(args.prs, args.dryRun ?? false)
           const loaded = await loadConfig(directory)
+          const config = mergeMagiConfig(
+            loaded.config as unknown as Record<string, unknown>,
+            parsed.configOverrides,
+          ) as unknown as MagiConfig
           const retryingExec = withGitHubApiRetry(
             exec,
-            loaded.config.github?.apiRetryAttempts ?? 3,
+            config.github?.apiRetryAttempts ?? 3,
           )
-          const validation = await validateConfig(loaded.config, {
+          const validation = await validateConfig(config, {
             checkAuth: true,
             directory,
             exec: retryingExec,
@@ -520,13 +721,13 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
 
           if (!validation.ok) return JSON.stringify(validation, null, 2)
 
-          const repository = resolveRepository(loaded.config)
+          const repository = resolveRepository(config)
           const states = await mapPool(
             parsed.prs,
             repository.concurrency.runs,
             (pr) =>
               runManager.startReview({
-                config: loaded.config,
+                config,
                 dryRun: parsed.dryRun,
                 repository,
                 pr,
@@ -557,11 +758,15 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
             args.dryRun ?? false,
           )
           const loaded = await loadConfig(directory)
+          const config = mergeMagiConfig(
+            loaded.config as unknown as Record<string, unknown>,
+            parsed.configOverrides,
+          ) as unknown as MagiConfig
           const retryingExec = withGitHubApiRetry(
             exec,
-            loaded.config.github?.apiRetryAttempts ?? 3,
+            config.github?.apiRetryAttempts ?? 3,
           )
-          const validation = await validateConfig(loaded.config, {
+          const validation = await validateConfig(config, {
             checkAuth: true,
             directory,
             exec: retryingExec,
@@ -572,7 +777,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
 
           if (!validation.ok) return JSON.stringify(validation, null, 2)
 
-          const repository = resolveRepository(loaded.config)
+          const repository = resolveRepository(config)
           if (!repository.triage)
             return JSON.stringify(
               { errors: ["triage configuration is required"], ok: false },
@@ -584,7 +789,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
             repository.triage.concurrency.runs,
             (issue) =>
               runManager.startTriage({
-                config: loaded.config,
+                config,
                 dryRun: parsed.dryRun,
                 issue,
                 parentSessionId: context.sessionID,
