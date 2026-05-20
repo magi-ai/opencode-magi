@@ -243,8 +243,8 @@ export function parseRunArguments(
           token === "--wait-checks-after-edit",
         )
         break
-      case "--pr":
-      case "--no-pr":
+      case "--create":
+      case "--no-create":
         throw unsupportedFlag(token, command)
       default:
         if (token.startsWith("--")) throw unsupportedFlag(token, command)
@@ -287,12 +287,12 @@ export function parseIssueRunArguments(
           token === "--close",
         )
         break
-      case "--pr":
-      case "--no-pr":
+      case "--create":
+      case "--no-create":
         setConfigOverride(
           configOverrides,
-          ["triage", "automation", "pr"],
-          token === "--pr",
+          ["triage", "automation", "create"],
+          token === "--create",
         )
         break
       case "--run-concurrency":

@@ -255,7 +255,7 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
       automation: {
         clear: config.triage?.automation?.clear ?? ["triage"],
         close: config.triage?.automation?.close ?? false,
-        pr: config.triage?.automation?.pr ?? false,
+        create: config.triage?.automation?.create ?? false,
       },
       categories: resolveTriageCategories(config),
       concurrency: {

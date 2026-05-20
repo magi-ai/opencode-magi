@@ -502,7 +502,7 @@ describe("prompt composer", () => {
       safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
       triage: {
         account: "magi-bot",
-        automation: { clear: ["triage"], close: false, pr: true },
+        automation: { clear: ["triage"], close: false, create: true },
         categories: [
           {
             description: "Something is broken.",

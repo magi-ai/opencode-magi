@@ -101,7 +101,7 @@
       }
     },
     "automation": {
-      "pr": true
+      "create": true
     }
   }
 }

@@ -73,7 +73,7 @@ const repository: ResolvedRepository = {
   safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
   triage: {
     account: "magi-bot",
-    automation: { clear: ["triage"], close: false, pr: false },
+    automation: { clear: ["triage"], close: false, create: false },
     categories: [
       {
         description: "Something is broken or behaves incorrectly.",
@@ -616,7 +616,7 @@ describe("triage orchestration", () => {
         },
       ],
       repository: repositoryWithTriage({
-        automation: { close: true, clear: ["triage"], pr: false },
+        automation: { close: true, clear: ["triage"], create: false },
       }),
     })
 
@@ -646,7 +646,7 @@ describe("triage orchestration", () => {
         "Rejected bug comment",
       ],
       repository: repositoryWithTriage({
-        automation: { close: true, clear: ["triage"], pr: false },
+        automation: { close: true, clear: ["triage"], create: false },
       }),
     })
 
@@ -680,7 +680,7 @@ describe("triage orchestration", () => {
       ],
       repository: {
         ...repositoryWithTriage({
-          automation: { close: false, clear: ["triage"], pr: true },
+          automation: { close: false, clear: ["triage"], create: true },
         }),
         agents: {
           ...repository.agents,
@@ -790,7 +790,7 @@ describe("triage orchestration", () => {
       ],
       repository: {
         ...repositoryWithTriage({
-          automation: { close: false, clear: ["triage"], pr: true },
+          automation: { close: false, clear: ["triage"], create: true },
         }),
         agents: {
           ...repository.agents,
@@ -831,7 +831,7 @@ describe("triage orchestration", () => {
       dryRun: false,
       outputs: [action("CLOSE")],
       repository: repositoryWithTriage({
-        automation: { close: true, clear: ["triage"], pr: false },
+        automation: { close: true, clear: ["triage"], create: false },
       }),
     })
 
@@ -860,7 +860,7 @@ describe("triage orchestration", () => {
       outputs: [action("CLEAR_ONLY")],
       repository: {
         ...repositoryWithTriage({
-          automation: { close: false, clear: ["triage"], pr: true },
+          automation: { close: false, clear: ["triage"], create: true },
         }),
         agents: {
           ...repository.agents,
@@ -912,7 +912,7 @@ describe("triage orchestration", () => {
       ],
       repository: {
         ...repositoryWithTriage({
-          automation: { close: false, clear: ["triage"], pr: true },
+          automation: { close: false, clear: ["triage"], create: true },
         }),
         agents: {
           ...repository.agents,
