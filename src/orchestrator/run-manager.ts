@@ -1615,6 +1615,7 @@ export class MagiRunManager {
     signal?: AbortSignal
   }): Promise<void> {
     const result = await runReview({
+      approvalPolicy: input.repository.merge.approvalPolicy,
       client: this.input.client,
       config: input.config,
       directory: this.input.directory,
