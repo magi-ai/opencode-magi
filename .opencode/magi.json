@@ -55,5 +55,44 @@
         "email": "hirotomo.yamada@avap.co.jp"
       }
     }
+  },
+  "triage": {
+    "account": "hirotomoyamada",
+    "agents": [
+      {
+        "id": "Melchior",
+        "model": "openai/gpt-5.5",
+        "options": {
+          "reasoningEffort": "high"
+        }
+      },
+      {
+        "id": "Balthasar",
+        "model": "opencode/deepseek-v4-flash-free",
+        "options": {
+          "reasoningEffort": "high"
+        }
+      },
+      {
+        "id": "Caspar",
+        "model": "opencode/qwen3.6-plus-free",
+        "options": {
+          "thinking": {
+            "type": "enabled",
+            "budgetTokens": 16000
+          }
+        }
+      }
+    ],
+    "creator": {
+      "model": "openai/gpt-5.5",
+      "options": {
+        "reasoningEffort": "high"
+      },
+      "author": {
+        "name": "hirotomoyamada",
+        "email": "hirotomo.yamada@avap.co.jp"
+      }
+    }
   }
 }
