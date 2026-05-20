@@ -295,6 +295,22 @@ export function parseIssueRunArguments(
           token === "--create",
         )
         break
+      case "--review":
+      case "--no-review":
+        setConfigOverride(
+          configOverrides,
+          ["triage", "automation", "review"],
+          token === "--review",
+        )
+        break
+      case "--merge":
+      case "--no-merge":
+        setConfigOverride(
+          configOverrides,
+          ["triage", "automation", "merge"],
+          token === "--merge",
+        )
+        break
       case "--run-concurrency":
         setConfigOverride(
           configOverrides,
@@ -302,8 +318,6 @@ export function parseIssueRunArguments(
           parseIntegerFlag(nextFlagValue(tokens, ++index, token), token, 1),
         )
         break
-      case "--merge":
-      case "--no-merge":
       case "--max-cycles":
       case "--retry-failed-jobs":
       case "--reviewer-concurrency":
@@ -771,7 +785,10 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
             directory,
             exec: retryingExec,
             modelCatalog: await modelCatalog(),
-            requireReview: false,
+            requireEditor: config.triage?.automation?.merge === true,
+            requireReview:
+              config.triage?.automation?.review === true ||
+              config.triage?.automation?.merge === true,
             requireTriage: true,
           })
 

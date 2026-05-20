@@ -153,13 +153,18 @@ describe("parseIssues", () => {
   test("parses triage config override flags", () => {
     expect(
       parseIssueRunArguments(
-        "--language ja --close --no-close --create --run-concurrency 2 47",
+        "--language ja --close --no-close --create --review --no-merge --run-concurrency 2 47",
       ),
     ).toEqual({
       configOverrides: {
         language: "ja",
         triage: {
-          automation: { close: false, create: true },
+          automation: {
+            close: false,
+            create: true,
+            merge: false,
+            review: true,
+          },
           concurrency: { runs: 2 },
         },
       },
@@ -177,10 +182,7 @@ describe("parseIssues", () => {
     )
   })
 
-  test("rejects PR review and merge flags for triage", () => {
-    expect(() => parseIssueRunArguments("--merge 47")).toThrow(
-      "--merge is not supported for /magi:triage.",
-    )
+  test("rejects PR review-only flags for triage", () => {
     expect(() => parseIssueRunArguments("--wait-checks 47")).toThrow(
       "--wait-checks is not supported for /magi:triage.",
     )
