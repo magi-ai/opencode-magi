@@ -26,6 +26,7 @@ import { dirname, join } from "node:path"
 import { issueRunOutputDir } from "../config/output"
 import { worktreeBaseDir } from "../config/worktree"
 import {
+  assignIssue,
   closeIssue,
   closePullRequest,
   configureGitIdentity,
@@ -985,6 +986,15 @@ async function createImplementationPr(input: {
 }): Promise<string | undefined> {
   const creator = input.input.repository.agents.triageCreator
   if (!creator) return undefined
+  const triage = input.input.repository.triage
+  if (!triage?.account) throw new Error("triage.account is required")
+
+  await assignIssue(
+    input.input.exec,
+    input.input.repository,
+    input.issue.number,
+    triage.account,
+  )
 
   const branch = `magi/issue-${input.issue.number}-${Date.now().toString(36)}`
   const worktreePath = join(
