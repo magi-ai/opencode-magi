@@ -464,10 +464,12 @@ export async function searchDuplicateIssues(
     url: string
   }[]
 
-  return data.map((item) => ({
-    ...item,
-    whyCandidate: "GitHub issue search matched the title.",
-  }))
+  return data
+    .filter((item) => item.number !== issue.number)
+    .map((item) => ({
+      ...item,
+      whyCandidate: "GitHub issue search matched the title.",
+    }))
 }
 
 export async function postIssueComment(

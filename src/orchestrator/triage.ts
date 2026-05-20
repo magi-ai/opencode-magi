@@ -18,7 +18,7 @@ import type {
   TriageVoteOutput,
 } from "../types"
 import { mkdir, writeFile } from "node:fs/promises"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { issueRunOutputDir } from "../config/output"
 import { worktreeBaseDir } from "../config/worktree"
 import {
@@ -51,7 +51,7 @@ import {
   parseTriageExistingPrOutput,
   parseTriageKindOutput,
 } from "../prompts/output"
-import { aggregateStringMajority } from "./majority"
+import { aggregateStringMajority, majorityThreshold } from "./majority"
 import { runModelText, runModelWithRepair, type ModelClient } from "./model"
 
 type FinalResult =
@@ -239,7 +239,37 @@ async function runVote<T extends string>(input: {
   return { ...result.value, raw: result.raw, sessionId: result.sessionId }
 }
 
+export function chooseDuplicateOutput(input: {
+  candidateNumbers: number[]
+  outputs: TriageDuplicateOutput[]
+}): TriageDuplicateOutput | undefined {
+  const candidates = new Set(input.candidateNumbers)
+  const threshold = majorityThreshold(input.outputs.length)
+  const counts = new Map<number, number>()
+
+  for (const output of input.outputs) {
+    if (
+      output.vote !== "DUPLICATE" ||
+      output.duplicateOf == null ||
+      !candidates.has(output.duplicateOf)
+    ) {
+      continue
+    }
+    counts.set(output.duplicateOf, (counts.get(output.duplicateOf) ?? 0) + 1)
+  }
+
+  const target = [...counts.entries()].find(
+    ([, count]) => count >= threshold,
+  )?.[0]
+  if (target == null) return undefined
+
+  return input.outputs.find(
+    (output) => output.vote === "DUPLICATE" && output.duplicateOf === target,
+  )
+}
+
 async function runDuplicateVote(input: {
+  candidateNumbers: number[]
   context: string
   input: TriageRunInput
   outputDir: string
@@ -275,7 +305,10 @@ async function runDuplicateVote(input: {
 
   if (majority.vote !== "DUPLICATE") return undefined
 
-  return outputs.find((output) => output.vote === "DUPLICATE")
+  return chooseDuplicateOutput({
+    candidateNumbers: input.candidateNumbers,
+    outputs,
+  })
 }
 
 async function runPhaseVote<T extends string>(input: {
@@ -383,6 +416,7 @@ async function createImplementationPr(input: {
     worktreeBaseDir(input.input.directory, input.input.config, "issue"),
     `issue-${input.issue.number}`,
   )
+  await mkdir(dirname(worktreePath), { recursive: true })
   await input.input.exec(
     `git worktree add -b ${shellQuote(branch)} ${shellQuote(worktreePath)}`,
   )
@@ -532,10 +566,17 @@ export async function runTriage(
   }
 
   if (relationship.duplicateCandidates.length) {
-    const duplicate = await runDuplicateVote({ context, input, outputDir })
+    const duplicate = await runDuplicateVote({
+      candidateNumbers: relationship.duplicateCandidates.map(
+        (candidate) => candidate.number,
+      ),
+      context,
+      input,
+      outputDir,
+    })
     if (duplicate) {
       const body = `@${issue.author} Magi triage found this issue duplicates #${duplicate.duplicateOf}.\n\nReason: ${duplicate.reason}\n\n${marker({ action: "CLOSE", issue: issue.number, result: "DUPLICATE" })}`
-      if (!input.dryRun && triage.automation.close) {
+      if (!input.dryRun) {
         await postIssueComment(
           input.exec,
           input.repository,
@@ -543,6 +584,8 @@ export async function runTriage(
           triage.account,
           body,
         )
+      }
+      if (!input.dryRun && triage.automation.close) {
         for (const pr of relationship.relatedPullRequests.filter(
           (pr) => pr.state === "OPEN",
         )) {
