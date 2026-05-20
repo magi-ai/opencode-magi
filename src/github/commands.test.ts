@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { describe, expect, test } from "vitest"
 import {
   createWorktree,
+  fetchIssue,
   fetchPullRequest,
   fetchPullRequestCommits,
   fetchPullRequestReviews,
@@ -86,6 +87,80 @@ describe("GitHub command helpers", () => {
     expect(ghHostOption(repository)).toBe("")
     expect(repoSpecifier(enterprise)).toBe("github.example.com/owner/repo")
     expect(ghHostOption(enterprise)).toBe(" --hostname 'github.example.com'")
+  })
+
+  test("fetches issues through GraphQL with issue type", async () => {
+    const commands: string[] = []
+
+    const result = await fetchIssue(
+      async (value) => {
+        commands.push(value)
+
+        return JSON.stringify({
+          data: {
+            repository: {
+              issue: {
+                author: { login: "author" },
+                body: "Issue body",
+                issueType: { name: "Bug" },
+                labels: { nodes: [{ name: "triage" }] },
+                number: 56,
+                state: "OPEN",
+                title: "Issue title",
+                url: "https://github.com/owner/repo/issues/56",
+              },
+            },
+          },
+        })
+      },
+      repository,
+      56,
+    )
+
+    expect(commands).toHaveLength(1)
+    expect(commands[0]).toContain("gh api graphql")
+    expect(commands[0]).toContain("issueType")
+    expectBalancedBraces(extractGraphqlQuery(commands[0]))
+    expect(result).toEqual({
+      author: "author",
+      body: "Issue body",
+      labels: ["triage"],
+      number: 56,
+      state: "OPEN",
+      title: "Issue title",
+      type: "Bug",
+      url: "https://github.com/owner/repo/issues/56",
+    })
+  })
+
+  test("falls back to gh issue view without issue type when GraphQL is unavailable", async () => {
+    const commands: string[] = []
+
+    const result = await fetchIssue(
+      async (value) => {
+        commands.push(value)
+        if (value.includes("graphql")) throw new Error("unsupported field")
+
+        return JSON.stringify({
+          author: { login: "author" },
+          body: "Issue body",
+          labels: [{ name: "triage" }],
+          number: 56,
+          state: "OPEN",
+          title: "Issue title",
+          url: "https://github.com/owner/repo/issues/56",
+        })
+      },
+      repository,
+      56,
+    )
+
+    expect(commands[0]).toContain("issueType")
+    expect(commands[1]).toContain(
+      "--json number,title,body,url,state,author,labels",
+    )
+    expect(commands[1]).not.toContain("labels,type")
+    expect(result.type).toBeUndefined()
   })
 
   test("excludes the current issue from duplicate search candidates", async () => {
