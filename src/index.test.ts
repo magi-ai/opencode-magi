@@ -1,5 +1,6 @@
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
+import type { MagiConfig } from "./types"
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import {
   MagiPlugin,
@@ -8,6 +9,8 @@ import {
   parsePrs,
   parseRunArguments,
 } from "./index"
+import { mergeMagiConfig } from "./config/load"
+import { resolveRepository } from "./config/resolve"
 
 const mockState = vi.hoisted(() => ({ home: "" }))
 
@@ -45,13 +48,89 @@ describe("parsePrs", () => {
 
   test("parses dry-run flag from command arguments", () => {
     expect(parseRunArguments("--dry-run 7581", false)).toEqual({
+      configOverrides: {},
       dryRun: true,
       prs: [7581],
     })
     expect(parseRunArguments("7581", true)).toEqual({
+      configOverrides: {},
       dryRun: true,
       prs: [7581],
     })
+  })
+
+  test("parses review config override flags", () => {
+    expect(
+      parseRunArguments(
+        "--language ja --merge --no-merge --close --retry-failed-jobs 2 --reviewer-concurrency 1 --run-concurrency 4 --no-wait-checks 7581",
+      ),
+    ).toEqual({
+      configOverrides: {
+        language: "ja",
+        review: {
+          automation: { close: true, merge: false },
+          checks: { retryFailedJobs: 2, wait: false },
+          concurrency: { reviewers: 1, runs: 4 },
+        },
+      },
+      dryRun: false,
+      prs: [7581],
+    })
+  })
+
+  test("parses merge config override flags", () => {
+    expect(
+      parseRunArguments(
+        "--language en --merge --no-close --max-cycles 0 --wait-checks --no-wait-checks-after-edit 7581",
+        false,
+        "merge",
+      ),
+    ).toEqual({
+      configOverrides: {
+        language: "en",
+        merge: {
+          automation: { close: false, merge: true },
+          checks: { wait: false },
+          maxThreadResolutionCycles: 0,
+        },
+        review: { checks: { wait: true } },
+      },
+      dryRun: false,
+      prs: [7581],
+    })
+  })
+
+  test("applies parsed overrides before repository resolution", () => {
+    const parsed = parseRunArguments(
+      "--language ja --no-merge --no-close --retry-failed-jobs 1 --run-concurrency 2 7581",
+    )
+    const config = mergeMagiConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        language: "en",
+        review: {
+          automation: { close: true, merge: true },
+          checks: { retryFailedJobs: 3 },
+          concurrency: { runs: 3 },
+        },
+      },
+      parsed.configOverrides,
+    )
+    const repository = resolveRepository(config as unknown as MagiConfig)
+
+    expect(repository.language).toBe("ja")
+    expect(repository.reviewAutomation).toEqual({ close: false, merge: false })
+    expect(repository.checks.retryFailedJobs).toBe(1)
+    expect(repository.concurrency.runs).toBe(2)
+  })
+
+  test("rejects command-specific PR flags", () => {
+    expect(() => parseRunArguments("--max-cycles 1 7581")).toThrow(
+      "--max-cycles is not supported for /magi:review.",
+    )
+    expect(() => parseRunArguments("--pr 7581")).toThrow(
+      "--pr is not supported for /magi:review.",
+    )
   })
 })
 
@@ -65,9 +144,37 @@ describe("parseIssues", () => {
 
   test("parses dry-run flag from issue arguments", () => {
     expect(parseIssueRunArguments("--dry-run 47", false)).toEqual({
+      configOverrides: {},
       dryRun: true,
       issues: [47],
     })
+  })
+
+  test("parses triage config override flags", () => {
+    expect(
+      parseIssueRunArguments(
+        "--language ja --close --no-close --pr --run-concurrency 2 47",
+      ),
+    ).toEqual({
+      configOverrides: {
+        language: "ja",
+        triage: {
+          automation: { close: false, pr: true },
+          concurrency: { runs: 2 },
+        },
+      },
+      dryRun: false,
+      issues: [47],
+    })
+  })
+
+  test("rejects PR review and merge flags for triage", () => {
+    expect(() => parseIssueRunArguments("--merge 47")).toThrow(
+      "--merge is not supported for /magi:triage.",
+    )
+    expect(() => parseIssueRunArguments("--wait-checks 47")).toThrow(
+      "--wait-checks is not supported for /magi:triage.",
+    )
   })
 })
 

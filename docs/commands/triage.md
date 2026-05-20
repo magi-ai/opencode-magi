@@ -5,11 +5,23 @@
 ```txt
 /magi:triage <ISSUE...>
 /magi:triage --dry-run <ISSUE...>
+/magi:triage --no-close --no-pr <ISSUE...>
 ```
 
 `<ISSUE...>` accepts one or more issue numbers, `#123` tokens, or issue URLs separated by spaces or commas.
 
 Use `--dry-run` to run relationship scanning, triage agents, majority voting, comment composition, and reporting without mutating GitHub. Dry runs do not post issue comments, close issues or related PRs, remove labels, create implementation PRs, push branches, or trigger creator-agent PR work.
+
+Per-run flags override merged config before validation and resolution. If both positive and negative boolean flags are supplied, the later flag wins. `--dry-run` remains the strongest safety mode and prevents GitHub mutations even when automation-enabling flags are supplied.
+
+Triage flags:
+
+| Flag                    | Overrides                 |
+| ----------------------- | ------------------------- |
+| `--language <value>`    | `language`                |
+| `--close`, `--no-close` | `triage.automation.close` |
+| `--pr`, `--no-pr`       | `triage.automation.pr`    |
+| `--run-concurrency <n>` | `triage.concurrency.runs` |
 
 ## What It Does
 

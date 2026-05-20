@@ -5,11 +5,28 @@
 ```txt
 /magi:merge <PR...>
 /magi:merge --dry-run <PR...>
+/magi:merge --no-merge --max-cycles 1 <PR...>
 ```
 
 `<PR...>` accepts one or more PR numbers or PR URLs separated by spaces or commas.
 
 Use `--dry-run` to run review, editor, re-review, majority voting, and reporting without posting to GitHub, pushing editor commits, resolving threads, merging, closing, or rerunning CI jobs. The editor may still modify and commit inside Magi's temporary worktree so reviewers can inspect the local diff.
+
+Per-run flags override merged config before validation and resolution. If both positive and negative boolean flags are supplied, the later flag wins. `--dry-run` remains the strongest safety mode and prevents GitHub mutations even when automation-enabling flags are supplied.
+
+Merge flags:
+
+| Flag                                                      | Overrides                         |
+| --------------------------------------------------------- | --------------------------------- |
+| `--language <value>`                                      | `language`                        |
+| `--merge`, `--no-merge`                                   | `merge.automation.merge`          |
+| `--close`, `--no-close`                                   | `merge.automation.close`          |
+| `--max-cycles <n>`                                        | `merge.maxThreadResolutionCycles` |
+| `--retry-failed-jobs <n>`                                 | `review.checks.retryFailedJobs`   |
+| `--reviewer-concurrency <n>`                              | `review.concurrency.reviewers`    |
+| `--run-concurrency <n>`                                   | `review.concurrency.runs`         |
+| `--wait-checks`, `--no-wait-checks`                       | `review.checks.wait`              |
+| `--wait-checks-after-edit`, `--no-wait-checks-after-edit` | `merge.checks.wait`               |
 
 ## What It Does
 

@@ -5,11 +5,26 @@
 ```txt
 /magi:review <PR...>
 /magi:review --dry-run <PR...>
+/magi:review --no-merge --run-concurrency 1 <PR...>
 ```
 
 `<PR...>` accepts one or more PR numbers or PR URLs separated by spaces or commas.
 
 Use `--dry-run` to run CI classification, reviewer agents, majority voting, and reporting without posting GitHub reviews or comments. Scope-out CI jobs are classified, but reruns are reported as planned actions instead of being triggered.
+
+Per-run flags override merged config before validation and resolution. If both positive and negative boolean flags are supplied, the later flag wins. `--dry-run` remains the strongest safety mode and prevents GitHub mutations even when automation-enabling flags are supplied.
+
+Review flags:
+
+| Flag                                | Overrides                       |
+| ----------------------------------- | ------------------------------- |
+| `--language <value>`                | `language`                      |
+| `--merge`, `--no-merge`             | `review.automation.merge`       |
+| `--close`, `--no-close`             | `review.automation.close`       |
+| `--retry-failed-jobs <n>`           | `review.checks.retryFailedJobs` |
+| `--reviewer-concurrency <n>`        | `review.concurrency.reviewers`  |
+| `--run-concurrency <n>`             | `review.concurrency.runs`       |
+| `--wait-checks`, `--no-wait-checks` | `review.checks.wait`            |
 
 ## What It Does
 
