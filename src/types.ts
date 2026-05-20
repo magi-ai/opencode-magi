@@ -266,7 +266,7 @@ export interface ResolvedTriageCreator extends Omit<
 export interface ResolvedAgents {
   editor?: ResolvedEditor
   reviewers: ResolvedReviewer[]
-  triage: ResolvedTriageAgent[]
+  triage?: ResolvedTriageAgent[]
   triageCreator?: ResolvedTriageCreator
 }
 
@@ -293,7 +293,7 @@ export interface ResolvedRepository extends RepositoryConfig {
   safety: Required<Omit<SafetyConfig, "maxChangedFiles">> & {
     maxChangedFiles?: number
   }
-  triage: {
+  triage?: {
     account?: string
     automation: Required<TriageAutomationConfig>
     concurrency: Required<TriageConcurrencyConfig>

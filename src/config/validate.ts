@@ -810,7 +810,7 @@ function validateTriage(
   )
   if (Array.isArray(triage.agents)) {
     validateResolvedAgentKeys(
-      resolveAgents(config).triage,
+      resolveAgents(config).triage ?? [],
       "triage.resolvedAgents",
       errors,
     )

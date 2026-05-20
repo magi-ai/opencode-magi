@@ -169,13 +169,15 @@ export function resolveIssueKind(
   issue: IssueMeta,
   repository: ResolvedRepository,
 ): "BUG" | "FEATURE" | undefined {
+  const triage = repository.triage
+  if (!triage) throw new Error("triage configuration is required")
+
   const bug =
-    labelsContain(issue.labels, repository.triage.kind.bug.label) ||
-    (issue.type != null && repository.triage.kind.bug.type.includes(issue.type))
+    labelsContain(issue.labels, triage.kind.bug.label) ||
+    (issue.type != null && triage.kind.bug.type.includes(issue.type))
   const feature =
-    labelsContain(issue.labels, repository.triage.kind.feature.label) ||
-    (issue.type != null &&
-      repository.triage.kind.feature.type.includes(issue.type))
+    labelsContain(issue.labels, triage.kind.feature.label) ||
+    (issue.type != null && triage.kind.feature.type.includes(issue.type))
 
   if (bug === feature) return undefined
 
@@ -242,8 +244,11 @@ async function runDuplicateVote(input: {
   input: TriageRunInput
   outputDir: string
 }): Promise<TriageDuplicateOutput | undefined> {
+  const agents = input.input.repository.agents.triage
+  if (!agents?.length) throw new Error("triage.agents is required")
+
   const outputs = await Promise.all(
-    input.input.repository.agents.triage.map((agent) =>
+    agents.map((agent) =>
       runVote<TriageDuplicateVote>({
         agent,
         client: input.input.client,
@@ -260,7 +265,7 @@ async function runDuplicateVote(input: {
   )
   const majority = aggregateStringMajority(
     outputs.map((output, index) => ({
-      reviewer: input.input.repository.agents.triage[index].key,
+      reviewer: agents[index].key,
       vote: output.vote,
     })),
     DUPLICATE_VOTES,
@@ -283,8 +288,11 @@ async function runPhaseVote<T extends string>(input: {
   schemaName: string
   votes: readonly T[]
 }): Promise<T | undefined> {
+  const agents = input.input.repository.agents.triage
+  if (!agents?.length) throw new Error("triage.agents is required")
+
   const outputs = await Promise.all(
-    input.input.repository.agents.triage.map((agent) =>
+    agents.map((agent) =>
       runVote<T>({
         agent,
         client: input.input.client,
@@ -301,7 +309,7 @@ async function runPhaseVote<T extends string>(input: {
   )
   const majority = aggregateStringMajority(
     outputs.map((output, index) => ({
-      reviewer: input.input.repository.agents.triage[index].key,
+      reviewer: agents[index].key,
       vote: output.vote,
     })),
     input.votes,
@@ -335,7 +343,9 @@ function safetyBlocked(
   issue: IssueMeta,
   hasMarker: boolean,
 ): string | undefined {
-  const safety = input.repository.triage.safety
+  const triage = input.repository.triage
+  if (!triage) throw new Error("triage configuration is required")
+  const safety = triage.safety
 
   if (issue.state === "CLOSED") return "issue is closed"
   if (!hasMarker && safety.requiredLabels.length) {
@@ -425,8 +435,10 @@ async function createImplementationPr(input: {
 export async function runTriage(
   input: TriageRunInput,
 ): Promise<TriageRunResult> {
-  if (!input.repository.triage.account)
-    throw new Error("triage.account is required")
+  const triage = input.repository.triage
+  if (!triage?.account) throw new Error("triage.account is required")
+  const agents = input.repository.agents.triage
+  if (!agents?.length) throw new Error("triage.agents is required")
 
   const runId = input.runId ?? `run-${Date.now().toString(36)}`
   const outputDir = issueRunOutputDir({
@@ -471,28 +483,28 @@ export async function runTriage(
       const merged = relationship.relatedPullRequests.some(
         (pr) => pr.state === "MERGED",
       )
-      if (merged && input.repository.triage.automation.close) {
+      if (merged && triage.automation.close) {
         const body = `@${issue.author} Magi found a related merged pull request that appears to resolve this issue.\n\n${marker({ action: "CLOSE", issue: issue.number, result: "RESOLVED_BY_MERGED_PR" })}`
         if (!input.dryRun) {
           await postIssueComment(
             input.exec,
             input.repository,
             issue.number,
-            input.repository.triage.account,
+            triage.account,
             body,
           )
           await closeIssue(
             input.exec,
             input.repository,
             issue.number,
-            input.repository.triage.account,
+            triage.account,
           )
           await removeIssueLabels(
             input.exec,
             input.repository,
             issue.number,
-            input.repository.triage.automation.clear,
-            input.repository.triage.account,
+            triage.automation.clear,
+            triage.account,
           )
         }
         const report = `Magi triage closed #${issue.number} because a related PR was merged.`
@@ -509,8 +521,8 @@ export async function runTriage(
           input.exec,
           input.repository,
           issue.number,
-          input.repository.triage.automation.clear,
-          input.repository.triage.account,
+          triage.automation.clear,
+          triage.account,
         )
       }
       const report = `Magi triage cleared #${issue.number} because a related PR handles it.`
@@ -523,12 +535,12 @@ export async function runTriage(
     const duplicate = await runDuplicateVote({ context, input, outputDir })
     if (duplicate) {
       const body = `@${issue.author} Magi triage found this issue duplicates #${duplicate.duplicateOf}.\n\nReason: ${duplicate.reason}\n\n${marker({ action: "CLOSE", issue: issue.number, result: "DUPLICATE" })}`
-      if (!input.dryRun && input.repository.triage.automation.close) {
+      if (!input.dryRun && triage.automation.close) {
         await postIssueComment(
           input.exec,
           input.repository,
           issue.number,
-          input.repository.triage.account,
+          triage.account,
           body,
         )
         for (const pr of relationship.relatedPullRequests.filter(
@@ -538,14 +550,14 @@ export async function runTriage(
             input.exec,
             input.repository,
             pr.number,
-            input.repository.triage.account,
+            triage.account,
           )
         }
         await closeIssue(
           input.exec,
           input.repository,
           issue.number,
-          input.repository.triage.account,
+          triage.account,
         )
       }
       if (!input.dryRun) {
@@ -553,8 +565,8 @@ export async function runTriage(
           input.exec,
           input.repository,
           issue.number,
-          input.repository.triage.automation.clear,
-          input.repository.triage.account,
+          triage.automation.clear,
+          triage.account,
         )
       }
       const report = `Magi triage marked #${issue.number} duplicate of #${duplicate.duplicateOf}.`
@@ -612,10 +624,10 @@ export async function runTriage(
   }
 
   const needsClose =
-    input.repository.triage.automation.close &&
+    triage.automation.close &&
     (result === "BUG_REJECTED" || result === "FEATURE_REJECTED")
   const needsPr =
-    input.repository.triage.automation.pr &&
+    triage.automation.pr &&
     (result === "BUG_ACCEPTED" || result === "FEATURE_ACCEPTED")
   const commentContext = `Result: ${result}\n\n${context}`
   const commentPrompt = composeTriageCommentPrompt({
@@ -630,9 +642,9 @@ export async function runTriage(
       await runModelText({
         allowEmpty: false,
         client: input.client,
-        model: input.repository.agents.triage[0].model,
-        options: input.repository.agents.triage[0].options,
-        permission: input.repository.agents.triage[0].permission,
+        model: agents[0].model,
+        options: agents[0].options,
+        permission: agents[0].permission,
         prompt: commentPrompt,
         signal: input.signal,
         title: `Magi triage comment #${issue.number}`,
@@ -645,7 +657,7 @@ export async function runTriage(
       input.exec,
       input.repository,
       issue.number,
-      input.repository.triage.account,
+      triage.account,
       comment,
     )
     if (needsClose) {
@@ -656,14 +668,14 @@ export async function runTriage(
           input.exec,
           input.repository,
           pr.number,
-          input.repository.triage.account,
+          triage.account,
         )
       }
       await closeIssue(
         input.exec,
         input.repository,
         issue.number,
-        input.repository.triage.account,
+        triage.account,
       )
     }
     if (needsPr)
@@ -673,8 +685,8 @@ export async function runTriage(
         input.exec,
         input.repository,
         issue.number,
-        input.repository.triage.automation.clear,
-        input.repository.triage.account,
+        triage.automation.clear,
+        triage.account,
       )
     }
   }

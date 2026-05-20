@@ -551,6 +551,12 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
           if (!validation.ok) return JSON.stringify(validation, null, 2)
 
           const repository = resolveRepository(loaded.config)
+          if (!repository.triage)
+            return JSON.stringify(
+              { errors: ["triage configuration is required"], ok: false },
+              null,
+              2,
+            )
           const results = await mapPool(
             parsed.issues,
             repository.triage.concurrency.runs,

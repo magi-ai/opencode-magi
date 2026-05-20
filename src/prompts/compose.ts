@@ -542,7 +542,7 @@ export async function composeTriageExistingPrPrompt(
   return composeTriageVotePrompt({
     ...input,
     builtin: "existing-pr",
-    customPath: input.repository.triage.prompts.existingPr,
+    customPath: input.repository.triage?.prompts.existingPr,
     outputContract: triageVoteOutputContract(
       '"RELATED_PR_HANDLES_ISSUE" | "RELATED_PR_DOES_NOT_HANDLE_ISSUE"',
     ),
@@ -555,7 +555,7 @@ export async function composeTriageDuplicatePrompt(
   return composeTriageVotePrompt({
     ...input,
     builtin: "duplicate",
-    customPath: input.repository.triage.prompts.duplicate,
+    customPath: input.repository.triage?.prompts.duplicate,
     outputContract: triageDuplicateOutputContract,
   })
 }
@@ -566,7 +566,7 @@ export async function composeTriageKindPrompt(
   return composeTriageVotePrompt({
     ...input,
     builtin: "kind",
-    customPath: input.repository.triage.prompts.kind,
+    customPath: input.repository.triage?.prompts.kind,
     outputContract: triageVoteOutputContract('"BUG" | "FEATURE" | "ASK"'),
   })
 }
@@ -577,7 +577,7 @@ export async function composeTriageBugPrompt(
   return composeTriageVotePrompt({
     ...input,
     builtin: "bug",
-    customPath: input.repository.triage.prompts.bug,
+    customPath: input.repository.triage?.prompts.bug,
     outputContract: triageVoteOutputContract('"YES" | "NO" | "ASK"'),
   })
 }
@@ -588,7 +588,7 @@ export async function composeTriageFeaturePrompt(
   return composeTriageVotePrompt({
     ...input,
     builtin: "feature",
-    customPath: input.repository.triage.prompts.feature,
+    customPath: input.repository.triage?.prompts.feature,
     outputContract: triageVoteOutputContract('"YES" | "NO" | "ASK"'),
   })
 }
@@ -599,7 +599,7 @@ export async function composeTriageCommentClassificationPrompt(
   return composeTriageVotePrompt({
     ...input,
     builtin: "comment-classification",
-    customPath: input.repository.triage.prompts.commentClassification,
+    customPath: input.repository.triage?.prompts.commentClassification,
     outputContract: triageCommentClassificationOutputContract,
   })
 }
