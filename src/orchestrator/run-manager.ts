@@ -34,7 +34,7 @@ import {
 } from "./merge"
 import type { ModelClient } from "./model"
 import { runReview, type ReviewRunProgress } from "./review"
-import { runTriage } from "./triage"
+import { runTriage, type TriageRunProgress } from "./triage"
 
 export type MagiAgentStatus =
   | "blocked"
@@ -113,6 +113,7 @@ export interface MagiRunState {
   sessionIds?: Record<string, string>
   status: MagiRunStatus
   threadAttempts?: Record<string, ThreadResolutionAttempt>
+  triageCreator?: MagiRunAgentState
   updatedAt: string
   verdict?: string
   warnings?: string[]
@@ -363,6 +364,24 @@ function editorFailureText(input: {
   const repairs = repairAttemptsText(input.repairAttempts)
 
   return `**Editor** failed editing ${input.pr}${repairs}: ${input.error}`
+}
+
+function triageCreatorFailureText(input: {
+  error: string
+  issue: string
+  repairAttempts: number
+}): string {
+  const repairs = repairAttemptsText(input.repairAttempts)
+
+  return `**Triage creator** failed creating an implementation PR for ${input.issue}${repairs}: ${input.error}`
+}
+
+function triageDecisionNotification(input: {
+  action: string
+  issue: string
+  result: string
+}): string {
+  return `Triage decided ${input.issue}: ${input.result}. Planned action: ${input.action}.`
 }
 
 function repairAttemptsText(attempts: number): string {
@@ -855,6 +874,14 @@ export class MagiRunManager {
       ),
       runId,
       status: "preparing",
+      triageCreator: input.repository.agents.triageCreator
+        ? {
+            account: input.repository.agents.triageCreator.account,
+            repairAttempts: 0,
+            status: "pending",
+            toolCalls: 0,
+          }
+        : undefined,
       updatedAt: createdAt,
     }
 
@@ -1003,6 +1030,19 @@ export class MagiRunManager {
     if (state.editor?.sessionId) {
       await this.input.client.session
         .abort?.({ path: { id: state.editor.sessionId } })
+        .catch(() => undefined)
+    }
+    if (
+      state.triageCreator?.status === "pending" ||
+      state.triageCreator?.status === "running" ||
+      state.triageCreator?.status === "repairing" ||
+      state.triageCreator?.status === "blocked"
+    ) {
+      state.triageCreator.status = "cancelled"
+    }
+    if (state.triageCreator?.sessionId) {
+      await this.input.client.session
+        .abort?.({ path: { id: state.triageCreator.sessionId } })
         .catch(() => undefined)
     }
     for (const reviewer of Object.values(state.reviewers)) {
@@ -1390,7 +1430,7 @@ export class MagiRunManager {
           state,
           questionWaitText({
             agent: mapping.agent,
-            pr: prMarkdownLink(state),
+            pr: runLabel(state),
             question,
           }),
           { reply: true },
@@ -1417,7 +1457,7 @@ export class MagiRunManager {
         dirty = true
         await this.notify(
           state,
-          `Magi ${mapping.agent} is waiting for permission on ${prMarkdownLink(state)}: ${agent.error}`,
+          `Magi ${mapping.agent} is waiting for permission on ${runLabel(state)}: ${agent.error}`,
           { reply: true },
         )
       }
@@ -1445,7 +1485,7 @@ export class MagiRunManager {
           state,
           questionWaitText({
             agent: mapping.agent,
-            pr: prMarkdownLink(state),
+            pr: runLabel(state),
             question,
           }),
           { reply: true },
@@ -1535,6 +1575,9 @@ export class MagiRunManager {
         const editorLine = state.editor
           ? this.formatAgentLine("editor", state.editor, options)
           : undefined
+        const triageCreatorLine = state.triageCreator
+          ? this.formatAgentLine("triageCreator", state.triageCreator, options)
+          : undefined
         const reviewerLines = Object.entries(state.reviewers).map(
           ([key, reviewer]) => {
             return this.formatAgentLine(key, reviewer, options)
@@ -1547,6 +1590,7 @@ export class MagiRunManager {
         const lines = [
           options.verbose ? `Run: ${state.runId}` : undefined,
           state.pr == null ? undefined : `PR: #${state.pr}`,
+          state.issue == null ? undefined : `Issue: #${state.issue}`,
           `Command: ${state.command}`,
           state.dryRun ? "Dry run: true" : undefined,
           `Status: ${state.status}`,
@@ -1575,6 +1619,7 @@ export class MagiRunManager {
             ? `Report: ${state.reportPath}`
             : undefined,
           editorLine,
+          triageCreatorLine,
           ...classifierLines,
           ...reviewerLines,
         ]
@@ -1613,6 +1658,7 @@ export class MagiRunManager {
   private collectSessionIds(state: MagiRunState): string[] {
     const ids = [
       state.editor?.sessionId,
+      state.triageCreator?.sessionId,
       ...Object.values(state.reviewers).map((reviewer) => reviewer.sessionId),
       ...Object.values(state.ciClassifiers ?? {}).map(
         (classifier) => classifier.sessionId,
@@ -1672,13 +1718,23 @@ export class MagiRunManager {
     key: string,
   ): MagiRunAgentState | undefined {
     if (key.startsWith("ci:")) return state.ciClassifiers?.[key.slice(3)]
-    return key === "editor" ? state.editor : state.reviewers[key]
+    if (key === "editor") return state.editor
+    if (key === "triageCreator") return state.triageCreator
+    return state.reviewers[key]
   }
 
   private agentEntries(state: MagiRunState): [string, MagiRunAgentState][] {
     return [
       ...(state.editor
         ? [["editor", state.editor] as [string, MagiRunAgentState]]
+        : []),
+      ...(state.triageCreator
+        ? [
+            ["triageCreator", state.triageCreator] as [
+              string,
+              MagiRunAgentState,
+            ],
+          ]
         : []),
       ...Object.entries(state.ciClassifiers ?? {}).map(
         ([key, value]) => [`ci:${key}`, value] as [string, MagiRunAgentState],
@@ -1709,10 +1765,10 @@ export class MagiRunManager {
     if (!matches.length) {
       return key
         ? `No pending ${kind} request found for ${key}.`
-        : `No pending ${kind} request found for ${prMarkdownLink(state)}.`
+        : `No pending ${kind} request found for ${runLabel(state)}.`
     }
     if (matches.length > 1) {
-      return `Multiple pending ${kind} requests found for ${prMarkdownLink(state)}. Specify agent or requestId.`
+      return `Multiple pending ${kind} requests found for ${runLabel(state)}. Specify agent or requestId.`
     }
 
     return { key: matches[0][0], state: matches[0][1] }
@@ -1879,6 +1935,7 @@ export class MagiRunManager {
         input.config.github?.apiRetryAttempts ?? 3,
       ),
       issue: input.issue,
+      onProgress: (progress) => this.applyTriageProgress(input.runId, progress),
       repository: input.repository,
       runId: input.runId,
       signal: input.signal,
@@ -1897,6 +1954,9 @@ export class MagiRunManager {
     for (const agent of Object.values(completed.reviewers)) {
       if (agent.status === "pending") agent.status = "completed"
     }
+    if (completed.triageCreator?.status === "pending") {
+      completed.triageCreator.status = "skipped"
+    }
 
     await this.persist(completed)
     await this.notify(
@@ -1910,6 +1970,270 @@ export class MagiRunManager {
     )
     this.active.delete(input.runId)
     this.controllers.delete(input.runId)
+  }
+
+  private async applyTriageProgress(
+    runId: string,
+    progress: TriageRunProgress,
+  ): Promise<void> {
+    const state = this.active.get(runId)
+    if (!state) return
+
+    const issue = issueMarkdownLink(state)
+    const creatorState = () =>
+      state.triageCreator ??
+      (state.triageCreator = {
+        account: "triageCreator",
+        repairAttempts: 0,
+        status: "pending",
+        toolCalls: 0,
+      })
+
+    state.updatedAt = now()
+
+    if (progress.type === "phase") {
+      state.phase = progress.phase
+      state.status = "running"
+    }
+
+    if (progress.type === "decision") {
+      state.phase = `decision: ${progress.result.disposition}`
+      state.verdict = JSON.stringify(progress.result)
+    }
+
+    if (progress.type === "comment_posting") {
+      state.phase = "posting triage comment"
+      state.status = "posting"
+    }
+
+    if (progress.type === "comment_posted") {
+      state.status = "running"
+    }
+
+    if (progress.type === "pr_creation_started") {
+      state.phase = "creating implementation PR"
+      state.status = "running"
+    }
+
+    if (progress.type === "worktree_created") {
+      state.worktreePath = progress.worktreePath
+      state.worktreeBranch = progress.branch
+    }
+
+    if (progress.type === "triage_agent_started") {
+      const reviewer = state.reviewers[progress.reviewer]
+      if (reviewer) reviewer.status = "running"
+    }
+
+    if (progress.type === "triage_agent_session") {
+      const reviewer = state.reviewers[progress.reviewer]
+      if (reviewer) {
+        if (progress.options)
+          this.input.setSessionOptions?.(progress.sessionId, progress.options)
+        reviewer.sessionId = progress.sessionId
+        reviewer.status = "running"
+        reviewer.lastUpdate = now()
+        this.sessionToRun.set(progress.sessionId, {
+          agent: progress.reviewer,
+          runId,
+        })
+      }
+    }
+
+    if (progress.type === "triage_agent_repair") {
+      const reviewer = state.reviewers[progress.reviewer]
+      if (reviewer) {
+        reviewer.status = "repairing"
+        reviewer.repairAttempts += 1
+        reviewer.lastUpdate = now()
+      }
+    }
+
+    if (progress.type === "triage_agent_response") {
+      const reviewer = state.reviewers[progress.reviewer]
+      if (reviewer) {
+        reviewer.sessionId = progress.sessionId
+        reviewer.lastUpdate = now()
+      }
+    }
+
+    if (progress.type === "triage_agent_completed") {
+      const reviewer = state.reviewers[progress.reviewer]
+      if (reviewer) {
+        reviewer.sessionId = progress.sessionId
+        reviewer.status = "completed"
+        reviewer.verdict = progress.vote
+        reviewer.rawPath = join(
+          state.outputDir,
+          `${progress.reviewer}.${progress.phase}.raw.txt`,
+        )
+        reviewer.parsedPath = join(
+          state.outputDir,
+          `${progress.reviewer}.${progress.phase}.json`,
+        )
+        reviewer.lastUpdate = now()
+      }
+    }
+
+    if (progress.type === "triage_agent_failed") {
+      const reviewer = state.reviewers[progress.reviewer]
+      if (reviewer) {
+        reviewer.status = "failed"
+        reviewer.error = redactSecrets(progress.error)
+        reviewer.lastUpdate = now()
+      }
+    }
+
+    if (progress.type === "triage_creator_started") {
+      creatorState().status = "running"
+    }
+
+    if (progress.type === "triage_creator_session") {
+      const creator = creatorState()
+      if (progress.options)
+        this.input.setSessionOptions?.(progress.sessionId, progress.options)
+      creator.sessionId = progress.sessionId
+      creator.status = "running"
+      creator.lastUpdate = now()
+      this.sessionToRun.set(progress.sessionId, {
+        agent: "triageCreator",
+        runId,
+      })
+    }
+
+    if (progress.type === "triage_creator_repair") {
+      const creator = creatorState()
+      creator.status = "repairing"
+      creator.repairAttempts += 1
+      creator.lastUpdate = now()
+    }
+
+    if (progress.type === "triage_creator_response") {
+      const creator = creatorState()
+      creator.sessionId = progress.sessionId
+      creator.lastUpdate = now()
+    }
+
+    if (progress.type === "triage_creator_completed") {
+      const creator = creatorState()
+      creator.sessionId = progress.sessionId
+      creator.status = "completed"
+      creator.parsedPath = join(state.outputDir, "create-pr.json")
+      creator.lastUpdate = now()
+    }
+
+    if (progress.type === "triage_creator_failed") {
+      const creator = creatorState()
+      creator.status = "failed"
+      creator.error = redactSecrets(progress.error)
+      creator.lastUpdate = now()
+    }
+
+    await this.persist(state)
+
+    if (progress.type === "phase") {
+      await this.notify(state, `Triage phase for ${issue}: ${progress.phase}.`)
+    }
+
+    if (progress.type === "decision") {
+      await this.notify(
+        state,
+        triageDecisionNotification({
+          action: progress.action,
+          issue,
+          result: JSON.stringify(progress.result),
+        }),
+      )
+    }
+
+    if (progress.type === "triage_agent_started") {
+      await this.notify(
+        state,
+        `**Triage agent ${progress.reviewer}** started ${progress.phase} for ${issue}.`,
+      )
+    }
+
+    if (progress.type === "triage_agent_repair") {
+      await this.notify(
+        state,
+        `**Triage agent ${progress.reviewer}** started JSON regeneration for ${issue}.`,
+      )
+    }
+
+    if (progress.type === "triage_agent_completed") {
+      await this.notify(
+        state,
+        `**Triage agent ${progress.reviewer}** completed ${progress.phase} for ${issue}: ${progress.vote}.`,
+      )
+    }
+
+    if (progress.type === "triage_agent_failed") {
+      await this.notify(
+        state,
+        `**Triage agent ${progress.reviewer}** failed ${progress.phase} for ${issue}: ${redactSecrets(progress.error)}`,
+      )
+    }
+
+    if (progress.type === "comment_posting") {
+      await this.notify(state, `Posting triage comment for ${issue}.`)
+    }
+
+    if (progress.type === "comment_posted") {
+      await this.notify(
+        state,
+        `Posted triage comment for ${issue}: ${progress.url}`,
+      )
+    }
+
+    if (progress.type === "pr_creation_started") {
+      await this.notify(
+        state,
+        `Started implementation PR creation for ${issue}.`,
+      )
+    }
+
+    if (progress.type === "worktree_created") {
+      await this.notify(state, `Worktree is ready for ${issue}.`)
+    }
+
+    if (progress.type === "triage_creator_started") {
+      await this.notify(
+        state,
+        `**Triage creator** started creating an implementation PR for ${issue}.`,
+      )
+    }
+
+    if (progress.type === "triage_creator_repair") {
+      await this.notify(
+        state,
+        `**Triage creator** started JSON regeneration for ${issue}.`,
+      )
+    }
+
+    if (progress.type === "triage_creator_completed") {
+      await this.notify(
+        state,
+        `**Triage creator** completed implementation changes for ${issue}.`,
+      )
+    }
+
+    if (progress.type === "triage_creator_failed") {
+      await this.notify(
+        state,
+        triageCreatorFailureText({
+          error: redactSecrets(progress.error),
+          issue,
+          repairAttempts: state.triageCreator?.repairAttempts ?? 0,
+        }),
+      )
+    }
+
+    if (progress.type === "pr_created") {
+      await this.notify(
+        state,
+        `Created implementation PR for ${issue}: ${progress.url}`,
+      )
+    }
   }
 
   private async applyReviewProgress(

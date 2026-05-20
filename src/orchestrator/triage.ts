@@ -65,7 +65,13 @@ import {
   parseTriageExistingPrOutput,
 } from "../prompts/output"
 import { aggregateStringMajority, majorityThreshold } from "./majority"
-import { runModelText, runModelWithRepair, type ModelClient } from "./model"
+import {
+  runModelText,
+  runModelWithRepair,
+  type ModelClient,
+  type ModelRunResult,
+  type ModelRunProgress,
+} from "./model"
 
 type FinalResult = TriageDecision
 
@@ -76,6 +82,7 @@ export interface TriageRunInput {
   dryRun?: boolean
   exec: Exec
   issue: number
+  onProgress?: (progress: TriageRunProgress) => void | Promise<void>
   repository: ResolvedRepository
   runId?: string
   signal?: AbortSignal
@@ -87,6 +94,53 @@ export interface TriageRunResult {
   report: string
   result: FinalResult
 }
+
+export type TriageRunProgress =
+  | { phase: string; type: "phase" }
+  | { action: TriageAction; result: FinalResult; type: "decision" }
+  | { phase: string; reviewer: string; type: "triage_agent_started" }
+  | {
+      options?: ModelRunProgress["options"]
+      phase: string
+      reviewer: string
+      sessionId: string
+      type: "triage_agent_session"
+    }
+  | {
+      phase: string
+      reviewer: string
+      sessionId: string
+      type: "triage_agent_response"
+    }
+  | { phase: string; reviewer: string; type: "triage_agent_repair" }
+  | {
+      phase: string
+      reviewer: string
+      sessionId: string
+      type: "triage_agent_completed"
+      vote: string
+    }
+  | {
+      error: string
+      phase: string
+      reviewer: string
+      type: "triage_agent_failed"
+    }
+  | { type: "comment_posting" }
+  | { type: "comment_posted"; url: string }
+  | { type: "pr_creation_started" }
+  | { type: "triage_creator_started" }
+  | {
+      options?: ModelRunProgress["options"]
+      sessionId: string
+      type: "triage_creator_session"
+    }
+  | { sessionId: string; type: "triage_creator_response" }
+  | { type: "triage_creator_repair" }
+  | { sessionId: string; type: "triage_creator_completed" }
+  | { error: string; type: "triage_creator_failed" }
+  | { type: "pr_created"; url: string }
+  | { branch: string; type: "worktree_created"; worktreePath: string }
 
 interface TriageMarker {
   action?: string
@@ -262,6 +316,45 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`)
 }
 
+async function emitProgress(
+  input: TriageRunInput,
+  progress: TriageRunProgress,
+): Promise<void> {
+  await input.onProgress?.(progress)
+}
+
+async function emitTriageModelProgress(input: {
+  progress: ModelRunProgress
+  phase: string
+  run: TriageRunInput
+  reviewer: string
+}): Promise<void> {
+  if (input.progress.type === "session_created") {
+    await emitProgress(input.run, {
+      options: input.progress.options,
+      phase: input.phase,
+      reviewer: input.reviewer,
+      sessionId: input.progress.sessionId,
+      type: "triage_agent_session",
+    })
+  }
+  if (input.progress.type === "repair") {
+    await emitProgress(input.run, {
+      phase: input.phase,
+      reviewer: input.reviewer,
+      type: "triage_agent_repair",
+    })
+  }
+  if (input.progress.type === "response") {
+    await emitProgress(input.run, {
+      phase: input.phase,
+      reviewer: input.reviewer,
+      sessionId: input.progress.sessionId,
+      type: "triage_agent_response",
+    })
+  }
+}
+
 async function runVote<
   T extends string,
   O extends TriageVoteOutput<T> = TriageVoteOutput<T>,
@@ -272,8 +365,10 @@ async function runVote<
   directory: string
   issue: number
   parse: (text: string) => O
+  phase: string
   prompt: TriagePromptComposer
   repository: ResolvedRepository
+  run: TriageRunInput
   schemaName: string
   signal?: AbortSignal
 }): Promise<O & { promptText: string; raw: string; sessionId: string }> {
@@ -284,17 +379,48 @@ async function runVote<
     repository: input.repository,
     reviewer: input.agent,
   })
-  const result = await runModelWithRepair({
-    client: input.client,
-    model: input.agent.model,
-    options: input.agent.options,
-    parse: input.parse,
-    permission: input.agent.permission,
-    prompt,
-    repairAttempts: 3,
-    schemaName: input.schemaName,
-    signal: input.signal,
-    title: `Magi triage ${input.schemaName} #${input.issue} (${input.agent.key})`,
+  await emitProgress(input.run, {
+    phase: input.phase,
+    reviewer: input.agent.key,
+    type: "triage_agent_started",
+  })
+  let result: ModelRunResult<O>
+  try {
+    result = await runModelWithRepair({
+      client: input.client,
+      model: input.agent.model,
+      onProgress: (progress) =>
+        emitTriageModelProgress({
+          phase: input.phase,
+          progress,
+          reviewer: input.agent.key,
+          run: input.run,
+        }),
+      options: input.agent.options,
+      parse: input.parse,
+      permission: input.agent.permission,
+      prompt,
+      repairAttempts: 3,
+      schemaName: input.schemaName,
+      signal: input.signal,
+      title: `Magi triage ${input.schemaName} #${input.issue} (${input.agent.key})`,
+    })
+  } catch (error) {
+    await emitProgress(input.run, {
+      error: error instanceof Error ? error.message : String(error),
+      phase: input.phase,
+      reviewer: input.agent.key,
+      type: "triage_agent_failed",
+    })
+    throw error
+  }
+
+  await emitProgress(input.run, {
+    phase: input.phase,
+    reviewer: input.agent.key,
+    sessionId: result.sessionId,
+    type: "triage_agent_completed",
+    vote: result.value.vote,
   })
 
   return {
@@ -358,6 +484,7 @@ async function runDuplicateVote(input: {
 }): Promise<TriageDuplicateOutput | undefined> {
   const agents = input.input.repository.agents.triage
   if (!agents?.length) throw new Error("triage.agents is required")
+  await emitProgress(input.input, { phase: "duplicate", type: "phase" })
 
   const outputs = await Promise.all(
     agents.map((agent) =>
@@ -368,8 +495,10 @@ async function runDuplicateVote(input: {
         directory: input.input.directory,
         issue: input.input.issue,
         parse: parseTriageDuplicateOutput,
+        phase: "duplicate",
         prompt: composeTriageDuplicatePrompt,
         repository: input.input.repository,
+        run: input.input,
         schemaName: "triage duplicate",
         signal: input.input.signal,
       }),
@@ -425,6 +554,7 @@ async function runPhaseVote<T extends string>(input: {
 }): Promise<T | undefined> {
   const agents = input.input.repository.agents.triage
   if (!agents?.length) throw new Error("triage.agents is required")
+  await emitProgress(input.input, { phase: input.phase, type: "phase" })
 
   const outputs = await Promise.all(
     agents.map((agent) =>
@@ -435,8 +565,10 @@ async function runPhaseVote<T extends string>(input: {
         directory: input.input.directory,
         issue: input.input.issue,
         parse: input.parse,
+        phase: input.phase,
         prompt: input.prompt,
         repository: input.input.repository,
+        run: input.input,
         schemaName: input.schemaName,
         signal: input.input.signal,
       }),
@@ -946,6 +1078,11 @@ async function finishWithResult(input: {
   const triage = input.input.repository.triage
   if (!triage) throw new Error("triage configuration is required")
   const plan = input.plan ?? actionPlan({ result: input.result, triage })
+  await emitProgress(input.input, {
+    action: plan.action,
+    result: input.result,
+    type: "decision",
+  })
   await runActionPrompt({
     context: input.context,
     input: input.input,
@@ -969,13 +1106,18 @@ async function finishWithResult(input: {
 
   if (!input.input.dryRun) {
     if (comment) {
-      await postMarkedIssueComment({
+      await emitProgress(input.input, { type: "comment_posting" })
+      const posted = await postMarkedIssueComment({
         account: triage.account ?? "",
         body: comment,
         exec: input.input.exec,
         issue: input.issue.number,
         outputDir: input.outputDir,
         repository: input.input.repository,
+      })
+      await emitProgress(input.input, {
+        type: "comment_posted",
+        url: posted.url,
       })
     }
     if (plan.clearLabels) {
@@ -1023,8 +1165,10 @@ async function finishWithResult(input: {
         issue: input.issue,
         outputDir: input.outputDir,
       })
-      if (prUrl)
+      if (prUrl) {
         await writeJson(join(input.outputDir, "pr.json"), { url: prUrl })
+        await emitProgress(input.input, { type: "pr_created", url: prUrl })
+      }
     }
     if (input.previousMarker && prUrl) {
       await persistProcessedMarker({
@@ -1101,72 +1245,111 @@ async function createImplementationPr(input: {
   if (!creator) return undefined
   const triage = input.input.repository.triage
   if (!triage?.account) throw new Error("triage.account is required")
+  await emitProgress(input.input, { type: "pr_creation_started" })
+  await emitProgress(input.input, { type: "triage_creator_started" })
 
-  await assignIssue(
-    input.input.exec,
-    input.input.repository,
-    input.issue.number,
-    triage.account,
-  )
-
-  const branch = `magi/issue-${input.issue.number}-${Date.now().toString(36)}`
-  const worktreePath = join(
-    worktreeBaseDir(input.input.directory, input.input.config, "issue"),
-    `issue-${input.issue.number}`,
-  )
-  await mkdir(dirname(worktreePath), { recursive: true })
-  await input.input.exec(
-    `git worktree add -b ${shellQuote(branch)} ${shellQuote(worktreePath)}`,
-  )
   try {
-    await configureGitIdentity(input.input.exec, worktreePath, creator.author)
-    const prompt = await composeTriageCreatePrPrompt({
-      context: input.context,
-      directory: input.input.directory,
-      issue: input.issue.number,
-      repository: input.input.repository,
-      worktreePath,
-    })
-    const result = await runModelWithRepair<EditOutput>({
-      client: input.input.client,
-      model: creator.model,
-      options: creator.options,
-      parse: parseTriageCreatePrOutput,
-      permission: creator.permission,
-      prompt,
-      repairAttempts: 3,
-      schemaName: "edit",
-      signal: input.input.signal,
-      title: `Magi triage create PR #${input.issue.number}`,
-    })
-
-    await writeJson(join(input.outputDir, "create-pr.json"), result.value)
-    if (result.value.mode !== "EDITED") return undefined
-
-    await pushHead(
+    await assignIssue(
       input.input.exec,
       input.input.repository,
-      worktreePath,
-      creator.account,
-      {
-        owner: input.input.repository.github.owner,
-        ref: branch,
-        repo: input.input.repository.github.repo,
-      },
+      input.issue.number,
+      triage.account,
     )
 
-    return createPullRequest(
-      input.input.exec,
-      input.input.repository,
-      creator.account,
-      {
-        body: `Closes #${input.issue.number}`,
-        head: branch,
-        title: `fix: address issue #${input.issue.number}`,
-      },
+    const branch = `magi/issue-${input.issue.number}-${Date.now().toString(36)}`
+    const worktreePath = join(
+      worktreeBaseDir(input.input.directory, input.input.config, "issue"),
+      `issue-${input.issue.number}`,
     )
-  } finally {
-    await removeWorktree(input.input.exec, worktreePath).catch(() => undefined)
+    await mkdir(dirname(worktreePath), { recursive: true })
+    await input.input.exec(
+      `git worktree add -b ${shellQuote(branch)} ${shellQuote(worktreePath)}`,
+    )
+    await emitProgress(input.input, {
+      branch,
+      type: "worktree_created",
+      worktreePath,
+    })
+    try {
+      await configureGitIdentity(input.input.exec, worktreePath, creator.author)
+      const prompt = await composeTriageCreatePrPrompt({
+        context: input.context,
+        directory: input.input.directory,
+        issue: input.issue.number,
+        repository: input.input.repository,
+        worktreePath,
+      })
+      const result = await runModelWithRepair<EditOutput>({
+        client: input.input.client,
+        model: creator.model,
+        onProgress: async (progress) => {
+          if (progress.type === "session_created") {
+            await emitProgress(input.input, {
+              options: progress.options,
+              sessionId: progress.sessionId,
+              type: "triage_creator_session",
+            })
+          }
+          if (progress.type === "repair") {
+            await emitProgress(input.input, { type: "triage_creator_repair" })
+          }
+          if (progress.type === "response") {
+            await emitProgress(input.input, {
+              sessionId: progress.sessionId,
+              type: "triage_creator_response",
+            })
+          }
+        },
+        options: creator.options,
+        parse: parseTriageCreatePrOutput,
+        permission: creator.permission,
+        prompt,
+        repairAttempts: 3,
+        schemaName: "edit",
+        signal: input.input.signal,
+        title: `Magi triage create PR #${input.issue.number}`,
+      })
+      await emitProgress(input.input, {
+        sessionId: result.sessionId,
+        type: "triage_creator_completed",
+      })
+
+      await writeJson(join(input.outputDir, "create-pr.json"), result.value)
+      if (result.value.mode !== "EDITED") return undefined
+
+      await pushHead(
+        input.input.exec,
+        input.input.repository,
+        worktreePath,
+        creator.account,
+        {
+          owner: input.input.repository.github.owner,
+          ref: branch,
+          repo: input.input.repository.github.repo,
+        },
+      )
+
+      return createPullRequest(
+        input.input.exec,
+        input.input.repository,
+        creator.account,
+        {
+          body: `Closes #${input.issue.number}`,
+          head: branch,
+          title: `fix: address issue #${input.issue.number}`,
+        },
+      )
+    } finally {
+      await removeWorktree(input.input.exec, worktreePath).catch(
+        () => undefined,
+      )
+    }
+  } catch (error) {
+    await emitProgress(input.input, {
+      error: error instanceof Error ? error.message : String(error),
+      type: "triage_creator_failed",
+    })
+    throw error
   }
 }
 
@@ -1187,7 +1370,12 @@ export async function runTriage(
   })
   await mkdir(outputDir, { recursive: true })
 
+  await emitProgress(input, { phase: "fetching issue", type: "phase" })
   const issue = await fetchIssue(input.exec, input.repository, input.issue)
+  await emitProgress(input, {
+    phase: "scanning issue relationships",
+    type: "phase",
+  })
   const relationship = await relationshipScan(input, issue)
   const block = safetyBlocked(
     input,
@@ -1217,6 +1405,7 @@ export async function runTriage(
 
   let context = issueContext({ issue, relationship })
   await writeFile(join(outputDir, "context.md"), `${context}\n`)
+  await emitProgress(input, { phase: "triaging", type: "phase" })
   let processed = relationship.previousMarker?.processed ?? []
   let result: FinalResult | undefined
 
@@ -1341,6 +1530,11 @@ export async function runTriage(
           createPr: false,
           postComment: true,
         }
+        await emitProgress(input, {
+          action: plan.action,
+          result: relatedPrDecision,
+          type: "decision",
+        })
         await runActionPrompt({
           context,
           input,
@@ -1358,7 +1552,8 @@ export async function runTriage(
           result: relatedPrDecision,
         })
         if (!input.dryRun) {
-          await postMarkedIssueComment({
+          await emitProgress(input, { type: "comment_posting" })
+          const posted = await postMarkedIssueComment({
             account: triage.account,
             body,
             exec: input.exec,
@@ -1366,6 +1561,7 @@ export async function runTriage(
             outputDir,
             repository: input.repository,
           })
+          await emitProgress(input, { type: "comment_posted", url: posted.url })
           const clearLabels = existingClearLabels(
             issue,
             triage.automation.clear,
