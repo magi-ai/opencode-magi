@@ -99,6 +99,9 @@
         "name": "hirotomoyamada",
         "email": "hirotomo.yamada@avap.co.jp"
       }
+    },
+    "automation": {
+      "pr": true
     }
   }
 }
