@@ -1,4 +1,4 @@
-# Create Guidelines
+# Create PR Guidelines
 
 Use `triage.prompts.createGuidelines` to append repository-specific implementation standards without replacing Magi's built-in PR creation task prompt.
 
