@@ -6,6 +6,14 @@ import type {
   RereviewCloseReconsiderationOutput,
   RereviewOutput,
   ReviewOutput,
+  TriageBinaryVote,
+  TriageCommentClassification,
+  TriageCommentClassificationOutput,
+  TriageDuplicateOutput,
+  TriageDuplicateVote,
+  TriageExistingPrVote,
+  TriageKindVote,
+  TriageVoteOutput,
   Verdict,
 } from "../types"
 
@@ -95,6 +103,113 @@ function requireNumber(value: unknown, path: string): number {
   if (typeof value !== "number" || !Number.isInteger(value))
     throw new Error(`${path} must be an integer`)
   return value
+}
+
+function requireOneOf<T extends string>(
+  value: unknown,
+  path: string,
+  values: readonly T[],
+): T {
+  const text = requireString(value, path)
+  if (!values.includes(text as T)) {
+    throw new Error(`${path} must be ${values.join(", ")}`)
+  }
+
+  return text as T
+}
+
+function parseTriageVote<T extends string>(
+  text: string,
+  votes: readonly T[],
+): TriageVoteOutput<T> {
+  const data = extractJson(text) as Record<string, unknown>
+  if (!data || typeof data !== "object")
+    throw new Error("triage vote output must be an object")
+
+  return {
+    reason: requireString(data.reason, "reason"),
+    vote: requireOneOf(data.vote, "vote", votes),
+  }
+}
+
+export function parseTriageExistingPrOutput(
+  text: string,
+): TriageVoteOutput<TriageExistingPrVote> {
+  return parseTriageVote(text, [
+    "RELATED_PR_DOES_NOT_HANDLE_ISSUE",
+    "RELATED_PR_HANDLES_ISSUE",
+  ])
+}
+
+export function parseTriageKindOutput(
+  text: string,
+): TriageVoteOutput<TriageKindVote> {
+  return parseTriageVote(text, ["ASK", "BUG", "FEATURE"])
+}
+
+export function parseTriageBinaryOutput(
+  text: string,
+): TriageVoteOutput<TriageBinaryVote> {
+  return parseTriageVote(text, ["ASK", "NO", "YES"])
+}
+
+export function parseTriageDuplicateOutput(
+  text: string,
+): TriageDuplicateOutput {
+  const data = extractJson(text) as Record<string, unknown>
+  if (!data || typeof data !== "object")
+    throw new Error("triage duplicate output must be an object")
+
+  const vote = requireOneOf<TriageDuplicateVote>(data.vote, "vote", [
+    "DUPLICATE",
+    "NOT_DUPLICATE",
+  ])
+  const duplicateOf =
+    data.duplicateOf == null
+      ? undefined
+      : requireNumber(data.duplicateOf, "duplicateOf")
+
+  if (vote === "DUPLICATE" && duplicateOf == null)
+    throw new Error("DUPLICATE requires duplicateOf")
+
+  return {
+    duplicateOf,
+    reason: requireString(data.reason, "reason"),
+    vote,
+  }
+}
+
+export function parseTriageCommentClassificationOutput(
+  text: string,
+): TriageCommentClassificationOutput {
+  const data = extractJson(text) as Record<string, unknown>
+  if (!data || typeof data !== "object")
+    throw new Error("triage comment classification output must be an object")
+
+  return {
+    comments: requireArray(data.comments, "comments").map((item, index) => {
+      const value = item as Record<string, unknown>
+
+      return {
+        classification: requireOneOf<TriageCommentClassification>(
+          value.classification,
+          `comments[${index}].classification`,
+          [
+            "ACKNOWLEDGEMENT",
+            "CLARIFICATION",
+            "NEW_EVIDENCE",
+            "OBJECTION",
+            "UNRELATED",
+          ],
+        ),
+        commentId: requireNumber(
+          value.commentId,
+          `comments[${index}].commentId`,
+        ),
+        reason: requireString(value.reason, `comments[${index}].reason`),
+      }
+    }),
+  }
 }
 
 export function parseReviewOutput(text: string): ReviewOutput {

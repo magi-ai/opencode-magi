@@ -1,4 +1,8 @@
-import type { ResolvedRepository, ResolvedReviewer } from "../types"
+import type {
+  ResolvedRepository,
+  ResolvedReviewer,
+  ResolvedTriageAgent,
+} from "../types"
 import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { isAbsolute, join } from "node:path"
@@ -11,6 +15,9 @@ import {
   rereviewCloseReconsiderationOutputContract,
   rereviewOutputContract,
   reviewOutputContract,
+  triageCommentClassificationOutputContract,
+  triageDuplicateOutputContract,
+  triageVoteOutputContract,
 } from "./contracts"
 
 export interface ReviewPromptInput {
@@ -83,6 +90,22 @@ export interface CiClassificationAfterEditPromptInput extends CiClassificationPr
   headSha: string
   previousHeadSha: string
   worktreePath: string
+}
+
+export interface TriagePromptInput {
+  context: string
+  directory: string
+  issue: number
+  repository: ResolvedRepository
+  reviewer: ResolvedTriageAgent
+}
+
+export interface TriageCommentPromptInput {
+  author: string
+  context: string
+  directory: string
+  issue: number
+  repository: ResolvedRepository
 }
 
 async function readOptionalPrompt(
@@ -171,6 +194,18 @@ function editValues(input: EditPromptInput): Record<string, string> {
     pr: String(input.pr),
     unresolvedThreads: input.unresolvedThreads,
     worktreePath: input.worktreePath,
+  }
+}
+
+function triageValues(input: {
+  context: string
+  issue: number
+  repository: ResolvedRepository
+}): Record<string, string> {
+  return {
+    ...repositoryValues(input.repository),
+    context: input.context,
+    issue: String(input.issue),
   }
 }
 
@@ -459,4 +494,112 @@ export async function composeCiClassificationAfterEditPrompt(
   ]
     .filter(Boolean)
     .join("\n\n")
+}
+
+async function composeTriageVotePrompt(input: {
+  builtin: string
+  context: string
+  customPath?: string
+  directory: string
+  issue: number
+  outputContract: string
+  repository: ResolvedRepository
+  reviewer: ResolvedTriageAgent
+}): Promise<string> {
+  const values = triageValues(input)
+  const task = await taskBlock({
+    builtin: `triage/${input.builtin}`,
+    customPath: input.customPath,
+    directory: input.directory,
+    values,
+  })
+
+  return [
+    task,
+    languageBlock(input.repository.language),
+    personaBlock(input.reviewer.persona),
+    input.outputContract,
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+}
+
+export function composeTriageCommentPrompt(
+  input: TriageCommentPromptInput,
+): string {
+  return [
+    `<task>\nCompose one concise GitHub issue comment for issue #${input.issue}. Mention @${input.author}. Use the context below and do not include markdown fences.\n</task>`,
+    languageBlock(input.repository.language),
+    `<context>\n${input.context}\n</context>`,
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+}
+
+export async function composeTriageExistingPrPrompt(
+  input: TriagePromptInput,
+): Promise<string> {
+  return composeTriageVotePrompt({
+    ...input,
+    builtin: "existing-pr",
+    customPath: input.repository.triage.prompts.existingPr,
+    outputContract: triageVoteOutputContract(
+      '"RELATED_PR_HANDLES_ISSUE" | "RELATED_PR_DOES_NOT_HANDLE_ISSUE"',
+    ),
+  })
+}
+
+export async function composeTriageDuplicatePrompt(
+  input: TriagePromptInput,
+): Promise<string> {
+  return composeTriageVotePrompt({
+    ...input,
+    builtin: "duplicate",
+    customPath: input.repository.triage.prompts.duplicate,
+    outputContract: triageDuplicateOutputContract,
+  })
+}
+
+export async function composeTriageKindPrompt(
+  input: TriagePromptInput,
+): Promise<string> {
+  return composeTriageVotePrompt({
+    ...input,
+    builtin: "kind",
+    customPath: input.repository.triage.prompts.kind,
+    outputContract: triageVoteOutputContract('"BUG" | "FEATURE" | "ASK"'),
+  })
+}
+
+export async function composeTriageBugPrompt(
+  input: TriagePromptInput,
+): Promise<string> {
+  return composeTriageVotePrompt({
+    ...input,
+    builtin: "bug",
+    customPath: input.repository.triage.prompts.bug,
+    outputContract: triageVoteOutputContract('"YES" | "NO" | "ASK"'),
+  })
+}
+
+export async function composeTriageFeaturePrompt(
+  input: TriagePromptInput,
+): Promise<string> {
+  return composeTriageVotePrompt({
+    ...input,
+    builtin: "feature",
+    customPath: input.repository.triage.prompts.feature,
+    outputContract: triageVoteOutputContract('"YES" | "NO" | "ASK"'),
+  })
+}
+
+export async function composeTriageCommentClassificationPrompt(
+  input: TriagePromptInput,
+): Promise<string> {
+  return composeTriageVotePrompt({
+    ...input,
+    builtin: "comment-classification",
+    customPath: input.repository.triage.prompts.commentClassification,
+    outputContract: triageCommentClassificationOutputContract,
+  })
 }

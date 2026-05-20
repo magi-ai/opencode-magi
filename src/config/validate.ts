@@ -4,6 +4,12 @@ import type {
   MagiConfig,
   PermissionConfig,
   ReviewerConfig,
+  TriageAgentConfig,
+  TriageAutomationConfig,
+  TriageConcurrencyConfig,
+  TriageCreatorConfig,
+  TriageKindConfig,
+  TriageSafetyConfig,
 } from "../types"
 import { Ajv2020 } from "ajv/dist/2020"
 import { constants } from "node:fs"
@@ -22,6 +28,8 @@ export interface ValidationOptions {
   modelCatalog?: ModelCatalog
   requireEditor?: boolean
   requireGithub?: boolean
+  requireReview?: boolean
+  requireTriage?: boolean
 }
 
 export interface ValidationResult {
@@ -43,6 +51,7 @@ const CONFIG_KEYS = new Set([
   "merge",
   "output",
   "review",
+  "triage",
 ])
 const AGENTS_KEYS = new Set(["permissions"])
 const REVIEWER_KEYS = new Set([
@@ -54,6 +63,21 @@ const REVIEWER_KEYS = new Set([
   "persona",
 ])
 const EDITOR_KEYS = new Set([
+  "account",
+  "author",
+  "model",
+  "options",
+  "permissions",
+  "persona",
+])
+const TRIAGE_AGENT_KEYS = new Set([
+  "id",
+  "model",
+  "options",
+  "permissions",
+  "persona",
+])
+const TRIAGE_CREATOR_KEYS = new Set([
   "account",
   "author",
   "model",
@@ -81,6 +105,18 @@ const MERGE_KEYS = new Set([
   "maxThreadResolutionCycles",
   "prompts",
 ])
+const TRIAGE_KEYS = new Set([
+  "account",
+  "agents",
+  "automation",
+  "concurrency",
+  "creator",
+  "kind",
+  "output",
+  "prompts",
+  "safety",
+  "worktree",
+])
 const REVIEW_MERGE_KEYS = new Set([
   "approvalPolicy",
   "auto",
@@ -94,6 +130,17 @@ const AUTOMATION_KEYS = new Set(["close", "merge"])
 const CLEAR_KEYS = new Set(["branch", "output", "session", "worktree"])
 const CONCURRENCY_KEYS = new Set(["reviewers", "runs"])
 const OUTPUT_KEYS = new Set(["repairAttempts"])
+const TRIAGE_AUTOMATION_KEYS = new Set(["clear", "close", "pr"])
+const TRIAGE_CONCURRENCY_KEYS = new Set(["runs"])
+const TRIAGE_KIND_KEYS = new Set(["bug", "feature"])
+const TRIAGE_KIND_RULE_KEYS = new Set(["label", "type"])
+const TRIAGE_SAFETY_KEYS = new Set([
+  "allowAuthors",
+  "allowMentionActors",
+  "allowMentionRoles",
+  "blockedLabels",
+  "requiredLabels",
+])
 const SAFETY_KEYS = new Set([
   "allowAuthors",
   "blockedPaths",
@@ -112,6 +159,19 @@ const MERGE_PROMPT_KEYS = new Set([
   "ciClassification",
   "edit",
   "editGuidelines",
+])
+const TRIAGE_PROMPT_KEYS = new Set([
+  "action",
+  "bug",
+  "comment",
+  "commentClassification",
+  "createPr",
+  "duplicate",
+  "existingPr",
+  "feature",
+  "kind",
+  "question",
+  "reconsider",
 ])
 
 function githubHost(config: MagiConfig): string {
@@ -304,6 +364,54 @@ function validateReviewerList(
   })
 }
 
+function validateTriageAgentList(
+  agents: TriageAgentConfig[] | undefined,
+  path: string,
+  errors: string[],
+  catalog?: ModelCatalog,
+): void {
+  if (agents == null) return
+  if (!Array.isArray(agents)) {
+    errors.push(`${path} must be an array`)
+    return
+  }
+
+  if (agents.length < 3) errors.push(`${path} must contain at least 3 agents`)
+  if (agents.length % 2 === 0)
+    errors.push(`${path} must contain an odd number of agents`)
+
+  agents.forEach((agent, index) => {
+    if (!agent || typeof agent !== "object") {
+      errors.push(`${path}[${index}] must be an object`)
+      return
+    }
+
+    validateKnownKeys(agent, `${path}[${index}]`, TRIAGE_AGENT_KEYS, errors)
+    if (!agent.model) errors.push(`${path}[${index}].model is required`)
+    validateString(agent.model, `${path}[${index}].model`, errors)
+    validateModel(agent.model, `${path}[${index}].model`, errors, catalog)
+    validateString(agent.persona, `${path}[${index}].persona`, errors)
+    if (agent.options != null && !isPlainObject(agent.options))
+      errors.push(`${path}[${index}].options must be an object`)
+    validatePermissionConfig(
+      agent.permissions,
+      `${path}[${index}].permissions`,
+      errors,
+    )
+
+    if (agent.id) {
+      if (!validateReviewerId(agent.id)) {
+        errors.push(
+          `${path}[${index}].id may contain only letters, numbers, underscores, and hyphens`,
+        )
+      }
+      if (RESERVED_REVIEWER_KEYS.has(agent.id)) {
+        errors.push(`${path}[${index}].id is reserved: ${agent.id}`)
+      }
+    }
+  })
+}
+
 function validateResolvedReviewers(
   reviewers: { account: string; key: string }[],
   path: string,
@@ -320,6 +428,20 @@ function validateResolvedReviewers(
     if (accounts.has(reviewer.account))
       errors.push(`${path} has duplicate reviewer account: ${reviewer.account}`)
     accounts.add(reviewer.account)
+  }
+}
+
+function validateResolvedAgentKeys(
+  agents: { key: string }[],
+  path: string,
+  errors: string[],
+): void {
+  const keys = new Set<string>()
+
+  for (const agent of agents) {
+    if (keys.has(agent.key))
+      errors.push(`${path} has duplicate agent key: ${agent.key}`)
+    keys.add(agent.key)
   }
 }
 
@@ -365,6 +487,44 @@ function validateEditor(
       errors.push(`${path}.author.email must be a string`)
     }
   }
+}
+
+function validateTriageCreator(
+  creator: TriageCreatorConfig | undefined,
+  path: string,
+  errors: string[],
+  catalog?: ModelCatalog,
+): void {
+  if (!creator) return
+  if (!isPlainObject(creator)) {
+    errors.push(`${path} must be an object`)
+    return
+  }
+
+  validateKnownKeys(creator, path, TRIAGE_CREATOR_KEYS, errors)
+  if (!creator.model) errors.push(`${path}.model is required`)
+  validateString(creator.account, `${path}.account`, errors)
+  validateString(creator.model, `${path}.model`, errors)
+  validateString(creator.persona, `${path}.persona`, errors)
+  validateModel(creator.model, `${path}.model`, errors, catalog)
+  if (creator.options != null && !isPlainObject(creator.options)) {
+    errors.push(`${path}.options must be an object`)
+  }
+  validatePermissionConfig(creator.permissions, `${path}.permissions`, errors)
+
+  const author = creator.author
+  if (!author || !isPlainObject(author)) {
+    if (author != null) errors.push(`${path}.author must be an object`)
+    errors.push(`${path}.author.name is required`)
+    errors.push(`${path}.author.email is required`)
+    return
+  }
+
+  validateKnownKeys(author, `${path}.author`, AUTHOR_KEYS, errors)
+  if (!author.name) errors.push(`${path}.author.name is required`)
+  validateString(author.name, `${path}.author.name`, errors)
+  if (!author.email) errors.push(`${path}.author.email is required`)
+  validateString(author.email, `${path}.author.email`, errors)
 }
 
 function validateMerge(
@@ -553,6 +713,22 @@ function validateStringArray(
   })
 }
 
+function validateStringArrayObject(
+  value: unknown,
+  path: string,
+  keys: Set<string>,
+  errors: string[],
+): void {
+  if (value == null) return
+  if (!isPlainObject(value)) {
+    errors.push(`${path} must be an object`)
+    return
+  }
+  validateKnownKeys(value, path, keys, errors)
+  for (const key of keys)
+    validateStringArray(value[key], `${path}.${key}`, errors)
+}
+
 function validateSafety(config: MagiConfig, errors: string[]): void {
   const safety = config.review?.safety
   if (safety != null && !isPlainObject(safety)) {
@@ -605,6 +781,120 @@ function validatePromptObject(
   }
 }
 
+function validateTriage(
+  config: MagiConfig,
+  errors: string[],
+  options: ValidationOptions,
+): void {
+  const triage = config.triage
+  if (!triage) return
+  if (!isPlainObject(triage)) {
+    errors.push("triage must be an object")
+    return
+  }
+
+  validateKnownKeys(triage, "triage", TRIAGE_KEYS, errors)
+  const automation = triage.automation as TriageAutomationConfig | undefined
+  const concurrency = triage.concurrency as TriageConcurrencyConfig | undefined
+  const kind = triage.kind as TriageKindConfig | undefined
+  const safety = triage.safety as TriageSafetyConfig | undefined
+
+  if (!triage.account) errors.push("triage.account is required")
+  validateString(triage.account, "triage.account", errors)
+  if (!triage.agents) errors.push("triage.agents is required")
+  validateTriageAgentList(
+    triage.agents as TriageAgentConfig[] | undefined,
+    "triage.agents",
+    errors,
+    options.modelCatalog,
+  )
+  if (Array.isArray(triage.agents)) {
+    validateResolvedAgentKeys(
+      resolveAgents(config).triage,
+      "triage.resolvedAgents",
+      errors,
+    )
+  }
+  validateTriageCreator(
+    triage.creator as TriageCreatorConfig | undefined,
+    "triage.creator",
+    errors,
+    options.modelCatalog,
+  )
+  if (automation?.pr && !triage.creator)
+    errors.push("triage.creator is required when triage.automation.pr is true")
+
+  if (automation != null && !isPlainObject(automation)) {
+    errors.push("triage.automation must be an object")
+  }
+  validateKnownKeys(
+    automation,
+    "triage.automation",
+    TRIAGE_AUTOMATION_KEYS,
+    errors,
+  )
+  validateBoolean(automation?.close, "triage.automation.close", errors)
+  validateBoolean(automation?.pr, "triage.automation.pr", errors)
+  validateStringArray(automation?.clear, "triage.automation.clear", errors)
+
+  validateKnownKeys(
+    concurrency,
+    "triage.concurrency",
+    TRIAGE_CONCURRENCY_KEYS,
+    errors,
+  )
+  if (
+    concurrency?.runs != null &&
+    (typeof concurrency.runs !== "number" ||
+      !Number.isInteger(concurrency.runs) ||
+      concurrency.runs < 1)
+  ) {
+    errors.push("triage.concurrency.runs must be a positive integer")
+  }
+
+  validateKnownKeys(kind, "triage.kind", TRIAGE_KIND_KEYS, errors)
+  validateStringArrayObject(
+    kind?.bug,
+    "triage.kind.bug",
+    TRIAGE_KIND_RULE_KEYS,
+    errors,
+  )
+  validateStringArrayObject(
+    kind?.feature,
+    "triage.kind.feature",
+    TRIAGE_KIND_RULE_KEYS,
+    errors,
+  )
+  validateKnownKeys(safety, "triage.safety", TRIAGE_SAFETY_KEYS, errors)
+  validateStringArray(
+    safety?.allowAuthors,
+    "triage.safety.allowAuthors",
+    errors,
+  )
+  validateStringArray(
+    safety?.allowMentionActors,
+    "triage.safety.allowMentionActors",
+    errors,
+  )
+  validateStringArray(
+    safety?.allowMentionRoles,
+    "triage.safety.allowMentionRoles",
+    errors,
+  )
+  validateStringArray(
+    safety?.blockedLabels,
+    "triage.safety.blockedLabels",
+    errors,
+  )
+  validateStringArray(
+    safety?.requiredLabels,
+    "triage.safety.requiredLabels",
+    errors,
+  )
+  validateString(triage.output, "triage.output", errors)
+  validateString(triage.worktree, "triage.worktree", errors)
+}
+
 async function validatePrompts(
   config: MagiConfig,
   errors: string[],
@@ -622,6 +912,12 @@ async function validatePrompts(
     MERGE_PROMPT_KEYS,
     errors,
   )
+  validatePromptObject(
+    config.triage?.prompts,
+    "triage.prompts",
+    TRIAGE_PROMPT_KEYS,
+    errors,
+  )
 
   const promptEntries = [
     ...Object.entries(config.review?.prompts ?? {}).map(
@@ -629,6 +925,9 @@ async function validatePrompts(
     ),
     ...Object.entries(config.merge?.prompts ?? {}).map(
       ([key, value]) => [`merge.prompts.${key}`, value] as const,
+    ),
+    ...Object.entries(config.triage?.prompts ?? {}).map(
+      ([key, value]) => [`triage.prompts.${key}`, value] as const,
     ),
   ]
 
@@ -659,6 +958,8 @@ async function validateAuth(
 
   for (const reviewer of agents.reviewers) accounts.add(reviewer.account)
   if (agents.editor) accounts.add(agents.editor.account)
+  if (config.triage?.account) accounts.add(config.triage.account)
+  if (agents.triageCreator?.account) accounts.add(agents.triageCreator.account)
 
   await Promise.all(
     [...accounts].filter(Boolean).map(async (account) => {
@@ -723,6 +1024,49 @@ async function validateRepositoryPermissions(
     }),
   )
 
+  if (config.triage?.account) {
+    try {
+      const permissions = await fetchPermissions(
+        config,
+        exec,
+        config.triage.account,
+      )
+
+      if (!permissions.pull) {
+        errors.push(
+          `GitHub account cannot read repository for issue triage: ${config.triage.account}`,
+        )
+      }
+    } catch (error) {
+      warnings.push(
+        `Could not validate repository permissions for GitHub account: ${config.triage.account} (${(error as Error).message})`,
+      )
+    }
+  }
+
+  if (
+    agents.triageCreator?.account &&
+    agents.triageCreator.account !== config.triage?.account
+  ) {
+    try {
+      const permissions = await fetchPermissions(
+        config,
+        exec,
+        agents.triageCreator.account,
+      )
+
+      if (!permissions.push) {
+        errors.push(
+          `GitHub account cannot push to repository for triage PR creation: ${agents.triageCreator.account}`,
+        )
+      }
+    } catch (error) {
+      warnings.push(
+        `Could not validate repository permissions for GitHub account: ${agents.triageCreator.account} (${(error as Error).message})`,
+      )
+    }
+  }
+
   if (!agents.editor) return
 
   try {
@@ -771,9 +1115,9 @@ export async function validateConfig(
     )
   }
 
-  if (!config.review) {
+  if ((options.requireReview ?? true) && !config.review) {
     errors.push("review is required")
-  } else {
+  } else if (config.review) {
     if (!isPlainObject(config.review)) {
       errors.push("review must be an object")
     } else {
@@ -795,6 +1139,10 @@ export async function validateConfig(
     }
   }
 
+  if (options.requireTriage && !config.triage) {
+    errors.push("triage is required")
+  }
+
   validateMerge(config, errors, options)
   validateReviewMerge(config, errors)
   validateAutomation(config, errors)
@@ -802,6 +1150,7 @@ export async function validateConfig(
   validateChecks(config, errors)
   validateConcurrency(config, errors)
   validateSafety(config, errors)
+  validateTriage(config, errors, options)
   await validatePrompts(config, errors, options.directory)
 
   if (config.output != null && !isPlainObject(config.output)) {

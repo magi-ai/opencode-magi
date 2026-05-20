@@ -1,9 +1,10 @@
 import type { MagiConfig } from "../types"
 import { isAbsolute, join } from "node:path"
 
-export type WorktreeKind = "pr"
+export type WorktreeKind = "issue" | "pr"
 
 const DEFAULT_WORKTREE_DIRS: Record<WorktreeKind, string> = {
+  issue: ".magi/worktrees/issue",
   pr: ".magi/worktrees/pr",
 }
 
@@ -18,7 +19,9 @@ export function worktreeBaseDir(
 ): string {
   return resolvePath(
     directory,
-    config.review?.worktree ?? DEFAULT_WORKTREE_DIRS[kind],
+    kind === "issue"
+      ? (config.triage?.worktree ?? DEFAULT_WORKTREE_DIRS[kind])
+      : (config.review?.worktree ?? DEFAULT_WORKTREE_DIRS[kind]),
   )
 }
 
@@ -26,5 +29,8 @@ export function worktreeBaseDirs(
   directory: string,
   config: MagiConfig = {},
 ): string[] {
-  return [worktreeBaseDir(directory, config, "pr")]
+  return [
+    worktreeBaseDir(directory, config, "pr"),
+    worktreeBaseDir(directory, config, "issue"),
+  ]
 }

@@ -47,7 +47,8 @@
         "repairAttempts": { "type": "integer", "minimum": 0, "default": 3 }
       }
     },
-    "review": { "$ref": "#/$defs/review" }
+    "review": { "$ref": "#/$defs/review" },
+    "triage": { "$ref": "#/$defs/triage" }
   },
   "$defs": {
     "reviewer": {
@@ -71,6 +72,39 @@
         "model": { "type": "string", "minLength": 1 },
         "options": { "type": "object", "additionalProperties": true },
         "account": { "type": "string", "minLength": 1 },
+        "author": {
+          "type": "object",
+          "required": ["name", "email"],
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "email": { "type": "string", "minLength": 1 }
+          }
+        },
+        "permissions": { "$ref": "#/$defs/permissions" },
+        "persona": { "type": "string" }
+      }
+    },
+    "triageAgent": {
+      "type": "object",
+      "required": ["model"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "model": { "type": "string", "minLength": 1 },
+        "options": { "type": "object", "additionalProperties": true },
+        "permissions": { "$ref": "#/$defs/permissions" },
+        "persona": { "type": "string" }
+      }
+    },
+    "triageCreator": {
+      "type": "object",
+      "required": ["model", "author"],
+      "additionalProperties": false,
+      "properties": {
+        "account": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "options": { "type": "object", "additionalProperties": true },
         "author": {
           "type": "object",
           "required": ["name", "email"],
@@ -116,6 +150,13 @@
         "reviewers": { "type": "integer", "minimum": 1, "default": 3 }
       }
     },
+    "triageConcurrency": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runs": { "type": "integer", "minimum": 1, "default": 3 }
+      }
+    },
     "safety": {
       "type": "object",
       "additionalProperties": false,
@@ -145,6 +186,66 @@
         "edit": { "type": "string" },
         "editGuidelines": { "type": "string" },
         "ciClassification": { "type": "string" }
+      }
+    },
+    "triagePrompts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "existingPr": { "type": "string" },
+        "duplicate": { "type": "string" },
+        "kind": { "type": "string" },
+        "bug": { "type": "string" },
+        "feature": { "type": "string" },
+        "action": { "type": "string" },
+        "question": { "type": "string" },
+        "comment": { "type": "string" },
+        "commentClassification": { "type": "string" },
+        "reconsider": { "type": "string" },
+        "createPr": { "type": "string" }
+      }
+    },
+    "triageKindRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "array", "items": { "type": "string" } },
+        "type": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "triageKind": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bug": { "$ref": "#/$defs/triageKindRule" },
+        "feature": { "$ref": "#/$defs/triageKindRule" }
+      }
+    },
+    "triageAutomation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "close": { "type": "boolean", "default": false },
+        "pr": { "type": "boolean", "default": false },
+        "clear": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["triage"]
+        }
+      }
+    },
+    "triageSafety": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requiredLabels": { "type": "array", "items": { "type": "string" } },
+        "blockedLabels": { "type": "array", "items": { "type": "string" } },
+        "allowAuthors": { "type": "array", "items": { "type": "string" } },
+        "allowMentionActors": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "allowMentionRoles": { "type": "array", "items": { "type": "string" } }
       }
     },
     "reviewMerge": {
@@ -194,6 +295,26 @@
           "default": 5,
           "description": "Maximum resolution attempts per unresolved review thread. Set 0 for unlimited attempts."
         }
+      }
+    },
+    "triage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "account": { "type": "string", "minLength": 1 },
+        "agents": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/triageAgent" }
+        },
+        "creator": { "$ref": "#/$defs/triageCreator" },
+        "kind": { "$ref": "#/$defs/triageKind" },
+        "automation": { "$ref": "#/$defs/triageAutomation" },
+        "safety": { "$ref": "#/$defs/triageSafety" },
+        "concurrency": { "$ref": "#/$defs/triageConcurrency" },
+        "prompts": { "$ref": "#/$defs/triagePrompts" },
+        "output": { "type": "string" },
+        "worktree": { "type": "string" }
       }
     },
     "permissionAction": { "enum": ["allow", "ask", "deny"] },

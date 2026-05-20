@@ -80,6 +80,45 @@ export interface PullRequestCheck {
   workflow: string
 }
 
+export interface IssueComment {
+  author: string
+  authorAssociation?: string
+  body: string
+  createdAt: string
+  id: number
+  url: string
+}
+
+export interface IssueMeta {
+  author: string
+  body: string
+  labels: string[]
+  number: number
+  state: string
+  title: string
+  type?: string
+  url: string
+}
+
+export interface RelatedPullRequest {
+  author: string
+  body?: string
+  mergedAt?: string
+  number: number
+  state: "CLOSED" | "MERGED" | "OPEN"
+  title: string
+  url: string
+}
+
+export interface DuplicateIssueCandidate {
+  body?: string
+  number: number
+  state: string
+  title: string
+  url: string
+  whyCandidate: string
+}
+
 export interface ClassifiedCheck {
   check: PullRequestCheck
   classification: "SCOPE_IN" | "SCOPE_OUT"
@@ -283,6 +322,212 @@ export async function fetchPullRequest(
   )
 
   return JSON.parse(json) as PullRequestMeta
+}
+
+export async function fetchIssue(
+  exec: Exec,
+  repository: ResolvedRepository,
+  issue: number,
+): Promise<IssueMeta> {
+  const raw = await exec(
+    `gh issue view ${issue} --repo ${shellQuote(repoSpecifier(repository))} --json number,title,body,url,state,author,labels,type`,
+  )
+  const data = JSON.parse(raw) as {
+    author?: { login?: string }
+    body?: string
+    labels?: { name: string }[]
+    number: number
+    state: string
+    title: string
+    type?: { name?: string }
+    url: string
+  }
+
+  return {
+    author: data.author?.login ?? "",
+    body: data.body ?? "",
+    labels: data.labels?.map((label) => label.name) ?? [],
+    number: data.number,
+    state: data.state,
+    title: data.title,
+    type: data.type?.name,
+    url: data.url,
+  }
+}
+
+export async function fetchIssueComments(
+  exec: Exec,
+  repository: ResolvedRepository,
+  issue: number,
+  limit = 50,
+): Promise<IssueComment[]> {
+  const query = `query($owner: String!, $repo: String!, $issue: Int!, $limit: Int!) { repository(owner: $owner, name: $repo) { issue(number: $issue) { comments(last: $limit) { nodes { databaseId author { login } authorAssociation body createdAt url } } } } }`
+  const raw = await exec(
+    `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F issue=${issue} -F limit=${limit}`,
+  )
+  const data = JSON.parse(raw) as {
+    data?: {
+      repository?: {
+        issue?: {
+          comments?: {
+            nodes?: {
+              author?: { login?: string }
+              authorAssociation?: string
+              body?: string
+              createdAt: string
+              databaseId: number
+              url: string
+            }[]
+          }
+        }
+      }
+    }
+  }
+
+  return (
+    data.data?.repository?.issue?.comments?.nodes?.map((comment) => ({
+      author: comment.author?.login ?? "",
+      authorAssociation: comment.authorAssociation,
+      body: comment.body ?? "",
+      createdAt: comment.createdAt,
+      id: comment.databaseId,
+      url: comment.url,
+    })) ?? []
+  )
+}
+
+export async function fetchRelatedPullRequests(
+  exec: Exec,
+  repository: ResolvedRepository,
+  issue: number,
+): Promise<RelatedPullRequest[]> {
+  const query = `query($owner: String!, $repo: String!, $issue: Int!) { repository(owner: $owner, name: $repo) { issue(number: $issue) { timelineItems(first: 50, itemTypes: [CONNECTED_EVENT, CROSS_REFERENCED_EVENT]) { nodes { __typename ... on ConnectedEvent { subject { __typename ... on PullRequest { number title url state mergedAt body author { login } } } } ... on CrossReferencedEvent { source { __typename ... on PullRequest { number title url state mergedAt body author { login } } } } } } } } } }`
+  const raw = await exec(
+    `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F issue=${issue}`,
+  )
+  const data = JSON.parse(raw) as {
+    data?: {
+      repository?: {
+        issue?: { timelineItems?: { nodes?: Record<string, unknown>[] } }
+      }
+    }
+  }
+  const prs = new Map<number, RelatedPullRequest>()
+
+  for (const node of data.data?.repository?.issue?.timelineItems?.nodes ?? []) {
+    const source = (node.subject ?? node.source) as
+      | {
+          author?: { login?: string }
+          body?: string
+          mergedAt?: string
+          number?: number
+          state?: string
+          title?: string
+          url?: string
+        }
+      | undefined
+    if (!source?.number || !source.url) continue
+    const state = source.mergedAt
+      ? "MERGED"
+      : source.state === "CLOSED"
+        ? "CLOSED"
+        : "OPEN"
+    prs.set(source.number, {
+      author: source.author?.login ?? "",
+      body: source.body,
+      mergedAt: source.mergedAt,
+      number: source.number,
+      state,
+      title: source.title ?? `PR #${source.number}`,
+      url: source.url,
+    })
+  }
+
+  return [...prs.values()]
+}
+
+export async function searchDuplicateIssues(
+  exec: Exec,
+  repository: ResolvedRepository,
+  issue: IssueMeta,
+  limit = 5,
+): Promise<DuplicateIssueCandidate[]> {
+  const query = `${issue.title} repo:${repoSlug(repository)} is:issue -${issue.number}`
+  const raw = await exec(
+    `gh search issues ${shellQuote(query)} --json number,title,url,state,body --limit ${limit}`,
+  )
+  const data = JSON.parse(raw) as {
+    body?: string
+    number: number
+    state: string
+    title: string
+    url: string
+  }[]
+
+  return data.map((item) => ({
+    ...item,
+    whyCandidate: "GitHub issue search matched the title.",
+  }))
+}
+
+export async function postIssueComment(
+  exec: Exec,
+  repository: ResolvedRepository,
+  issue: number,
+  account: string,
+  body: string,
+): Promise<string> {
+  const token = await ghToken(exec, repository, account)
+  const payloadPath = join(
+    tmpdir(),
+    `magi-issue-${process.pid}-${Date.now()}.json`,
+  )
+
+  await writeFile(payloadPath, JSON.stringify({ body }))
+
+  try {
+    return await exec(
+      `gh api${ghHostOption(repository)} repos/${repository.github.owner}/${repository.github.repo}/issues/${issue}/comments --method POST --input ${shellQuote(payloadPath)} --jq .html_url`,
+      ghTokenEnv(token),
+    )
+  } finally {
+    await rm(payloadPath, { force: true })
+  }
+}
+
+export async function closeIssue(
+  exec: Exec,
+  repository: ResolvedRepository,
+  issue: number,
+  account: string,
+): Promise<string> {
+  const token = await ghToken(exec, repository, account)
+
+  return exec(
+    `gh issue close ${issue} --repo ${shellQuote(repoSpecifier(repository))}`,
+    ghTokenEnv(token),
+  )
+}
+
+export async function removeIssueLabels(
+  exec: Exec,
+  repository: ResolvedRepository,
+  issue: number,
+  labels: string[],
+  account: string,
+): Promise<string[]> {
+  const token = await ghToken(exec, repository, account)
+  const removed: string[] = []
+
+  for (const label of labels) {
+    await exec(
+      `gh issue edit ${issue} --repo ${shellQuote(repoSpecifier(repository))} --remove-label ${shellQuote(label)}`,
+      ghTokenEnv(token),
+    )
+    removed.push(label)
+  }
+
+  return removed
 }
 
 export async function fetchPullRequestReviews(
@@ -834,6 +1079,21 @@ export async function pushHead(
         GIT_TERMINAL_PROMPT: "0",
       },
     },
+  )
+}
+
+export async function createPullRequest(
+  exec: Exec,
+  repository: ResolvedRepository,
+  account: string,
+  input: { base?: string; body: string; head: string; title: string },
+): Promise<string> {
+  const token = await ghToken(exec, repository, account)
+  const baseFlag = input.base ? ` --base ${shellQuote(input.base)}` : ""
+
+  return exec(
+    `gh pr create --repo ${shellQuote(repoSpecifier(repository))} --head ${shellQuote(input.head)}${baseFlag} --title ${shellQuote(input.title)} --body ${shellQuote(input.body)}`,
+    ghTokenEnv(token),
   )
 }
 

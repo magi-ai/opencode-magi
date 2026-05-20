@@ -4,6 +4,9 @@ import {
   parseFindingValidationOutput,
   parseRereviewOutput,
   parseReviewOutput,
+  parseTriageBinaryOutput,
+  parseTriageDuplicateOutput,
+  parseTriageKindOutput,
 } from "./output"
 
 describe("review output", () => {
@@ -132,5 +135,31 @@ describe("review output", () => {
         }),
       ),
     ).toThrow("REPLIED cannot include FIXED responses")
+  })
+})
+
+describe("triage output parsing", () => {
+  test("parses kind and binary votes", () => {
+    expect(parseTriageKindOutput('{"vote":"BUG","reason":"broken"}')).toEqual({
+      reason: "broken",
+      vote: "BUG",
+    })
+    expect(
+      parseTriageBinaryOutput('{"vote":"ASK","reason":"missing"}'),
+    ).toEqual({
+      reason: "missing",
+      vote: "ASK",
+    })
+  })
+
+  test("requires duplicate target for duplicate vote", () => {
+    expect(
+      parseTriageDuplicateOutput(
+        '{"vote":"DUPLICATE","duplicateOf":42,"reason":"same"}',
+      ),
+    ).toEqual({ duplicateOf: 42, reason: "same", vote: "DUPLICATE" })
+    expect(() =>
+      parseTriageDuplicateOutput('{"vote":"DUPLICATE","reason":"same"}'),
+    ).toThrow("DUPLICATE requires duplicateOf")
   })
 })

@@ -39,6 +39,26 @@ export interface EditorConfig {
   persona?: string
 }
 
+export interface TriageAgentConfig {
+  id?: string
+  model: string
+  options?: ModelOptions
+  permissions?: PermissionConfig
+  persona?: string
+}
+
+export interface TriageCreatorConfig {
+  account?: string
+  author: {
+    email: string
+    name: string
+  }
+  model: string
+  options?: ModelOptions
+  permissions?: PermissionConfig
+  persona?: string
+}
+
 export interface AgentsConfig {
   permissions?: PermissionConfig
 }
@@ -85,6 +105,10 @@ export interface ConcurrencyConfig {
   reviewers?: number
 }
 
+export interface TriageConcurrencyConfig {
+  runs?: number
+}
+
 export interface ClearConfig {
   branch?: boolean
   output?: boolean
@@ -111,6 +135,20 @@ export interface ReviewPromptConfig {
   rereview?: string
   review?: string
   reviewGuidelines?: string
+}
+
+export interface TriagePromptConfig {
+  action?: string
+  bug?: string
+  comment?: string
+  commentClassification?: string
+  createPr?: string
+  duplicate?: string
+  existingPr?: string
+  feature?: string
+  kind?: string
+  question?: string
+  reconsider?: string
 }
 
 export interface MergePromptConfig {
@@ -141,6 +179,43 @@ export interface ReviewConfig {
   worktree?: string
 }
 
+export interface TriageKindRuleConfig {
+  label?: string[]
+  type?: string[]
+}
+
+export interface TriageKindConfig {
+  bug?: TriageKindRuleConfig
+  feature?: TriageKindRuleConfig
+}
+
+export interface TriageAutomationConfig {
+  clear?: string[]
+  close?: boolean
+  pr?: boolean
+}
+
+export interface TriageSafetyConfig {
+  allowAuthors?: string[]
+  allowMentionActors?: string[]
+  allowMentionRoles?: string[]
+  blockedLabels?: string[]
+  requiredLabels?: string[]
+}
+
+export interface TriageConfig {
+  account?: string
+  agents?: TriageAgentConfig[]
+  automation?: TriageAutomationConfig
+  concurrency?: TriageConcurrencyConfig
+  creator?: TriageCreatorConfig
+  kind?: TriageKindConfig
+  output?: string
+  prompts?: TriagePromptConfig
+  safety?: TriageSafetyConfig
+  worktree?: string
+}
+
 export interface MergeConfig {
   automation?: AutomationConfig
   checks?: MergeChecksConfig
@@ -158,6 +233,7 @@ export interface MagiConfig {
   merge?: MergeConfig
   output?: OutputConfig
   review?: ReviewConfig
+  triage?: TriageConfig
 }
 
 export interface ResolvedReviewer extends Omit<ReviewerConfig, "permissions"> {
@@ -170,9 +246,28 @@ export interface ResolvedEditor extends Omit<EditorConfig, "permissions"> {
   permission: PermissionConfig
 }
 
+export interface ResolvedTriageAgent extends Omit<
+  TriageAgentConfig,
+  "permissions"
+> {
+  index: number
+  key: string
+  permission: PermissionConfig
+}
+
+export interface ResolvedTriageCreator extends Omit<
+  TriageCreatorConfig,
+  "permissions"
+> {
+  account: string
+  permission: PermissionConfig
+}
+
 export interface ResolvedAgents {
   editor?: ResolvedEditor
   reviewers: ResolvedReviewer[]
+  triage: ResolvedTriageAgent[]
+  triageCreator?: ResolvedTriageCreator
 }
 
 export interface ResolvedRepository extends RepositoryConfig {
@@ -197,6 +292,19 @@ export interface ResolvedRepository extends RepositoryConfig {
   reviewAutomation?: Required<AutomationConfig>
   safety: Required<Omit<SafetyConfig, "maxChangedFiles">> & {
     maxChangedFiles?: number
+  }
+  triage: {
+    account?: string
+    automation: Required<TriageAutomationConfig>
+    concurrency: Required<TriageConcurrencyConfig>
+    kind: {
+      bug: Required<TriageKindRuleConfig>
+      feature: Required<TriageKindRuleConfig>
+    }
+    output?: string
+    prompts: TriagePromptConfig
+    safety: Required<TriageSafetyConfig>
+    worktree?: string
   }
 }
 
@@ -251,6 +359,36 @@ export interface FindingValidationOutput {
     reason?: string
     reviewer: string
     vote: "AGREE" | "DISAGREE"
+  }[]
+}
+
+export type TriageKindVote = "ASK" | "BUG" | "FEATURE"
+export type TriageBinaryVote = "ASK" | "NO" | "YES"
+export type TriageDuplicateVote = "DUPLICATE" | "NOT_DUPLICATE"
+export type TriageExistingPrVote =
+  | "RELATED_PR_DOES_NOT_HANDLE_ISSUE"
+  | "RELATED_PR_HANDLES_ISSUE"
+export type TriageCommentClassification =
+  | "ACKNOWLEDGEMENT"
+  | "CLARIFICATION"
+  | "NEW_EVIDENCE"
+  | "OBJECTION"
+  | "UNRELATED"
+
+export interface TriageVoteOutput<T extends string = string> {
+  reason: string
+  vote: T
+}
+
+export interface TriageDuplicateOutput extends TriageVoteOutput<TriageDuplicateVote> {
+  duplicateOf?: number
+}
+
+export interface TriageCommentClassificationOutput {
+  comments: {
+    classification: TriageCommentClassification
+    commentId: number
+    reason: string
   }[]
 }
 
