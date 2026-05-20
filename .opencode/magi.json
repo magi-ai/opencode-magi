@@ -36,7 +36,8 @@
       }
     ],
     "merge": {
-      "queue": true
+      "queue": true,
+      "approvalPolicy": "unanimous"
     },
     "prompts": {
       "reviewGuidelines": ".agents/references/pr-review-guidelines.md"
