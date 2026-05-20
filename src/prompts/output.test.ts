@@ -9,8 +9,7 @@ import {
   parseTriageCommentClassificationOutput,
   parseTriageCreatePrOutput,
   parseTriageDuplicateOutput,
-  parseTriageFinalOutput,
-  parseTriageKindOutput,
+  parseTriageCategoryOutput,
 } from "./output"
 
 describe("review output", () => {
@@ -163,10 +162,15 @@ describe("review output", () => {
 })
 
 describe("triage output parsing", () => {
-  test("parses kind and binary votes", () => {
-    expect(parseTriageKindOutput('{"vote":"BUG","reason":"broken"}')).toEqual({
+  test("parses category and binary votes", () => {
+    expect(
+      parseTriageCategoryOutput('{"vote":"bug","reason":"broken"}', [
+        "bug",
+        "feature",
+      ]),
+    ).toEqual({
       reason: "broken",
-      vote: "BUG",
+      vote: "bug",
     })
     expect(
       parseTriageBinaryOutput('{"vote":"ASK","reason":"missing"}'),
@@ -187,16 +191,13 @@ describe("triage output parsing", () => {
     ).toThrow("DUPLICATE requires duplicateOf")
   })
 
-  test("parses triage action, final, and comment classification output", () => {
+  test("parses triage action and comment classification output", () => {
     expect(
       parseTriageActionOutput('{"action":"PR","reason":"accepted"}'),
     ).toEqual({
       action: "PR",
       reason: "accepted",
     })
-    expect(
-      parseTriageFinalOutput('{"vote":"FEATURE_ACCEPTED","reason":"valuable"}'),
-    ).toEqual({ reason: "valuable", vote: "FEATURE_ACCEPTED" })
     expect(
       parseTriageCommentClassificationOutput(
         '{"comments":[{"commentId":123,"classification":"NEW_EVIDENCE","reason":"log"}]}',

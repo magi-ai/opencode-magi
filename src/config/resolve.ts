@@ -6,6 +6,7 @@ import type {
   ResolvedAgents,
   ResolvedRepository,
   ResolvedReviewer,
+  ResolvedTriageCategory,
   ResolvedTriageAgent,
 } from "../types"
 import editorPermission from "../permissions/editor.json" with { type: "json" }
@@ -19,6 +20,26 @@ const DEFAULT_EDITOR_PERMISSION = mergePermissions(
   DEFAULT_COMMON_PERMISSION,
   editorPermission as PermissionConfig,
 )
+const DEFAULT_TRIAGE_CATEGORIES: ResolvedTriageCategory[] = [
+  {
+    description: "Something is broken or behaves incorrectly.",
+    id: "bug",
+    labels: ["bug"],
+    types: ["Bug"],
+  },
+  {
+    description: "Maintenance, refactoring, chores, or planned work.",
+    id: "task",
+    labels: ["task"],
+    types: ["Task"],
+  },
+  {
+    description: "New or improved user-facing capability.",
+    id: "feature",
+    labels: ["enhancement"],
+    types: ["Feature"],
+  },
+]
 
 export function reviewerKey(reviewer: { id?: string }, index: number): string {
   return reviewer.id ?? `reviewer-${index + 1}`
@@ -159,6 +180,17 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
   }
 }
 
+function resolveTriageCategories(config: MagiConfig): ResolvedTriageCategory[] {
+  return (config.triage?.categories ?? DEFAULT_TRIAGE_CATEGORIES).map(
+    (category) => ({
+      description: category.description,
+      id: category.id ?? "",
+      labels: category.labels ?? [],
+      types: category.types ?? [],
+    }),
+  )
+}
+
 export function resolveRepository(config: MagiConfig): ResolvedRepository {
   if (!config.github?.owner) throw new Error("github.owner is required")
   if (!config.github?.repo) throw new Error("github.repo is required")
@@ -225,18 +257,9 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
         close: config.triage?.automation?.close ?? false,
         pr: config.triage?.automation?.pr ?? false,
       },
+      categories: resolveTriageCategories(config),
       concurrency: {
         runs: config.triage?.concurrency?.runs ?? 3,
-      },
-      kind: {
-        bug: {
-          label: config.triage?.kind?.bug?.label ?? ["bug"],
-          type: config.triage?.kind?.bug?.type ?? ["Bug"],
-        },
-        feature: {
-          label: config.triage?.kind?.feature?.label ?? ["enhancement"],
-          type: config.triage?.kind?.feature?.type ?? ["Feature"],
-        },
       },
       output: config.triage?.output,
       prompts: config.triage?.prompts ?? {},

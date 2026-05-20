@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest"
-import { mkdtemp, rm as removePath } from "node:fs/promises"
+import { mkdtemp, readFile, rm as removePath } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type {
@@ -14,7 +14,8 @@ import {
   chooseDuplicateOutput,
   eligibleMentionReplies,
   mentionAllowed,
-  resolveIssueKind,
+  parseTriageMarker,
+  resolveIssueCategory,
   runTriage,
 } from "./triage"
 
@@ -73,11 +74,27 @@ const repository: ResolvedRepository = {
   triage: {
     account: "magi-bot",
     automation: { clear: ["triage"], close: false, pr: false },
+    categories: [
+      {
+        description: "Something is broken or behaves incorrectly.",
+        id: "bug",
+        labels: ["bug"],
+        types: ["Bug"],
+      },
+      {
+        description: "Maintenance, refactoring, chores, or planned work.",
+        id: "task",
+        labels: ["task"],
+        types: ["Task"],
+      },
+      {
+        description: "New or improved user-facing capability.",
+        id: "feature",
+        labels: ["enhancement"],
+        types: ["Feature"],
+      },
+    ],
     concurrency: { runs: 3 },
-    kind: {
-      bug: { label: ["bug"], type: ["Bug"] },
-      feature: { label: ["enhancement"], type: ["Feature"] },
-    },
     prompts: {},
     safety: {
       allowAuthors: [],
@@ -340,6 +357,10 @@ function action(action: string): string {
   return JSON.stringify({ action, reason: `${action} reason` })
 }
 
+function decision(category: string | null, disposition: string) {
+  return { category, disposition }
+}
+
 function repositoryWithTriage(
   triage: Partial<NonNullable<ResolvedRepository["triage"]>>,
 ): ResolvedRepository {
@@ -361,24 +382,54 @@ function repositoryWithTriage(
 }
 
 describe("triage orchestration", () => {
-  test("resolves issue kind from configured labels and issue types", () => {
-    expect(resolveIssueKind(issue({ type: "Bug" }), repository)).toBe("BUG")
-    expect(resolveIssueKind(issue({ type: "Feature" }), repository)).toBe(
-      "FEATURE",
+  test("resolves issue category from configured labels and issue types", () => {
+    expect(resolveIssueCategory(issue({ type: "Bug" }), repository)).toBe("bug")
+    expect(resolveIssueCategory(issue({ type: "Feature" }), repository)).toBe(
+      "feature",
     )
-    expect(resolveIssueKind(issue({ labels: ["bug"] }), repository)).toBe("BUG")
+    expect(resolveIssueCategory(issue({ labels: ["bug"] }), repository)).toBe(
+      "bug",
+    )
     expect(
-      resolveIssueKind(issue({ labels: ["enhancement"] }), repository),
-    ).toBe("FEATURE")
-    expect(resolveIssueKind(issue({ type: undefined }), repository)).toBe(
+      resolveIssueCategory(issue({ labels: ["enhancement"] }), repository),
+    ).toBe("feature")
+    expect(resolveIssueCategory(issue({ type: undefined }), repository)).toBe(
       undefined,
     )
     expect(
-      resolveIssueKind(issue({ labels: ["bug"], type: "Feature" }), repository),
+      resolveIssueCategory(
+        issue({ labels: ["bug"], type: "Feature" }),
+        repository,
+      ),
     ).toBe(undefined)
   })
 
-  test("skips kind classification when issue type is Bug", async () => {
+  test("parses v2 triage markers", () => {
+    expect(
+      parseTriageMarker(
+        "body\n<!-- opencode-magi:triage v=2 issue=1 category=task disposition=accepted action=COMMENT checkpoint=10 pr=none processed=11,12 -->",
+      ),
+    ).toMatchObject({
+      action: "COMMENT",
+      category: "task",
+      checkpoint: 10,
+      disposition: "accepted",
+      issue: 1,
+      processed: [11, 12],
+      v: 2,
+    })
+    expect(
+      parseTriageMarker(
+        "body\n<!-- opencode-magi:triage v=2 issue=1 category=none disposition=ask askReason=category_unclear action=COMMENT checkpoint=10 pr=none processed= -->",
+      ),
+    ).toMatchObject({
+      askReason: "category_unclear",
+      category: null,
+      disposition: "ask",
+    })
+  })
+
+  test("skips category classification when issue type is Bug", async () => {
     const result = await runScenario({
       issue: issue({ type: "Bug" }),
       outputs: [
@@ -390,16 +441,18 @@ describe("triage orchestration", () => {
       ],
     })
 
-    expect(result.result.result).toBe("BUG_ACCEPTED")
+    expect(result.result.result).toEqual(decision("bug", "accepted"))
     expect(
-      result.sessionTitles.filter((title) => title.includes("triage bug")),
+      result.sessionTitles.filter((title) =>
+        title.includes("triage acceptance"),
+      ),
     ).toHaveLength(3)
     expect(
-      result.sessionTitles.some((title) => title.includes("triage kind")),
+      result.sessionTitles.some((title) => title.includes("triage category")),
     ).toBe(false)
   })
 
-  test("skips kind classification when issue type is Feature", async () => {
+  test("skips category classification when issue type is Feature", async () => {
     const result = await runScenario({
       issue: issue({ type: "Feature" }),
       outputs: [
@@ -411,21 +464,23 @@ describe("triage orchestration", () => {
       ],
     })
 
-    expect(result.result.result).toBe("FEATURE_ACCEPTED")
+    expect(result.result.result).toEqual(decision("feature", "accepted"))
     expect(
-      result.sessionTitles.filter((title) => title.includes("triage feature")),
+      result.sessionTitles.filter((title) =>
+        title.includes("triage acceptance"),
+      ),
     ).toHaveLength(3)
     expect(
-      result.sessionTitles.some((title) => title.includes("triage kind")),
+      result.sessionTitles.some((title) => title.includes("triage category")),
     ).toBe(false)
   })
 
-  test("runs kind classification when issue type and kind labels are absent", async () => {
+  test("runs category classification when issue type and category labels are absent", async () => {
     const result = await runScenario({
       issue: issue({ type: undefined }),
       outputs: [
-        vote("FEATURE"),
-        vote("FEATURE"),
+        vote("feature"),
+        vote("feature"),
         vote("ASK"),
         vote("YES"),
         vote("YES"),
@@ -435,13 +490,39 @@ describe("triage orchestration", () => {
       ],
     })
 
-    expect(result.result.result).toBe("FEATURE_ACCEPTED")
+    expect(result.result.result).toEqual(decision("feature", "accepted"))
     expect(
-      result.sessionTitles.filter((title) => title.includes("triage kind")),
+      result.sessionTitles.filter((title) => title.includes("triage category")),
     ).toHaveLength(3)
     expect(
-      result.sessionTitles.filter((title) => title.includes("triage feature")),
+      result.sessionTitles.filter((title) =>
+        title.includes("triage acceptance"),
+      ),
     ).toHaveLength(3)
+  })
+
+  test("asks without category details when category is unclear", async () => {
+    const result = await runScenario({
+      issue: issue({ type: undefined }),
+      outputs: [vote("ASK"), vote("ASK"), vote("bug"), action("ASK")],
+    })
+    const comment = await readFile(
+      join(result.result.outputDir, "comment.md"),
+      "utf8",
+    )
+    const visibleComment = comment.split("<!-- opencode-magi:triage")[0]
+
+    expect(result.result.result).toEqual({
+      askReason: "category_unclear",
+      category: null,
+      disposition: "ask",
+    })
+    expect(visibleComment).toContain(
+      "@author I can't determine what should be done",
+    )
+    expect(visibleComment).not.toContain("bug")
+    expect(visibleComment).not.toContain("feature")
+    expect(visibleComment).not.toContain("Magi")
   })
 
   test("blocks unsafe issues before model classification", async () => {
@@ -450,12 +531,12 @@ describe("triage orchestration", () => {
       outputs: [],
     })
 
-    expect(result.result.result).toBe("FAILED")
+    expect(result.result.result).toEqual(decision(null, "failed"))
     expect(result.result.report).toContain("missing required labels: triage")
     expect(result.sessionTitles).toEqual([])
   })
 
-  test("detects explicit duplicate candidates before kind classification", async () => {
+  test("detects explicit duplicate candidates before category classification", async () => {
     const result = await runScenario({
       issue: issue({ body: "Duplicate of #10" }),
       outputs: [
@@ -467,14 +548,14 @@ describe("triage orchestration", () => {
       ],
     })
 
-    expect(result.result.result).toBe("DUPLICATE")
+    expect(result.result.result).toEqual(decision(null, "duplicate"))
     expect(
       result.sessionTitles.filter((title) =>
         title.includes("triage duplicate"),
       ),
     ).toHaveLength(3)
     expect(
-      result.sessionTitles.some((title) => title.includes("triage kind")),
+      result.sessionTitles.some((title) => title.includes("triage category")),
     ).toBe(false)
   })
 
@@ -498,14 +579,14 @@ describe("triage orchestration", () => {
       ],
     })
 
-    expect(result.result.result).toBe("CLEAR_ONLY")
+    expect(result.result.result).toEqual(decision(null, "clear_only"))
     expect(
       result.sessionTitles.filter((title) =>
         title.includes("triage existing PR"),
       ),
     ).toHaveLength(3)
     expect(
-      result.sessionTitles.some((title) => title.includes("triage kind")),
+      result.sessionTitles.some((title) => title.includes("triage category")),
     ).toBe(false)
   })
 
@@ -535,7 +616,7 @@ describe("triage orchestration", () => {
       }),
     })
 
-    expect(result.result.result).toBe("BUG_ACCEPTED")
+    expect(result.result.result).toEqual(decision(null, "accepted"))
     expect(
       result.commands.some((command) => command.startsWith("gh issue close 1")),
     ).toBe(true)
@@ -546,7 +627,7 @@ describe("triage orchestration", () => {
     ).toBe(true)
   })
 
-  test("closes intentionally invalid bug reports when bug vote rejects them", async () => {
+  test("closes intentionally invalid issues when acceptance vote rejects them", async () => {
     const result = await runScenario({
       dryRun: false,
       issue: issue({
@@ -565,7 +646,7 @@ describe("triage orchestration", () => {
       }),
     })
 
-    expect(result.result.result).toBe("BUG_REJECTED")
+    expect(result.result.result).toEqual(decision("bug", "rejected"))
     expect(
       result.commands.some((command) => command.startsWith("gh issue close 1")),
     ).toBe(true)
@@ -615,7 +696,7 @@ describe("triage orchestration", () => {
       command.startsWith("gh pr create"),
     )
 
-    expect(result.result.result).toBe("FEATURE_ACCEPTED")
+    expect(result.result.result).toEqual(decision("feature", "accepted"))
     expect(assignIndex).toBeGreaterThan(-1)
     expect(assignIndex).toBeLessThan(worktreeIndex)
     expect(assignIndex).toBeLessThan(prIndex)
@@ -635,7 +716,7 @@ describe("triage orchestration", () => {
       outputs: [],
     })
 
-    expect(result.result.result).toBe("BUG_ACCEPTED")
+    expect(result.result.result).toEqual(decision("bug", "accepted"))
     expect(result.sessionTitles).toEqual([])
   })
 
@@ -676,7 +757,7 @@ describe("triage orchestration", () => {
       },
     })
 
-    expect(result.result.result).toBe("FEATURE_ACCEPTED")
+    expect(result.result.result).toEqual(decision("feature", "accepted"))
     expect(result.result.report).toContain(
       "Created PR: https://github.com/owner/repo/pull/30",
     )
@@ -707,7 +788,7 @@ describe("triage orchestration", () => {
       }),
     })
 
-    expect(result.result.result).toBe("BUG_REJECTED")
+    expect(result.result.result).toEqual(decision("bug", "rejected"))
     expect(
       result.commands.some((command) => command.startsWith("gh issue close 1")),
     ).toBe(true)
@@ -746,7 +827,7 @@ describe("triage orchestration", () => {
       },
     })
 
-    expect(result.result.result).toBe("FEATURE_ACCEPTED")
+    expect(result.result.result).toEqual(decision("feature", "accepted"))
     expect(
       result.commands.some((command) => command.startsWith("git worktree add")),
     ).toBe(false)
@@ -827,15 +908,15 @@ describe("triage orchestration", () => {
             { classification: "OBJECTION", commentId: 11, reason: "valid" },
           ],
         }),
-        vote("FEATURE_REJECTED"),
-        vote("FEATURE_REJECTED"),
+        vote("NO"),
+        vote("NO"),
         vote("ASK"),
         action("COMMENT"),
         "Reconsidered comment",
       ],
     })
 
-    expect(result.result.result).toBe("FEATURE_REJECTED")
+    expect(result.result.result).toEqual(decision("feature", "rejected"))
     expect(
       result.sessionTitles.some((title) =>
         title.includes("triage comment classification"),

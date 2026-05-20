@@ -12,13 +12,14 @@ import type {
   ResolvedTriageAgent,
   TriageAction,
   TriageActionOutput,
+  TriageAskReason,
   TriageBinaryVote,
+  TriageCategoryVote,
   TriageCommentClassification,
+  TriageDecision,
   TriageDuplicateOutput,
   TriageDuplicateVote,
   TriageExistingPrVote,
-  TriageFinalVote,
-  TriageKindVote,
   TriageVoteOutput,
 } from "../types"
 import { mkdir, writeFile } from "node:fs/promises"
@@ -43,40 +44,30 @@ import {
   updateIssueComment,
 } from "../github/commands"
 import {
-  composeTriageBugPrompt,
+  composeTriageAcceptancePrompt,
   composeTriageActionPrompt,
+  composeTriageCategoryPrompt,
   composeTriageCommentClassificationPrompt,
   composeTriageCommentPrompt,
   composeTriageCreatePrPrompt,
   composeTriageDuplicatePrompt,
   composeTriageExistingPrPrompt,
-  composeTriageFeaturePrompt,
-  composeTriageKindPrompt,
   composeTriageQuestionPrompt,
   composeTriageReconsiderPrompt,
 } from "../prompts/compose"
 import {
   parseTriageActionOutput,
   parseTriageBinaryOutput,
+  parseTriageCategoryOutput,
   parseTriageCommentClassificationOutput,
   parseTriageCreatePrOutput,
   parseTriageDuplicateOutput,
   parseTriageExistingPrOutput,
-  parseTriageFinalOutput,
-  parseTriageKindOutput,
 } from "../prompts/output"
 import { aggregateStringMajority, majorityThreshold } from "./majority"
 import { runModelText, runModelWithRepair, type ModelClient } from "./model"
 
-type FinalResult =
-  | "ASK"
-  | "BUG_ACCEPTED"
-  | "BUG_REJECTED"
-  | "CLEAR_ONLY"
-  | "DUPLICATE"
-  | "FEATURE_ACCEPTED"
-  | "FEATURE_REJECTED"
-  | "FAILED"
+type FinalResult = TriageDecision
 
 export interface TriageRunInput {
   client: ModelClient
@@ -105,6 +96,9 @@ interface TriageMarker {
   pr?: string
   processed: number[]
   result?: string
+  category?: string | null
+  disposition?: TriageDecision["disposition"]
+  askReason?: TriageAskReason
   v: number
 }
 
@@ -134,20 +128,11 @@ type TriagePromptComposer = (input: {
 }) => Promise<string>
 
 const MARKER_PREFIX = "opencode-magi:triage"
-const KIND_VOTES = ["ASK", "BUG", "FEATURE"] as const
 const BINARY_VOTES = ["ASK", "NO", "YES"] as const
 const DUPLICATE_VOTES = ["DUPLICATE", "NOT_DUPLICATE"] as const
 const EXISTING_PR_VOTES = [
   "RELATED_PR_DOES_NOT_HANDLE_ISSUE",
   "RELATED_PR_HANDLES_ISSUE",
-] as const
-const FINAL_VOTES = [
-  "ASK",
-  "BUG_ACCEPTED",
-  "BUG_REJECTED",
-  "DUPLICATE",
-  "FEATURE_ACCEPTED",
-  "FEATURE_REJECTED",
 ] as const
 const RECONSIDERATION_CLASSES = new Set<TriageCommentClassification>([
   "CLARIFICATION",
@@ -158,12 +143,16 @@ const RECONSIDERATION_CLASSES = new Set<TriageCommentClassification>([
 function marker(input: {
   action: string
   checkpoint?: number | "pending"
+  decision: TriageDecision
   issue: number
   pr?: number
   processed?: number[]
-  result: string
 }): string {
-  return `<!-- ${MARKER_PREFIX} v=1 issue=${input.issue} result=${input.result} action=${input.action} checkpoint=${input.checkpoint ?? "pending"} pr=${input.pr ?? "none"} processed=${(input.processed ?? []).join(",")} -->`
+  const askReason = input.decision.askReason
+    ? ` askReason=${input.decision.askReason}`
+    : ""
+
+  return `<!-- ${MARKER_PREFIX} v=2 issue=${input.issue} category=${input.decision.category ?? "none"} disposition=${input.decision.disposition}${askReason} action=${input.action} checkpoint=${input.checkpoint ?? "pending"} pr=${input.pr ?? "none"} processed=${(input.processed ?? []).join(",")} -->`
 }
 
 export function parseTriageMarker(body: string): TriageMarker | undefined {
@@ -183,13 +172,29 @@ export function parseTriageMarker(body: string): TriageMarker | undefined {
   )
   const version = Number(entries.v)
 
-  if (version !== 1) return undefined
+  if (version !== 1 && version !== 2) return undefined
 
   return {
     action: entries.action,
+    askReason:
+      entries.askReason === "acceptance_unclear" ||
+      entries.askReason === "category_unclear"
+        ? entries.askReason
+        : undefined,
+    category:
+      entries.category === "none" ? null : entries.category || undefined,
     checkpoint:
       entries.checkpoint && Number.isFinite(Number(entries.checkpoint))
         ? Number(entries.checkpoint)
+        : undefined,
+    disposition:
+      entries.disposition === "accepted" ||
+      entries.disposition === "rejected" ||
+      entries.disposition === "ask" ||
+      entries.disposition === "duplicate" ||
+      entries.disposition === "clear_only" ||
+      entries.disposition === "failed"
+        ? entries.disposition
         : undefined,
     issue: entries.issue ? Number(entries.issue) : undefined,
     pr: entries.pr,
@@ -213,23 +218,22 @@ function existingClearLabels(issue: IssueMeta, labels: string[]): string[] {
   return labels.filter((label) => existing.has(label.toLowerCase()))
 }
 
-export function resolveIssueKind(
+export function resolveIssueCategory(
   issue: IssueMeta,
   repository: ResolvedRepository,
-): "BUG" | "FEATURE" | undefined {
+): string | undefined {
   const triage = repository.triage
   if (!triage) throw new Error("triage configuration is required")
 
-  const bug =
-    labelsContain(issue.labels, triage.kind.bug.label) ||
-    (issue.type != null && triage.kind.bug.type.includes(issue.type))
-  const feature =
-    labelsContain(issue.labels, triage.kind.feature.label) ||
-    (issue.type != null && triage.kind.feature.type.includes(issue.type))
+  const matches = triage.categories.filter(
+    (category) =>
+      labelsContain(issue.labels, category.labels) ||
+      (issue.type != null && category.types.includes(issue.type)),
+  )
 
-  if (bug === feature) return undefined
+  if (matches.length !== 1) return undefined
 
-  return bug ? "BUG" : "FEATURE"
+  return matches[0].id
 }
 
 function issueContext(input: {
@@ -562,29 +566,48 @@ export function eligibleMentionReplies(input: {
 }
 
 function finalResultFromMarker(marker: TriageMarker): FinalResult {
-  if (marker.result === "RESOLVED_BY_MERGED_PR") return "BUG_ACCEPTED"
+  if (marker.disposition) {
+    return {
+      askReason: marker.askReason,
+      category: marker.category ?? null,
+      disposition: marker.disposition,
+    }
+  }
 
-  return isFinalResult(marker.result) ? marker.result : "FAILED"
+  switch (marker.result) {
+    case "BUG_ACCEPTED":
+    case "RESOLVED_BY_MERGED_PR":
+      return { category: "bug", disposition: "accepted" }
+    case "BUG_REJECTED":
+      return { category: "bug", disposition: "rejected" }
+    case "FEATURE_ACCEPTED":
+      return { category: "feature", disposition: "accepted" }
+    case "FEATURE_REJECTED":
+      return { category: "feature", disposition: "rejected" }
+    case "ASK":
+      return {
+        askReason: "acceptance_unclear",
+        category: null,
+        disposition: "ask",
+      }
+    case "CLEAR_ONLY":
+      return { category: null, disposition: "clear_only" }
+    case "DUPLICATE":
+      return { category: null, disposition: "duplicate" }
+    default:
+      return { category: null, disposition: "failed" }
+  }
 }
 
-function isFinalResult(value: unknown): value is FinalResult {
-  return (
-    value === "ASK" ||
-    value === "BUG_ACCEPTED" ||
-    value === "BUG_REJECTED" ||
-    value === "CLEAR_ONLY" ||
-    value === "DUPLICATE" ||
-    value === "FEATURE_ACCEPTED" ||
-    value === "FEATURE_REJECTED" ||
-    value === "FAILED"
-  )
+function decisionText(decision: TriageDecision): string {
+  return JSON.stringify(decision)
 }
 
 function actionPlan(input: {
   result: FinalResult
   triage: NonNullable<ResolvedRepository["triage"]>
 }): ActionPlan {
-  if (input.result === "CLEAR_ONLY") {
+  if (input.result.disposition === "clear_only") {
     return {
       action: "CLEAR_ONLY",
       allowedActions: ["CLEAR_ONLY"],
@@ -594,7 +617,7 @@ function actionPlan(input: {
       postComment: false,
     }
   }
-  if (input.result === "ASK") {
+  if (input.result.disposition === "ask") {
     return {
       action: "ASK",
       allowedActions: ["ASK"],
@@ -607,12 +630,10 @@ function actionPlan(input: {
 
   const closeIssue =
     input.triage.automation.close &&
-    (input.result === "BUG_REJECTED" ||
-      input.result === "DUPLICATE" ||
-      input.result === "FEATURE_REJECTED")
+    (input.result.disposition === "rejected" ||
+      input.result.disposition === "duplicate")
   const createPr =
-    input.triage.automation.pr &&
-    (input.result === "BUG_ACCEPTED" || input.result === "FEATURE_ACCEPTED")
+    input.triage.automation.pr && input.result.disposition === "accepted"
 
   return {
     action: closeIssue ? "CLOSE" : createPr ? "PR" : "COMMENT",
@@ -751,16 +772,16 @@ async function runReconsiderationVote(input: {
   context: string
   input: TriageRunInput
   outputDir: string
-}): Promise<TriageFinalVote | undefined> {
-  return runPhaseVote<TriageFinalVote>({
+}): Promise<TriageBinaryVote | undefined> {
+  return runPhaseVote<TriageBinaryVote>({
     context: input.context,
     input: input.input,
     outputDir: input.outputDir,
-    parse: parseTriageFinalOutput,
+    parse: parseTriageBinaryOutput,
     phase: "reconsider",
     prompt: composeTriageReconsiderPrompt,
     schemaName: "triage reconsider",
-    votes: FINAL_VOTES,
+    votes: BINARY_VOTES,
   })
 }
 
@@ -775,8 +796,28 @@ async function composeResultComment(input: {
 }): Promise<string> {
   const agents = input.input.repository.agents.triage
   if (!agents?.length) throw new Error("triage.agents is required")
+  if (
+    input.result.disposition === "ask" &&
+    input.result.askReason === "category_unclear"
+  ) {
+    const language = input.input.repository.language?.toLowerCase() ?? ""
+    const body =
+      language.includes("ja") || language.includes("japanese")
+        ? `@${input.issue.author} 現在の説明だけでは、何をすべきか判断できません。\n\n期待する動作、実際の動作、必要な理由、関連する例・ログ・スクリーンショットなどを追記してください。`
+        : `@${input.issue.author} I can't determine what should be done from the current description.\n\nPlease add more detail, such as the expected behavior, the actual behavior, the reason this is needed, or any relevant examples, logs, or screenshots.`
+    const comment = `${body}\n\n${marker({
+      action: input.action,
+      checkpoint: "pending",
+      decision: input.result,
+      issue: input.issue.number,
+      processed: input.processed,
+    })}`
+
+    await writeFile(join(input.outputDir, "comment.md"), `${comment}\n`)
+    return comment
+  }
   const prompt = await (
-    input.result === "ASK"
+    input.result.disposition === "ask"
       ? composeTriageQuestionPrompt
       : composeTriageCommentPrompt
   )({
@@ -802,9 +843,9 @@ async function composeResultComment(input: {
     `\n\n${marker({
       action: input.action,
       checkpoint: "pending",
+      decision: input.result,
       issue: input.issue.number,
       processed: input.processed,
-      result: input.result,
     })}`
 
   await writeFile(join(input.outputDir, "comment.md"), `${comment}\n`)
@@ -866,10 +907,10 @@ async function persistProcessedMarker(input: {
   const updatedMarker = marker({
     action: input.marker.action ?? input.marker.result ?? "ASK",
     checkpoint: markerCheckpoint(input.marker),
+    decision: finalResultFromMarker(input.marker),
     issue: input.issue.number,
     pr: input.pr ?? markerPr(input.marker),
     processed: input.processed,
-    result: input.marker.result ?? "ASK",
   })
   const body = previousComment.body.replace(
     /<!--\s*opencode-magi:triage\s+[^>]+?\s*-->/,
@@ -917,7 +958,7 @@ async function finishWithResult(input: {
   const comment = plan.postComment
     ? await composeResultComment({
         action: plan.action,
-        context: `Result: ${input.result}\nAction: ${plan.action}\n\n${input.context}`,
+        context: `Result: ${decisionText(input.result)}\nAction: ${plan.action}\n\n${input.context}`,
         input: input.input,
         issue: input.issue,
         outputDir: input.outputDir,
@@ -1001,7 +1042,7 @@ async function finishWithResult(input: {
   }
 
   const report = [
-    `Magi triage result for #${input.issue.number}: ${input.result}`,
+    `Magi triage result for #${input.issue.number}: ${decisionText(input.result)}`,
     prUrl ? `Created PR: ${prUrl}` : undefined,
     input.input.dryRun
       ? "Dry run: no GitHub mutations were performed."
@@ -1166,7 +1207,12 @@ export async function runTriage(
   if (block) {
     const report = `Magi triage blocked for #${input.issue}: ${block}`
     await writeFile(join(outputDir, "report.md"), `${report}\n`)
-    return { issue: input.issue, outputDir, report, result: "FAILED" }
+    return {
+      issue: input.issue,
+      outputDir,
+      report,
+      result: { category: null, disposition: "failed" },
+    }
   }
 
   let context = issueContext({ issue, relationship })
@@ -1253,8 +1299,18 @@ export async function runTriage(
       },
     })
     await writeFile(join(outputDir, "context.md"), `${context}\n`)
+    const vote = await runReconsiderationVote({ context, input, outputDir })
+    const previous = finalResultFromMarker(relationship.previousMarker)
     result =
-      (await runReconsiderationVote({ context, input, outputDir })) ?? "ASK"
+      vote === "YES"
+        ? { category: previous.category, disposition: "accepted" }
+        : vote === "NO"
+          ? { category: previous.category, disposition: "rejected" }
+          : {
+              askReason: "acceptance_unclear",
+              category: previous.category,
+              disposition: "ask",
+            }
   }
 
   if (!result && relationship.relatedPullRequests.length) {
@@ -1273,6 +1329,10 @@ export async function runTriage(
         (pr) => pr.state === "MERGED",
       )
       if (merged && triage.automation.close) {
+        const relatedPrDecision: TriageDecision = {
+          category: resolveIssueCategory(issue, input.repository) ?? null,
+          disposition: "accepted",
+        }
         const plan: ActionPlan = {
           action: "CLOSE",
           allowedActions: ["CLOSE"],
@@ -1286,16 +1346,16 @@ export async function runTriage(
           input,
           outputDir,
           plan,
-          result: "BUG_ACCEPTED",
+          result: relatedPrDecision,
         })
         const body = await composeResultComment({
           action: "CLOSE",
-          context: `Result: BUG_ACCEPTED\nAction: CLOSE\n\n${context}`,
+          context: `Result: ${decisionText(relatedPrDecision)}\nAction: CLOSE\n\n${context}`,
           input,
           issue,
           outputDir,
           processed,
-          result: "BUG_ACCEPTED",
+          result: relatedPrDecision,
         })
         if (!input.dryRun) {
           await postMarkedIssueComment({
@@ -1347,7 +1407,7 @@ export async function runTriage(
           issue: issue.number,
           outputDir,
           report,
-          result: "BUG_ACCEPTED",
+          result: relatedPrDecision,
         }
       }
       return finishWithResult({
@@ -1357,7 +1417,7 @@ export async function runTriage(
         outputDir,
         processed,
         relationship,
-        result: "CLEAR_ONLY",
+        result: { category: null, disposition: "clear_only" },
       })
     }
   }
@@ -1373,62 +1433,72 @@ export async function runTriage(
     })
     if (duplicate) {
       context = `${context}\n\nDuplicate decision: ${JSON.stringify(duplicate)}`
-      result = "DUPLICATE"
+      result = { category: null, disposition: "duplicate" }
     }
   }
 
   if (!result) {
-    const resolvedKind = resolveIssueKind(issue, input.repository)
-    await writeJson(join(outputDir, "kind-resolution.json"), {
-      kind: resolvedKind,
-      source: resolvedKind ? "config" : "vote",
+    const resolvedCategory = resolveIssueCategory(issue, input.repository)
+    await writeJson(join(outputDir, "category-resolution.json"), {
+      category: resolvedCategory,
+      source: resolvedCategory ? "config" : "vote",
     })
-    const kind =
-      resolvedKind ??
-      (await runPhaseVote<TriageKindVote>({
+    const category =
+      resolvedCategory ??
+      (await runPhaseVote<TriageCategoryVote>({
         context,
         input,
         outputDir,
-        parse: parseTriageKindOutput,
-        phase: "kind",
-        prompt: composeTriageKindPrompt,
-        schemaName: "triage kind",
-        votes: KIND_VOTES,
+        parse: (text) =>
+          parseTriageCategoryOutput(
+            text,
+            triage.categories.map((item) => item.id),
+          ),
+        phase: "category",
+        prompt: composeTriageCategoryPrompt,
+        schemaName: "triage category",
+        votes: ["ASK", ...triage.categories.map((item) => item.id)],
       })) ??
       "ASK"
 
-    result = "ASK"
-    if (kind === "BUG") {
+    if (category === "ASK") {
+      result = {
+        askReason: "category_unclear",
+        category: null,
+        disposition: "ask",
+      }
+    } else {
+      const categoryConfig = triage.categories.find(
+        (item) => item.id === category,
+      )
+      const voteContext = JSON.stringify(
+        {
+          category: categoryConfig,
+          triageContext: context,
+        },
+        null,
+        2,
+      )
       const vote = await runPhaseVote<TriageBinaryVote>({
-        context,
+        context: voteContext,
         input,
         outputDir,
         parse: parseTriageBinaryOutput,
-        phase: "bug",
-        prompt: composeTriageBugPrompt,
-        schemaName: "triage bug",
-        votes: BINARY_VOTES,
-      })
-      result =
-        vote === "YES" ? "BUG_ACCEPTED" : vote === "NO" ? "BUG_REJECTED" : "ASK"
-    }
-    if (kind === "FEATURE") {
-      const vote = await runPhaseVote<TriageBinaryVote>({
-        context,
-        input,
-        outputDir,
-        parse: parseTriageBinaryOutput,
-        phase: "feature",
-        prompt: composeTriageFeaturePrompt,
-        schemaName: "triage feature",
+        phase: "acceptance",
+        prompt: composeTriageAcceptancePrompt,
+        schemaName: "triage acceptance",
         votes: BINARY_VOTES,
       })
       result =
         vote === "YES"
-          ? "FEATURE_ACCEPTED"
+          ? { category, disposition: "accepted" }
           : vote === "NO"
-            ? "FEATURE_REJECTED"
-            : "ASK"
+            ? { category, disposition: "rejected" }
+            : {
+                askReason: "acceptance_unclear",
+                category,
+                disposition: "ask",
+              }
     }
   }
 
@@ -1439,6 +1509,10 @@ export async function runTriage(
     outputDir,
     processed,
     relationship,
-    result: result ?? "ASK",
+    result: result ?? {
+      askReason: "acceptance_unclear",
+      category: null,
+      disposition: "ask",
+    },
   })
 }

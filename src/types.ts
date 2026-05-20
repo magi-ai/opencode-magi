@@ -139,14 +139,13 @@ export interface ReviewPromptConfig {
 
 export interface TriagePromptConfig {
   action?: string
-  bug?: string
+  acceptance?: string
+  category?: string
   comment?: string
   commentClassification?: string
   createPr?: string
   duplicate?: string
   existingPr?: string
-  feature?: string
-  kind?: string
   question?: string
   reconsider?: string
 }
@@ -179,14 +178,11 @@ export interface ReviewConfig {
   worktree?: string
 }
 
-export interface TriageKindRuleConfig {
-  label?: string[]
-  type?: string[]
-}
-
-export interface TriageKindConfig {
-  bug?: TriageKindRuleConfig
-  feature?: TriageKindRuleConfig
+export interface TriageCategoryConfig {
+  description?: string
+  id?: string
+  labels?: string[]
+  types?: string[]
 }
 
 export interface TriageAutomationConfig {
@@ -207,13 +203,20 @@ export interface TriageConfig {
   account?: string
   agents?: TriageAgentConfig[]
   automation?: TriageAutomationConfig
+  categories?: TriageCategoryConfig[]
   concurrency?: TriageConcurrencyConfig
   creator?: TriageCreatorConfig
-  kind?: TriageKindConfig
   output?: string
   prompts?: TriagePromptConfig
   safety?: TriageSafetyConfig
   worktree?: string
+}
+
+export interface ResolvedTriageCategory {
+  description?: string
+  id: string
+  labels: string[]
+  types: string[]
 }
 
 export interface MergeConfig {
@@ -296,11 +299,8 @@ export interface ResolvedRepository extends RepositoryConfig {
   triage?: {
     account?: string
     automation: Required<TriageAutomationConfig>
+    categories: ResolvedTriageCategory[]
     concurrency: Required<TriageConcurrencyConfig>
-    kind: {
-      bug: Required<TriageKindRuleConfig>
-      feature: Required<TriageKindRuleConfig>
-    }
     output?: string
     prompts: TriagePromptConfig
     safety: Required<TriageSafetyConfig>
@@ -362,7 +362,7 @@ export interface FindingValidationOutput {
   }[]
 }
 
-export type TriageKindVote = "ASK" | "BUG" | "FEATURE"
+export type TriageCategoryVote = string
 export type TriageBinaryVote = "ASK" | "NO" | "YES"
 export type TriageDuplicateVote = "DUPLICATE" | "NOT_DUPLICATE"
 export type TriageExistingPrVote =
@@ -375,13 +375,20 @@ export type TriageCommentClassification =
   | "OBJECTION"
   | "UNRELATED"
 export type TriageAction = "ASK" | "CLEAR_ONLY" | "CLOSE" | "COMMENT" | "PR"
-export type TriageFinalVote =
-  | "ASK"
-  | "BUG_ACCEPTED"
-  | "BUG_REJECTED"
-  | "DUPLICATE"
-  | "FEATURE_ACCEPTED"
-  | "FEATURE_REJECTED"
+export type TriageDisposition =
+  | "accepted"
+  | "rejected"
+  | "ask"
+  | "duplicate"
+  | "clear_only"
+  | "failed"
+export type TriageAskReason = "acceptance_unclear" | "category_unclear"
+
+export interface TriageDecision {
+  askReason?: TriageAskReason
+  category: string | null
+  disposition: TriageDisposition
+}
 
 export interface TriageVoteOutput<T extends string = string> {
   reason: string

@@ -194,9 +194,8 @@
       "properties": {
         "existingPr": { "type": "string" },
         "duplicate": { "type": "string" },
-        "kind": { "type": "string" },
-        "bug": { "type": "string" },
-        "feature": { "type": "string" },
+        "category": { "type": "string" },
+        "acceptance": { "type": "string" },
         "action": { "type": "string" },
         "question": { "type": "string" },
         "comment": { "type": "string" },
@@ -205,20 +204,15 @@
         "createPr": { "type": "string" }
       }
     },
-    "triageKindRule": {
+    "triageCategory": {
       "type": "object",
       "additionalProperties": false,
+      "required": ["id"],
       "properties": {
-        "label": { "type": "array", "items": { "type": "string" } },
-        "type": { "type": "array", "items": { "type": "string" } }
-      }
-    },
-    "triageKind": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "bug": { "$ref": "#/$defs/triageKindRule" },
-        "feature": { "$ref": "#/$defs/triageKindRule" }
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "labels": { "type": "array", "items": { "type": "string" } },
+        "types": { "type": "array", "items": { "type": "string" } },
+        "description": { "type": "string" }
       }
     },
     "triageAutomation": {
@@ -308,7 +302,10 @@
           "items": { "$ref": "#/$defs/triageAgent" }
         },
         "creator": { "$ref": "#/$defs/triageCreator" },
-        "kind": { "$ref": "#/$defs/triageKind" },
+        "categories": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/triageCategory" }
+        },
         "automation": { "$ref": "#/$defs/triageAutomation" },
         "safety": { "$ref": "#/$defs/triageSafety" },
         "concurrency": { "$ref": "#/$defs/triageConcurrency" },

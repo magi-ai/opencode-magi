@@ -127,6 +127,60 @@ describe("validateConfig", () => {
     )
   })
 
+  test("rejects invalid triage categories", async () => {
+    const result = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: {
+          account: "magi-bot",
+          agents: [
+            { model: "openai/gpt" },
+            { model: "anthropic/claude" },
+            { model: "google/gemini" },
+          ],
+          categories: [
+            { labels: ["missing"] },
+            { id: "bad id" },
+            { id: "bug", labels: ["bug", 1] as string[] },
+            { id: "bug" },
+          ],
+        },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain("triage.categories[0].id is required")
+    expect(result.errors).toContain(
+      "triage.categories[1].id must match /^[A-Za-z0-9_-]+$/",
+    )
+    expect(result.errors).toContain(
+      "triage.categories[2].labels[1] must be a string",
+    )
+    expect(result.errors).toContain("triage.categories[3].id must be unique")
+  })
+
+  test("rejects non-array triage categories", async () => {
+    const result = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: {
+          account: "magi-bot",
+          agents: [
+            { model: "openai/gpt" },
+            { model: "anthropic/claude" },
+            { model: "google/gemini" },
+          ],
+          categories: {} as NonNullable<MagiConfig["triage"]>["categories"],
+        },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain("triage.categories must be an array")
+  })
+
   test("rejects even reviewer config", async () => {
     const result = await validateConfig({
       ...config,

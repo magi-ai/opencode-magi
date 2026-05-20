@@ -213,9 +213,19 @@ function triageValues(input: {
   repository: ResolvedRepository
   worktreePath?: string
 }): Record<string, string> {
+  const categories = input.repository.triage?.categories ?? []
+  const categoryOptions = categories
+    .map((category) =>
+      category.description
+        ? `- ${category.id}: ${category.description}`
+        : `- ${category.id}`,
+    )
+    .join("\n")
+
   return {
     ...repositoryValues(input.repository),
     author: input.author ?? "",
+    categoryOptions,
     context: input.context,
     issue: String(input.issue),
     worktreePath: input.worktreePath ?? "",
@@ -634,35 +644,29 @@ export async function composeTriageDuplicatePrompt(
   })
 }
 
-export async function composeTriageKindPrompt(
+export async function composeTriageCategoryPrompt(
   input: TriagePromptInput,
 ): Promise<string> {
+  const categories = input.repository.triage?.categories ?? []
+  const votes = ["ASK", ...categories.map((category) => category.id)]
+    .map((vote) => JSON.stringify(vote))
+    .join(" | ")
+
   return composeTriageVotePrompt({
     ...input,
-    builtin: "kind",
-    customPath: input.repository.triage?.prompts.kind,
-    outputContract: triageVoteOutputContract('"BUG" | "FEATURE" | "ASK"'),
+    builtin: "category",
+    customPath: input.repository.triage?.prompts.category,
+    outputContract: triageVoteOutputContract(votes),
   })
 }
 
-export async function composeTriageBugPrompt(
+export async function composeTriageAcceptancePrompt(
   input: TriagePromptInput,
 ): Promise<string> {
   return composeTriageVotePrompt({
     ...input,
-    builtin: "bug",
-    customPath: input.repository.triage?.prompts.bug,
-    outputContract: triageVoteOutputContract('"YES" | "NO" | "ASK"'),
-  })
-}
-
-export async function composeTriageFeaturePrompt(
-  input: TriagePromptInput,
-): Promise<string> {
-  return composeTriageVotePrompt({
-    ...input,
-    builtin: "feature",
-    customPath: input.repository.triage?.prompts.feature,
+    builtin: "acceptance",
+    customPath: input.repository.triage?.prompts.acceptance,
     outputContract: triageVoteOutputContract('"YES" | "NO" | "ASK"'),
   })
 }
@@ -685,8 +689,6 @@ export async function composeTriageReconsiderPrompt(
     ...input,
     builtin: "reconsider",
     customPath: input.repository.triage?.prompts.reconsider,
-    outputContract: triageVoteOutputContract(
-      '"ASK" | "BUG_ACCEPTED" | "BUG_REJECTED" | "DUPLICATE" | "FEATURE_ACCEPTED" | "FEATURE_REJECTED"',
-    ),
+    outputContract: triageVoteOutputContract('"YES" | "NO" | "ASK"'),
   })
 }

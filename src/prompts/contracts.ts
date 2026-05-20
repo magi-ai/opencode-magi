@@ -252,17 +252,16 @@ const outputContractsBySchemaName: Record<string, string> = {
   "rereview close reconsideration": rereviewCloseReconsiderationOutputContract,
   review: reviewOutputContract,
   "triage action": triageActionOutputContract,
-  "triage bug": triageVoteOutputContract('"YES" | "NO" | "ASK"'),
+  "triage acceptance": triageVoteOutputContract('"YES" | "NO" | "ASK"'),
+  "triage category": triageVoteOutputContract(
+    '"ASK" or one of the configured category IDs',
+  ),
   "triage comment classification": triageCommentClassificationOutputContract,
   "triage duplicate": triageDuplicateOutputContract,
   "triage existing PR": triageVoteOutputContract(
     '"RELATED_PR_HANDLES_ISSUE" | "RELATED_PR_DOES_NOT_HANDLE_ISSUE"',
   ),
-  "triage feature": triageVoteOutputContract('"YES" | "NO" | "ASK"'),
-  "triage kind": triageVoteOutputContract('"BUG" | "FEATURE" | "ASK"'),
-  "triage reconsider": triageVoteOutputContract(
-    '"ASK" | "BUG_ACCEPTED" | "BUG_REJECTED" | "DUPLICATE" | "FEATURE_ACCEPTED" | "FEATURE_REJECTED"',
-  ),
+  "triage reconsider": triageVoteOutputContract('"YES" | "NO" | "ASK"'),
 }
 
 export function repairPrompt(schemaName: string): string {

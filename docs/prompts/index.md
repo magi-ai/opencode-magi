@@ -31,9 +31,8 @@ Triage prompts:
 
 - [Existing PR](triage/existing-pr.md) - Decide whether a related PR already handles an issue.
 - [Duplicate](triage/duplicate.md) - Decide whether an issue duplicates another issue.
-- [Kind](triage/kind.md) - Decide whether an issue is a bug, feature request, or needs more information.
-- [Bug](triage/bug.md) - Decide whether a bug report is reproduced or otherwise valid.
-- [Feature](triage/feature.md) - Decide whether a feature request should be implemented.
+- [Category](triage/category.md) - Decide which configured issue category applies.
+- [Acceptance](triage/acceptance.md) - Decide whether the selected category should be accepted.
 - [Action](triage/action.md) - Record the next planned triage action.
 - [Comment](triage/comment.md) - Compose final decision comments.
 - [Question](triage/question.md) - Compose author questions for `ASK` results.
@@ -53,7 +52,7 @@ For example, in a review prompt:
 - With `review.prompts.review`, Magi uses that file instead of the built-in template.
 - In both cases, Magi still appends the fixed review output contract.
 
-In a triage prompt, `triage.prompts.existingPr`, `triage.prompts.duplicate`, `triage.prompts.kind`, `triage.prompts.bug`, `triage.prompts.feature`, `triage.prompts.action`, `triage.prompts.comment`, `triage.prompts.question`, `triage.prompts.commentClassification`, `triage.prompts.reconsider`, and `triage.prompts.createPr` replace their matching built-in triage task templates. Magi still appends the fixed output contract for structured phases.
+In a triage prompt, `triage.prompts.existingPr`, `triage.prompts.duplicate`, `triage.prompts.category`, `triage.prompts.acceptance`, `triage.prompts.action`, `triage.prompts.comment`, `triage.prompts.question`, `triage.prompts.commentClassification`, `triage.prompts.reconsider`, and `triage.prompts.createPr` replace their matching built-in triage task templates. Magi still appends the fixed output contract for structured phases.
 
 The custom file replaces the built-in task, but it does not replace the output schema.
 

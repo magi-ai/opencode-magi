@@ -1,13 +1,14 @@
-# Kind
+# Category
 
-Used when triage agents classify an issue as a bug, feature request, or needing more information.
+Used when triage agents choose one configured issue category or ask for more information.
 
-Config key: `triage.prompts.kind`
+Config key: `triage.prompts.category`
 
-Built-in template: [`triage/kind.md`](/src/prompts/templates/triage/kind.md)
+Built-in template: [`triage/category.md`](/src/prompts/templates/triage/category.md)
 
 | Placeholder          | Meaning                                                                         |
 | -------------------- | ------------------------------------------------------------------------------- |
 | `{issue}`            | Issue number.                                                                   |
 | `{owner}` / `{repo}` | GitHub repository owner and name.                                               |
+| `{categoryOptions}`  | Configured category IDs and descriptions.                                       |
 | `{context}`          | JSON context with issue metadata, related PRs, candidates, and recent comments. |

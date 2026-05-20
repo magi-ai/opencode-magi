@@ -6,9 +6,9 @@ import type {
   ReviewerConfig,
   TriageAgentConfig,
   TriageAutomationConfig,
+  TriageCategoryConfig,
   TriageConcurrencyConfig,
   TriageCreatorConfig,
-  TriageKindConfig,
   TriageSafetyConfig,
 } from "../types"
 import { Ajv2020 } from "ajv/dist/2020"
@@ -43,6 +43,7 @@ const RESERVED_REVIEWER_KEYS = new Set(["editor", "orchestrator", "system"])
 const PERMISSION_ACTIONS = new Set(["allow", "ask", "deny"])
 const AJV = new Ajv2020({ allErrors: true, strict: false })
 const validateSchema = AJV.compile(schema)
+const TRIAGE_CATEGORY_ID_PATTERN = /^[A-Za-z0-9_-]+$/
 const CONFIG_KEYS = new Set([
   "$schema",
   "agents",
@@ -110,9 +111,9 @@ const TRIAGE_KEYS = new Set([
   "account",
   "agents",
   "automation",
+  "categories",
   "concurrency",
   "creator",
-  "kind",
   "output",
   "prompts",
   "safety",
@@ -132,9 +133,8 @@ const CLEAR_KEYS = new Set(["branch", "output", "session", "worktree"])
 const CONCURRENCY_KEYS = new Set(["reviewers", "runs"])
 const OUTPUT_KEYS = new Set(["repairAttempts"])
 const TRIAGE_AUTOMATION_KEYS = new Set(["clear", "close", "pr"])
+const TRIAGE_CATEGORY_KEYS = new Set(["description", "id", "labels", "types"])
 const TRIAGE_CONCURRENCY_KEYS = new Set(["runs"])
-const TRIAGE_KIND_KEYS = new Set(["bug", "feature"])
-const TRIAGE_KIND_RULE_KEYS = new Set(["label", "type"])
 const TRIAGE_SAFETY_KEYS = new Set([
   "allowAuthors",
   "allowMentionActors",
@@ -163,14 +163,13 @@ const MERGE_PROMPT_KEYS = new Set([
 ])
 const TRIAGE_PROMPT_KEYS = new Set([
   "action",
-  "bug",
+  "acceptance",
+  "category",
   "comment",
   "commentClassification",
   "createPr",
   "duplicate",
   "existingPr",
-  "feature",
-  "kind",
   "question",
   "reconsider",
 ])
@@ -714,20 +713,42 @@ function validateStringArray(
   })
 }
 
-function validateStringArrayObject(
-  value: unknown,
+function validateTriageCategories(
+  categories: unknown,
   path: string,
-  keys: Set<string>,
   errors: string[],
 ): void {
-  if (value == null) return
-  if (!isPlainObject(value)) {
-    errors.push(`${path} must be an object`)
+  if (categories == null) return
+  if (!Array.isArray(categories)) {
+    errors.push(`${path} must be an array`)
     return
   }
-  validateKnownKeys(value, path, keys, errors)
-  for (const key of keys)
-    validateStringArray(value[key], `${path}.${key}`, errors)
+
+  const ids = new Set<string>()
+  categories.forEach((item, index) => {
+    const itemPath = `${path}[${index}]`
+    if (!isPlainObject(item)) {
+      errors.push(`${itemPath} must be an object`)
+      return
+    }
+
+    const category = item as TriageCategoryConfig
+    validateKnownKeys(category, itemPath, TRIAGE_CATEGORY_KEYS, errors)
+    if (!category.id) {
+      errors.push(`${itemPath}.id is required`)
+    } else if (typeof category.id !== "string") {
+      errors.push(`${itemPath}.id must be a string`)
+    } else if (!TRIAGE_CATEGORY_ID_PATTERN.test(category.id)) {
+      errors.push(`${itemPath}.id must match /^[A-Za-z0-9_-]+$/`)
+    } else if (ids.has(category.id)) {
+      errors.push(`${itemPath}.id must be unique`)
+    } else {
+      ids.add(category.id)
+    }
+    validateStringArray(category.labels, `${itemPath}.labels`, errors)
+    validateStringArray(category.types, `${itemPath}.types`, errors)
+    validateString(category.description, `${itemPath}.description`, errors)
+  })
 }
 
 function validateSafety(config: MagiConfig, errors: string[]): void {
@@ -797,7 +818,6 @@ function validateTriage(
   validateKnownKeys(triage, "triage", TRIAGE_KEYS, errors)
   const automation = triage.automation as TriageAutomationConfig | undefined
   const concurrency = triage.concurrency as TriageConcurrencyConfig | undefined
-  const kind = triage.kind as TriageKindConfig | undefined
   const safety = triage.safety as TriageSafetyConfig | undefined
 
   if (!triage.account) errors.push("triage.account is required")
@@ -853,19 +873,7 @@ function validateTriage(
     errors.push("triage.concurrency.runs must be a positive integer")
   }
 
-  validateKnownKeys(kind, "triage.kind", TRIAGE_KIND_KEYS, errors)
-  validateStringArrayObject(
-    kind?.bug,
-    "triage.kind.bug",
-    TRIAGE_KIND_RULE_KEYS,
-    errors,
-  )
-  validateStringArrayObject(
-    kind?.feature,
-    "triage.kind.feature",
-    TRIAGE_KIND_RULE_KEYS,
-    errors,
-  )
+  validateTriageCategories(triage.categories, "triage.categories", errors)
   validateKnownKeys(safety, "triage.safety", TRIAGE_SAFETY_KEYS, errors)
   validateStringArray(
     safety?.allowAuthors,
