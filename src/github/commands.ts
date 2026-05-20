@@ -572,7 +572,7 @@ export async function searchDuplicateIssues(
   issue: IssueMeta,
   limit = 5,
 ): Promise<DuplicateIssueCandidate[]> {
-  const query = `${issue.title} repo:${repoSlug(repository)} is:issue -${issue.number}`
+  const query = issue.title
   const explicitCandidates = await Promise.all(
     duplicateReferences(issue.body)
       .filter((number) => number !== issue.number)
@@ -586,7 +586,7 @@ export async function searchDuplicateIssues(
       ),
   )
   const raw = await exec(
-    `gh search issues ${shellQuote(query)} --json number,title,url,state,body --limit ${limit}`,
+    `gh search issues --repo ${shellQuote(repoSlug(repository))} --json number,title,url,state,body --limit ${limit} -- ${shellQuote(query)}`,
   )
   const data = JSON.parse(raw) as {
     body?: string
