@@ -671,6 +671,10 @@ describe("triage orchestration", () => {
           commitSha: "abc123",
           filesTouched: ["src/example.ts"],
           mode: "EDITED",
+          pullRequest: {
+            body: "Custom PR body from creator",
+            title: "fix(triage): use creator PR metadata",
+          },
           responses: [{ action: "FIXED", body: "Fixed.", commentId: 1 }],
         }),
       ],
@@ -705,6 +709,12 @@ describe("triage orchestration", () => {
     expect(assignIndex).toBeLessThan(worktreeIndex)
     expect(assignIndex).toBeLessThan(prIndex)
     expect(result.commands[prIndex]).not.toContain("--add-assignee")
+    expect(result.commands[prIndex]).toContain(
+      "--title 'fix(triage): use creator PR metadata'",
+    )
+    expect(result.commands[prIndex]).toContain(
+      "--body 'Custom PR body from creator'",
+    )
     expect(result.progress).toEqual(
       expect.arrayContaining([
         { phase: "acceptance", type: "phase" },
@@ -771,6 +781,10 @@ describe("triage orchestration", () => {
           commitSha: "abcdef1234567890",
           filesTouched: ["src/app.ts"],
           mode: "EDITED",
+          pullRequest: {
+            body: "Closes #1",
+            title: "fix: address issue #1",
+          },
           responses: [],
         }),
       ],
@@ -889,6 +903,10 @@ describe("triage orchestration", () => {
           commitSha: "abcdef1234567890",
           filesTouched: ["src/app.ts"],
           mode: "EDITED",
+          pullRequest: {
+            body: "Closes #1",
+            title: "fix: address issue #1",
+          },
           responses: [],
         }),
       ],

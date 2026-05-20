@@ -556,5 +556,9 @@ describe("prompt composer", () => {
       "<persona>\nKeep the PR minimal.\n</persona>",
     )
     expect(createPrPrompt).toContain('"mode": "EDITED" | "REPLIED"')
+    expect(createPrPrompt).toContain('"pullRequest"')
+    expect(createPrPrompt).toContain(
+      "The orchestrator pushes and creates the PR using pullRequest exactly as provided.",
+    )
   })
 })
