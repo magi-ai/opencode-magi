@@ -2,6 +2,16 @@ import { describe, expect, test } from "vitest"
 import { MAGI_COMMANDS } from "./commands"
 
 describe("Magi slash commands", () => {
+  test("exposes only user-facing commands", () => {
+    expect(Object.keys(MAGI_COMMANDS)).toEqual([
+      "magi:clear",
+      "magi:merge",
+      "magi:triage",
+      "magi:review",
+      "magi:validate",
+    ])
+  })
+
   test("keeps review and merge templates terse", () => {
     expect(MAGI_COMMANDS["magi:clear"].template).toBe(
       "Call the `magi_clear` tool.",

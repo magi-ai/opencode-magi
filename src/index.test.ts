@@ -85,7 +85,7 @@ describe("tool descriptions", () => {
     expect(tools.magi_merge.description).toContain(
       "do not tell users to call follow-up tools by name",
     )
-    for (const name of ["magi_status", "magi_output"]) {
+    for (const name of ["magi_status", "magi_output", "magi_cancel"]) {
       expect(tools[name]?.description).toContain(
         "Assistant-facing follow-up tool.",
       )

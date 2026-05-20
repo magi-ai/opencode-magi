@@ -71,9 +71,6 @@ body:
         - "/magi:validate"
         - "/magi:review"
         - "/magi:merge"
-        - "/magi:status"
-        - "/magi:output"
-        - "/magi:cancel"
         - "Other (add additional context)"
   - type: textarea
     id: steps
