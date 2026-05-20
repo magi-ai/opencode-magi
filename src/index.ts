@@ -653,7 +653,10 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
         },
       }),
       magi_cancel: tool({
-        description: "Cancel a Magi background run by runId, PR, or issue.",
+        description: [
+          "Cancel a Magi background run by runId, PR, or issue.",
+          INTERNAL_FOLLOW_UP_TOOL_NOTE,
+        ].join(" "),
         args: {
           runId: tool.schema.string().optional(),
           pr: tool.schema.string().optional(),
