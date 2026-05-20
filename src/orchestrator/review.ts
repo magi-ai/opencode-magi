@@ -26,6 +26,7 @@ import {
   type PullRequestCommit,
   removeWorktree,
   resolveThread,
+  shellQuote,
 } from "../github/commands"
 import {
   composeFindingValidationPrompt,
@@ -44,6 +45,11 @@ import {
 import { throwIfAborted, withAbortSignal } from "./abort"
 import { waitForChecksWithClassification } from "./ci"
 import type { CiClassifierProgress } from "./ci"
+import {
+  parseRightSideDiffTargets,
+  validateInlineCommentTargets,
+  type InlineCommentTargets,
+} from "./inline-comments"
 import {
   applyFindingValidation,
   type FindingValidationSummary,
@@ -346,6 +352,28 @@ function previousReviewText(review: PullRequestReview): string {
   )
 }
 
+function parseReviewOutputWithInlineTargets(
+  text: string,
+  targets: InlineCommentTargets,
+): ReviewOutput {
+  const output = parseReviewOutput(text)
+
+  validateInlineCommentTargets(output.findings, targets)
+
+  return output
+}
+
+function parseRereviewOutputWithInlineTargets(
+  text: string,
+  targets: InlineCommentTargets,
+): RereviewOutput {
+  const output = parseRereviewOutput(text)
+
+  validateInlineCommentTargets(output.newFindings, targets, "newFindings")
+
+  return output
+}
+
 function reviewOutputFromState(review: PullRequestReview): ReviewOutput {
   const verdict = reviewStateToVerdict(review.state)
 
@@ -622,6 +650,7 @@ async function runFindingValidation(input: {
 
 async function runCloseReconsideration(input: {
   entries: ReviewEntry[]
+  inlineCommentTargets: InlineCommentTargets
   meta: { baseRefOid: string; headRefOid: string }
   outputDir: string
   reviewInput: ReviewRunInput
@@ -702,7 +731,16 @@ async function runCloseReconsideration(input: {
               }
             },
             options: reviewer.options,
-            parse: parseCloseReconsiderationOutput,
+            parse: (text) => {
+              const output = parseCloseReconsiderationOutput(text)
+
+              validateInlineCommentTargets(
+                output.findings,
+                input.inlineCommentTargets,
+              )
+
+              return output
+            },
             permission: reviewer.permission,
             prompt,
             repairAttempts:
@@ -969,6 +1007,12 @@ export async function runReview(
         return [{ assignment, reviewer }]
       },
     )
+    const inlineCommentTargets = parseRightSideDiffTargets(
+      await exec(
+        `git diff --no-ext-diff --unified=3 ${shellQuote(meta.baseRefOid)} ${shellQuote(meta.headRefOid)}`,
+        { cwd: worktreePath },
+      ),
+    )
     for (const reviewer of input.repository.agents.reviewers) {
       const assignment = mode.assignments.get(reviewer.account)
       if (assignment?.type !== "skip") continue
@@ -1048,7 +1092,11 @@ export async function runReview(
                   }
                 },
                 options: reviewer.options,
-                parse: parseRereviewOutput,
+                parse: (text) =>
+                  parseRereviewOutputWithInlineTargets(
+                    text,
+                    inlineCommentTargets,
+                  ),
                 permission: reviewer.permission,
                 prompt,
                 repairAttempts: input.config.output?.repairAttempts ?? 3,
@@ -1126,7 +1174,8 @@ export async function runReview(
                 }
               },
               options: reviewer.options,
-              parse: parseReviewOutput,
+              parse: (text) =>
+                parseReviewOutputWithInlineTargets(text, inlineCommentTargets),
               permission: reviewer.permission,
               prompt,
               repairAttempts: input.config.output?.repairAttempts ?? 3,
@@ -1210,6 +1259,7 @@ export async function runReview(
     )
     entries = await runCloseReconsideration({
       entries: [...entries, ...skippedCloseEntries],
+      inlineCommentTargets,
       meta,
       outputDir,
       reviewInput: { ...input, exec },
