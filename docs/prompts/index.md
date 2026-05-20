@@ -29,25 +29,31 @@ Merge prompts:
 
 Triage prompts:
 
-- Existing PR - Decide whether a related PR already handles an issue.
-- Duplicate - Decide whether an issue duplicates another issue.
-- Kind - Decide whether an issue is a bug, feature request, or needs more information.
-- Bug - Decide whether a bug report is reproduced or otherwise valid.
-- Feature - Decide whether a feature request should be implemented.
-- Comment Classification - Classify mention replies for reconsideration.
-- Create PR - Create an implementation PR from an accepted issue.
+- [Existing PR](triage/existing-pr.md) - Decide whether a related PR already handles an issue.
+- [Duplicate](triage/duplicate.md) - Decide whether an issue duplicates another issue.
+- [Kind](triage/kind.md) - Decide whether an issue is a bug, feature request, or needs more information.
+- [Bug](triage/bug.md) - Decide whether a bug report is reproduced or otherwise valid.
+- [Feature](triage/feature.md) - Decide whether a feature request should be implemented.
+- [Comment Classification](triage/comment-classification.md) - Classify mention replies for reconsideration.
+- [Comment](triage/comment.md) - Compose a final triage comment.
+- [Question](triage/question.md) - Compose follow-up questions.
+- [Reconsider](triage/reconsider.md) - Reconsider a previous triage result.
+- [Action](triage/action.md) - Decide the next action from a triage result.
+- [Create PR](triage/create-pr.md) - Create an implementation PR from an accepted issue.
 
 ## Final Prompt Shape
 
 For each model call, Magi builds one final prompt from several parts.
 
-The `<task>` block comes from either Magi's built-in Markdown template or your configured `review.prompts.*` or `merge.prompts.*` Markdown file. It tells the model what phase it is running, what PR to inspect, what diff range to use, and what inputs Magi has collected for that phase.
+The `<task>` block comes from either Magi's built-in Markdown template or your configured `review.prompts.*`, `merge.prompts.*`, or `triage.prompts.*` Markdown file. It tells the model what phase it is running, what PR or issue to inspect, what diff range to use when relevant, and what inputs Magi has collected for that phase.
 
 For example, in a review prompt:
 
 - Without `review.prompts.review`, Magi uses the built-in [`review/review.md`](/src/prompts/templates/review/review.md) template.
 - With `review.prompts.review`, Magi uses that file instead of the built-in template.
 - In both cases, Magi still appends the fixed review output contract.
+
+In a triage vote prompt, `triage.prompts.existingPr`, `triage.prompts.duplicate`, `triage.prompts.kind`, `triage.prompts.bug`, `triage.prompts.feature`, and `triage.prompts.commentClassification` replace their matching built-in triage task templates. Magi still appends the fixed output contract for that phase.
 
 The custom file replaces the built-in task, but it does not replace the output schema.
 
@@ -63,7 +69,7 @@ The final prompt has this shape:
 </language>
 
 <persona>
-...optional reviewer/editor persona...
+...optional reviewer/editor/triage agent persona...
 </persona>
 
 <review_guidelines>
