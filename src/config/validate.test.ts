@@ -396,6 +396,7 @@ describe("validateConfig", () => {
   test("checks prompt file paths when directory is provided", async () => {
     const dir = await mkdtemp(join(tmpdir(), "magi-validate-"))
     await writeFile(join(dir, "review.txt"), "Review guide")
+    await writeFile(join(dir, "create-guide.txt"), "Create guide")
 
     const result = await validateConfig(
       {
@@ -407,6 +408,15 @@ describe("validateConfig", () => {
             reviewGuidelines: "review.txt",
           },
         },
+        triage: {
+          account: "magi-bot",
+          agents: [
+            { model: "openai/gpt" },
+            { model: "anthropic/claude" },
+            { model: "google/gemini" },
+          ],
+          prompts: { createGuidelines: "create-guide.txt" },
+        },
       },
       { directory: dir },
     )
@@ -417,6 +427,9 @@ describe("validateConfig", () => {
     )
     expect(result.errors).not.toContain(
       "review.prompts.reviewGuidelines file is not readable: review.txt",
+    )
+    expect(result.errors).not.toContain(
+      "triage.prompts.createGuidelines file is not readable: create-guide.txt",
     )
   })
 

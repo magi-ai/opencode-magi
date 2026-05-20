@@ -277,6 +277,18 @@ async function editGuidelinesBlock(input: {
   return body ? `<edit_guidelines>\n${body}\n</edit_guidelines>` : ""
 }
 
+async function createGuidelinesBlock(input: {
+  directory: string
+  path?: string
+  values: Record<string, string>
+}): Promise<string> {
+  const body = (
+    await readOptionalPrompt(input.directory, input.path, input.values)
+  ).trim()
+
+  return body ? `<create_guidelines>\n${body}\n</create_guidelines>` : ""
+}
+
 async function sessionContextBlocks(input: {
   directory: string
   includeReviewGuidelines?: boolean
@@ -626,6 +638,11 @@ export async function composeTriageCreatePrPrompt(
     task,
     languageBlock(input.repository.language),
     personaBlock(persona),
+    await createGuidelinesBlock({
+      directory: input.directory,
+      path: input.repository.triage?.prompts.createGuidelines,
+      values,
+    }),
     triageCreatePrOutputContract,
   ]
     .filter(Boolean)
