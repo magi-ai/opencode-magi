@@ -349,6 +349,144 @@ describe("MagiRunManager notifications", () => {
     ])
   })
 
+  test("tracks triage creator progress and notifications", async () => {
+    const { manager, prompts } = managerWithPromptCapture()
+    const directory = await mkdtemp(join(tmpdir(), "magi-run-"))
+    const state: MagiRunState = {
+      command: "triage",
+      createdAt: "now",
+      issue: 105,
+      issueUrl: "https://example.com/issues/105",
+      outputDir: directory,
+      parentSessionId: "parent-session",
+      phase: "triaging",
+      repository: "repo",
+      reviewers: {
+        Melchior: {
+          account: "",
+          repairAttempts: 0,
+          status: "pending",
+          toolCalls: 0,
+        },
+      },
+      runId: "run",
+      status: "running",
+      triageCreator: {
+        account: "creator-bot",
+        repairAttempts: 0,
+        status: "pending",
+        toolCalls: 0,
+      },
+      updatedAt: "now",
+    }
+    const privateManager = manager as unknown as {
+      active: Map<string, MagiRunState>
+      applyTriageProgress(runId: string, progress: unknown): Promise<void>
+      sessionToRun: Map<string, { agent: string; runId: string }>
+    }
+
+    privateManager.active.set("run", state)
+    try {
+      await privateManager.applyTriageProgress("run", {
+        type: "pr_creation_started",
+      })
+      await privateManager.applyTriageProgress("run", {
+        type: "triage_creator_started",
+      })
+      await privateManager.applyTriageProgress("run", {
+        sessionId: "creator-session",
+        type: "triage_creator_session",
+      })
+      await privateManager.applyTriageProgress("run", {
+        sessionId: "creator-session",
+        type: "triage_creator_completed",
+      })
+      await privateManager.applyTriageProgress("run", {
+        type: "pr_created",
+        url: "https://example.com/pull/106",
+      })
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+
+    expect(state.phase).toBe("creating implementation PR")
+    expect(state.triageCreator).toMatchObject({
+      sessionId: "creator-session",
+      status: "completed",
+    })
+    expect(privateManager.sessionToRun.get("creator-session")).toEqual({
+      agent: "triageCreator",
+      runId: "run",
+    })
+    expect(
+      prompts.map(
+        (prompt) =>
+          (prompt as { body: { parts: { text: string }[] } }).body.parts[0]
+            .text,
+      ),
+    ).toEqual([
+      "Started implementation PR creation for [#105](https://example.com/issues/105).",
+      "**Triage creator** started creating an implementation PR for [#105](https://example.com/issues/105).",
+      "**Triage creator** completed implementation changes for [#105](https://example.com/issues/105).",
+      "Created implementation PR for [#105](https://example.com/issues/105): https://example.com/pull/106",
+    ])
+  })
+
+  test("notifies triage creator failures", async () => {
+    const { manager, prompts } = managerWithPromptCapture()
+    const directory = await mkdtemp(join(tmpdir(), "magi-run-"))
+    const state: MagiRunState = {
+      command: "triage",
+      createdAt: "now",
+      issue: 105,
+      issueUrl: "https://example.com/issues/105",
+      outputDir: directory,
+      parentSessionId: "parent-session",
+      phase: "creating implementation PR",
+      repository: "repo",
+      reviewers: {},
+      runId: "run",
+      status: "running",
+      triageCreator: {
+        account: "creator-bot",
+        repairAttempts: 1,
+        status: "repairing",
+        toolCalls: 0,
+      },
+      updatedAt: "now",
+    }
+    const privateManager = manager as unknown as {
+      active: Map<string, MagiRunState>
+      applyTriageProgress(runId: string, progress: unknown): Promise<void>
+    }
+
+    privateManager.active.set("run", state)
+    try {
+      await privateManager.applyTriageProgress("run", {
+        error: "Invalid JSON",
+        type: "triage_creator_failed",
+      })
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+
+    expect(state.triageCreator?.status).toBe("failed")
+    expect(prompts).toMatchObject([
+      {
+        body: {
+          parts: [
+            {
+              synthetic: true,
+              text: "**Triage creator** failed creating an implementation PR for [#105](https://example.com/issues/105) after 1 JSON regeneration attempt: Invalid JSON",
+              type: "text",
+            },
+          ],
+        },
+        path: { id: "parent-session" },
+      },
+    ])
+  })
+
   test("notifies thread resolution attempt limits with links", async () => {
     const { manager, prompts } = managerWithPromptCapture()
     const state: MagiRunState = {
@@ -987,6 +1125,39 @@ describe("MagiRunManager notifications", () => {
     expect(text).not.toContain("session=child-session")
     expect(text).not.toContain("tools=2")
     expect(text).toContain("- security: completed (MERGE)")
+  })
+
+  test("formats triage creator status", () => {
+    const { manager } = managerWithPromptCapture()
+    const text = manager.formatStates(
+      [
+        {
+          command: "triage",
+          createdAt: "now",
+          issue: 105,
+          outputDir: ".",
+          phase: "creating implementation PR",
+          repository: "repo",
+          reviewers: {},
+          runId: "run",
+          status: "running",
+          triageCreator: {
+            account: "creator-bot",
+            repairAttempts: 0,
+            sessionId: "creator-session",
+            status: "running",
+            toolCalls: 1,
+          },
+          updatedAt: "now",
+        },
+      ],
+      { verbose: true },
+    )
+
+    expect(text).toContain("Issue: #105")
+    expect(text).toContain(
+      "- triageCreator: running (session=creator-session, tools=1)",
+    )
   })
 
   test("clears inactive sessions, worktrees, branches, and outputs", async () => {

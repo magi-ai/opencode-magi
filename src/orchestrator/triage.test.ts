@@ -331,6 +331,7 @@ async function runScenario(input: {
     issue: input.issue,
     relatedPullRequests: input.relatedPullRequests,
   })
+  const progress: unknown[] = []
   const result = await runTriage({
     client: model.client,
     config: {},
@@ -338,11 +339,14 @@ async function runScenario(input: {
     dryRun: input.dryRun ?? true,
     exec: exec.exec,
     issue: 1,
+    onProgress: (item) => {
+      progress.push(item)
+    },
     repository: input.repository ?? repository,
     runId: "run-test",
   })
 
-  return { ...exec, ...model, result }
+  return { ...exec, ...model, progress, result }
 }
 
 function vote(vote: string): string {
@@ -701,6 +705,35 @@ describe("triage orchestration", () => {
     expect(assignIndex).toBeLessThan(worktreeIndex)
     expect(assignIndex).toBeLessThan(prIndex)
     expect(result.commands[prIndex]).not.toContain("--add-assignee")
+    expect(result.progress).toEqual(
+      expect.arrayContaining([
+        { phase: "acceptance", type: "phase" },
+        {
+          action: "PR",
+          result: decision("feature", "accepted"),
+          type: "decision",
+        },
+        { type: "comment_posting" },
+        {
+          type: "comment_posted",
+          url: "https://github.com/owner/repo/issues/1#issuecomment-9001",
+        },
+        { type: "pr_creation_started" },
+        { type: "triage_creator_started" },
+        {
+          sessionId: expect.any(String),
+          type: "triage_creator_session",
+        },
+        {
+          sessionId: expect.any(String),
+          type: "triage_creator_completed",
+        },
+        {
+          type: "pr_created",
+          url: "https://github.com/owner/repo/pull/30",
+        },
+      ]),
+    )
   })
 
   test("skips reconsideration when a previous marker has no eligible mentions", async () => {
