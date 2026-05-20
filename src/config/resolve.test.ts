@@ -59,6 +59,49 @@ describe("resolveRepository", () => {
     expect(repo.prompts.review).toBe("global-review.md")
   })
 
+  test("resolves default triage categories", () => {
+    const repo = resolveRepository({
+      github: { owner: "owner", repo: "repo" },
+      triage: { account: "magi-bot", agents: [] },
+    })
+
+    expect(repo.triage?.categories).toEqual([
+      {
+        description: "Something is broken or behaves incorrectly.",
+        id: "bug",
+        labels: ["bug"],
+        types: ["Bug"],
+      },
+      {
+        description: "Maintenance, refactoring, chores, or planned work.",
+        id: "task",
+        labels: ["task"],
+        types: ["Task"],
+      },
+      {
+        description: "New or improved user-facing capability.",
+        id: "feature",
+        labels: ["enhancement"],
+        types: ["Feature"],
+      },
+    ])
+  })
+
+  test("defaults triage category labels and types", () => {
+    const repo = resolveRepository({
+      github: { owner: "owner", repo: "repo" },
+      triage: {
+        account: "magi-bot",
+        agents: [],
+        categories: [{ id: "question" }],
+      },
+    })
+
+    expect(repo.triage?.categories).toEqual([
+      { id: "question", labels: [], types: [] },
+    ])
+  })
+
   test("respects disabled review merge automation", () => {
     const repo = resolveRepository({
       ...config,

@@ -503,11 +503,15 @@ describe("prompt composer", () => {
       triage: {
         account: "magi-bot",
         automation: { clear: ["triage"], close: false, pr: true },
+        categories: [
+          {
+            description: "Something is broken.",
+            id: "bug",
+            labels: ["bug"],
+            types: ["Bug"],
+          },
+        ],
         concurrency: { runs: 3 },
-        kind: {
-          bug: { label: ["bug"], type: ["Bug"] },
-          feature: { label: ["enhancement"], type: ["Feature"] },
-        },
         prompts: {
           comment: "triage-comment.md",
           createPr: "triage-create-pr.md",

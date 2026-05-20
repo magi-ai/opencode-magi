@@ -36,28 +36,26 @@ Magi fetches bounded issue relationship data, asks triage agents to vote on exis
 3. Scan bounded relationships: related PRs, duplicate candidates, and previous Magi markers.
 4. Vote whether related PRs already handle the issue.
 5. Vote whether duplicate candidates are true duplicates.
-6. Resolve issue kind from `triage.kind.*` labels/types or run Kind Vote.
-7. Run Bug Vote or Feature Vote.
+6. Resolve issue category from `triage.categories` labels/types or run Category Vote.
+7. Run the common Acceptance Vote for the selected category.
 8. Compose an author-mentioned comment or question.
 9. Apply enabled automation: close, PR creation, and label clearing.
 10. Write artifacts and a report.
 
 `ASK` is a normal result. It posts a question comment and does not close, create PRs, or clear labels.
 
-Issue type rules use GitHub GraphQL `issueType`. If issue types are unavailable, Magi falls back to labels and Kind Vote instead of failing triage.
+Issue type rules use GitHub GraphQL `issueType`. If issue types are unavailable, Magi falls back to labels and Category Vote instead of failing triage.
 
 Triage results:
 
-| Status             | Meaning                                                                                                     |
-| ------------------ | ----------------------------------------------------------------------------------------------------------- |
-| `ASK`              | Magi needs more information. It posts a question and skips close, PR creation, and label clearing.          |
-| `BUG_ACCEPTED`     | A bug issue was accepted, or a merged related PR resolved the issue. PR creation may run when enabled.      |
-| `BUG_REJECTED`     | A bug issue was rejected. The issue may be closed when `triage.automation.close` is enabled.                |
-| `FEATURE_ACCEPTED` | A feature issue was accepted. PR creation may run when `triage.automation.pr` is enabled.                   |
-| `FEATURE_REJECTED` | A feature issue was rejected. The issue may be closed when `triage.automation.close` is enabled.            |
-| `DUPLICATE`        | Duplicate voting found majority support for the same candidate issue. The issue may be closed when enabled. |
-| `CLEAR_ONLY`       | A related PR already handles the issue, so Magi only clears configured labels.                              |
-| `FAILED`           | A safety gate blocked the run before agent voting completed.                                                |
+| Disposition  | Meaning                                                                                                     |
+| ------------ | ----------------------------------------------------------------------------------------------------------- |
+| `ask`        | Magi needs more information. It posts a question and skips close, PR creation, and label clearing.          |
+| `accepted`   | The selected category was accepted. PR creation may run when `triage.automation.pr` is enabled.             |
+| `rejected`   | The selected category was rejected. The issue may be closed when `triage.automation.close` is enabled.      |
+| `duplicate`  | Duplicate voting found majority support for the same candidate issue. The issue may be closed when enabled. |
+| `clear_only` | A related PR already handles the issue, so Magi only clears configured labels.                              |
+| `failed`     | A safety gate blocked the run before agent voting completed.                                                |
 
 ## Outputs
 
@@ -71,9 +69,9 @@ Triage artifacts are written to the issue run output directory:
 | `relationship-summary.json` | Recent comments, related PRs, duplicate candidates, and marker.  |
 | `existing-pr-majority.json` | Existing-PR vote counts and result, when that phase runs.        |
 | `duplicate-majority.json`   | Duplicate vote counts and result, when that phase runs.          |
-| `kind-majority.json`        | Kind vote counts and result, when Kind Vote runs.                |
-| `bug-majority.json`         | Bug vote counts and result, when Bug Vote runs.                  |
-| `feature-majority.json`     | Feature vote counts and result, when Feature Vote runs.          |
+| `category-resolution.json`  | Category pre-resolution source and selected category, if any.    |
+| `category-majority.json`    | Category vote counts and result, when Category Vote runs.        |
+| `acceptance-majority.json`  | Acceptance vote counts and result, when Acceptance Vote runs.    |
 | `create-pr.json`            | Creator-agent edit output, when implementation PR creation runs. |
 | `report.md`                 | Final human-readable issue triage report.                        |
 
@@ -81,19 +79,19 @@ Triage artifacts are written to the issue run output directory:
 
 Important settings:
 
-| Setting                   | Purpose                                                                          |
-| ------------------------- | -------------------------------------------------------------------------------- |
-| `triage.account`          | GitHub account used for triage comments and mutations.                           |
-| `triage.agents`           | Dedicated issue triage voting agents.                                            |
-| `triage.creator`          | Agent used for implementation PR creation when enabled.                          |
-| `triage.kind.*`           | Label/type rules that can skip Kind Vote. Type rules require GitHub issue types. |
-| `triage.automation.close` | Enables closing rejected or duplicate issues.                                    |
-| `triage.automation.pr`    | Enables implementation PR creation for accepted issues.                          |
-| `triage.automation.clear` | Labels removed for non-ASK results.                                              |
-| `triage.safety.*`         | Gates for initial triage and reconsideration.                                    |
-| `triage.concurrency.runs` | Maximum issues processed concurrently.                                           |
-| `triage.output`           | Issue triage artifact directory.                                                 |
-| `triage.worktree`         | Worktree directory for validation and PR creation.                               |
+| Setting                   | Purpose                                                                                               |
+| ------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `triage.account`          | GitHub account used for triage comments and mutations.                                                |
+| `triage.agents`           | Dedicated issue triage voting agents.                                                                 |
+| `triage.creator`          | Agent used for implementation PR creation when enabled.                                               |
+| `triage.categories`       | Category IDs and label/type rules that can skip Category Vote. Type rules require GitHub issue types. |
+| `triage.automation.close` | Enables closing rejected or duplicate issues.                                                         |
+| `triage.automation.pr`    | Enables implementation PR creation for accepted issues.                                               |
+| `triage.automation.clear` | Labels removed for non-ASK results.                                                                   |
+| `triage.safety.*`         | Gates for initial triage and reconsideration.                                                         |
+| `triage.concurrency.runs` | Maximum issues processed concurrently.                                                                |
+| `triage.output`           | Issue triage artifact directory.                                                                      |
+| `triage.worktree`         | Worktree directory for validation and PR creation.                                                    |
 
 See [Config](/docs/config.md) for the complete reference.
 

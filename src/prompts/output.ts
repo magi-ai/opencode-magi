@@ -14,8 +14,7 @@ import type {
   TriageDuplicateOutput,
   TriageDuplicateVote,
   TriageExistingPrVote,
-  TriageFinalVote,
-  TriageKindVote,
+  TriageCategoryVote,
   TriageVoteOutput,
   Verdict,
 } from "../types"
@@ -170,23 +169,11 @@ export function parseTriageExistingPrOutput(
   ])
 }
 
-export function parseTriageKindOutput(
+export function parseTriageCategoryOutput(
   text: string,
-): TriageVoteOutput<TriageKindVote> {
-  return parseTriageVote(text, ["ASK", "BUG", "FEATURE"])
-}
-
-export function parseTriageFinalOutput(
-  text: string,
-): TriageVoteOutput<TriageFinalVote> {
-  return parseTriageVote(text, [
-    "ASK",
-    "BUG_ACCEPTED",
-    "BUG_REJECTED",
-    "DUPLICATE",
-    "FEATURE_ACCEPTED",
-    "FEATURE_REJECTED",
-  ])
+  categories: readonly string[],
+): TriageVoteOutput<TriageCategoryVote> {
+  return parseTriageVote(text, ["ASK", ...categories])
 }
 
 export function parseTriageBinaryOutput(

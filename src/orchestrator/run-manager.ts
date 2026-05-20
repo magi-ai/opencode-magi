@@ -1887,10 +1887,12 @@ export class MagiRunManager {
     const completed = this.active.get(input.runId)
     if (!completed || completed.status === "cancelled") return
 
-    completed.status = result.result === "FAILED" ? "failed" : "completed"
-    completed.phase = result.result
+    const triageResult = JSON.stringify(result.result)
+    completed.status =
+      result.result.disposition === "failed" ? "failed" : "completed"
+    completed.phase = triageResult
     completed.completedAt = now()
-    completed.verdict = result.result
+    completed.verdict = triageResult
     completed.reportPath = join(completed.outputDir, "report.md")
     for (const agent of Object.values(completed.reviewers)) {
       if (agent.status === "pending") agent.status = "completed"
