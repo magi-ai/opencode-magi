@@ -692,6 +692,20 @@ export async function closeIssue(
   )
 }
 
+export async function assignIssue(
+  exec: Exec,
+  repository: ResolvedRepository,
+  issue: number,
+  account: string,
+): Promise<string> {
+  const token = await ghToken(exec, repository, account)
+
+  return exec(
+    `gh issue edit ${issue} --repo ${shellQuote(repoSpecifier(repository))} --add-assignee ${shellQuote(account)}`,
+    ghTokenEnv(token),
+  )
+}
+
 export async function removeIssueLabels(
   exec: Exec,
   repository: ResolvedRepository,

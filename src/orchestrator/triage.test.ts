@@ -222,6 +222,14 @@ function createExec(input: {
     }
     if (command.startsWith("gh issue close 1")) return "closed"
     if (command.startsWith("gh issue edit 1")) return ""
+    if (command.startsWith("git worktree add")) return ""
+    if (command.startsWith("git config --worktree")) return ""
+    if (command.startsWith("git push")) return ""
+    if (command.startsWith("gh pr create")) {
+      return "https://github.com/owner/repo/pull/123"
+    }
+    if (command.startsWith("git worktree remove")) return ""
+    if (command.startsWith("git worktree prune")) return ""
     if (command.startsWith("gh issue view 10")) {
       return JSON.stringify({
         body: "Original issue",
@@ -552,6 +560,57 @@ describe("triage orchestration", () => {
     expect(
       result.commands.some((command) => command.startsWith("gh issue close 1")),
     ).toBe(true)
+  })
+
+  test("assigns the issue to the triage account before creating an implementation PR", async () => {
+    const result = await runScenario({
+      dryRun: false,
+      issue: issue({ type: "Feature" }),
+      outputs: [
+        vote("YES"),
+        vote("YES"),
+        vote("YES"),
+        action("PR"),
+        "Feature accepted comment",
+        JSON.stringify({
+          commitMessage: "fix(orchestrator): address issue",
+          commitSha: "abc123",
+          filesTouched: ["src/example.ts"],
+          mode: "EDITED",
+          responses: [{ action: "FIXED", body: "Fixed.", commentId: 1 }],
+        }),
+      ],
+      repository: {
+        ...repositoryWithTriage({
+          automation: { close: false, clear: ["triage"], pr: true },
+        }),
+        agents: {
+          ...repository.agents,
+          triageCreator: {
+            account: "creator-bot",
+            author: { email: "creator@example.com", name: "Creator Bot" },
+            model: "mock/model",
+            permission: "deny",
+          },
+        },
+      },
+    })
+
+    const assignIndex = result.commands.findIndex((command) =>
+      command.includes("--add-assignee 'magi-bot'"),
+    )
+    const worktreeIndex = result.commands.findIndex((command) =>
+      command.startsWith("git worktree add"),
+    )
+    const prIndex = result.commands.findIndex((command) =>
+      command.startsWith("gh pr create"),
+    )
+
+    expect(result.result.result).toBe("FEATURE_ACCEPTED")
+    expect(assignIndex).toBeGreaterThan(-1)
+    expect(assignIndex).toBeLessThan(worktreeIndex)
+    expect(assignIndex).toBeLessThan(prIndex)
+    expect(result.commands[prIndex]).not.toContain("--add-assignee")
   })
 
   test("skips reconsideration when a previous marker has no eligible mentions", async () => {
