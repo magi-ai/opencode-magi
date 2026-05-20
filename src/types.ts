@@ -359,6 +359,7 @@ export interface RereviewCloseReconsiderationOutput {
     startLine?: number
     body: string
   }[]
+  requirementFindings: RequirementFinding[]
   resolve: { commentId: number; threadId: string }[]
   verdict: Exclude<Verdict, "CLOSE">
 }
