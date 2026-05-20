@@ -81,6 +81,23 @@ If at least one config exists, Magi validates the merged effective config and re
     "prompts": {
       "editGuidelines": ".agents/references/edit-guidelines.md"
     }
+  },
+  "triage": {
+    "account": "your-triage-account",
+    "agents": [
+      {
+        "id": "general",
+        "model": "openai/gpt-5.5"
+      },
+      {
+        "id": "maintenance",
+        "model": "anthropic/claude-opus-4-7"
+      },
+      {
+        "id": "product",
+        "model": "opencode/kimi-k2-6"
+      }
+    ]
   }
 }
 ```
