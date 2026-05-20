@@ -120,6 +120,8 @@ export interface MagiRunState {
   worktreePath?: string
 }
 
+type NumberFilter = number | number[]
+
 export interface MagiClearOptions extends Required<ClearConfig> {}
 
 export interface MagiClearSummary {
@@ -177,6 +179,25 @@ function isActiveStatus(status: MagiRunStatus): boolean {
     status === "running" ||
     status === "posting"
   )
+}
+
+function matchesNumberFilter(value: number | undefined, filter?: NumberFilter) {
+  if (filter == null) return true
+
+  return Array.isArray(filter)
+    ? value != null && filter.includes(value)
+    : value === filter
+}
+
+function hasAllRequestedPrStates(
+  states: MagiRunState[],
+  pr?: NumberFilter,
+): boolean {
+  if (pr == null) return true
+
+  const prs = Array.isArray(pr) ? pr : [pr]
+
+  return prs.every((item) => states.some((state) => state.pr === item))
 }
 
 function isWithinDirectory(directory: string, path: string): boolean {
@@ -866,7 +887,7 @@ export class MagiRunManager {
       block?: boolean
       issue?: number
       outputDir?: string | string[]
-      pr?: number
+      pr?: NumberFilter
       runId?: string
       timeoutMs?: number
     } = {},
@@ -878,6 +899,7 @@ export class MagiRunManager {
       const states = await this.filteredStates(input)
       if (
         states.length &&
+        hasAllRequestedPrStates(states, input.pr) &&
         states.every((state) => !isActiveStatus(state.status))
       )
         return states
@@ -2410,7 +2432,7 @@ export class MagiRunManager {
     command?: MagiRunState["command"]
     issue?: number
     outputDir?: string | string[]
-    pr?: number
+    pr?: NumberFilter
     runId?: string
   }): Promise<MagiRunState[]> {
     const states = input.runId
@@ -2424,7 +2446,7 @@ export class MagiRunManager {
         (state) => input.command == null || state.command === input.command,
       )
       .filter((state) => input.issue == null || state.issue === input.issue)
-      .filter((state) => input.pr == null || state.pr === input.pr)
+      .filter((state) => matchesNumberFilter(state.pr, input.pr))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   }
 
