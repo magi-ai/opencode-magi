@@ -842,7 +842,7 @@ export async function fetchPullRequestSafetyMeta(
   repository: ResolvedRepository,
   pr: number,
 ): Promise<PullRequestSafetyMeta> {
-  const query = `query($owner: String!, $repo: String!, $pr: Int!, $filesCursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { author { login } changedFiles labels(first: 100) { nodes { name } } files(first: 100, after: $filesCursor) { nodes { path } pageInfo { hasNextPage endCursor } } } } } }`
+  const query = `query($owner: String!, $repo: String!, $pr: Int!, $filesCursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { author { login } changedFiles labels(first: 100) { nodes { name } } files(first: 100, after: $filesCursor) { nodes { path } pageInfo { hasNextPage endCursor } } } } }`
   const files: string[] = []
   let author = ""
   let changedFiles = 0

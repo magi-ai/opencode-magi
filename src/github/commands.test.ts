@@ -623,6 +623,7 @@ describe("GitHub command helpers", () => {
       labels: ["magi-ok"],
     })
     expect(commands).toHaveLength(2)
+    expectBalancedBraces(extractGraphqlQuery(commands[0]))
     expect(commands[1]).toContain("-F filesCursor='cursor'")
   })
 
