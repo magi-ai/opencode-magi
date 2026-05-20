@@ -487,6 +487,48 @@ describe("MagiRunManager notifications", () => {
     ])
   })
 
+  test("marks active triage creator cancelled when cancelling run", async () => {
+    const { manager } = managerWithPromptCapture()
+    const directory = await mkdtemp(join(tmpdir(), "magi-run-"))
+    const state: MagiRunState = {
+      command: "triage",
+      createdAt: "now",
+      error: "User cancelled run",
+      issue: 105,
+      issueUrl: "https://example.com/issues/105",
+      outputDir: directory,
+      parentSessionId: "parent-session",
+      phase: "creating implementation PR",
+      repository: "repo",
+      reviewers: {},
+      runId: "run",
+      status: "running",
+      triageCreator: {
+        account: "creator-bot",
+        repairAttempts: 0,
+        sessionId: "creator-session",
+        status: "running",
+        toolCalls: 0,
+      },
+      updatedAt: "now",
+    }
+    const privateManager = manager as unknown as {
+      active: Map<string, MagiRunState>
+    }
+
+    privateManager.active.set("run", state)
+    try {
+      const cancelled = await manager.cancel({ runId: "run" })
+
+      expect(cancelled?.triageCreator).toMatchObject({
+        status: "cancelled",
+      })
+      expect(cancelled?.triageCreator?.error).toBeUndefined()
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
   test("notifies thread resolution attempt limits with links", async () => {
     const { manager, prompts } = managerWithPromptCapture()
     const state: MagiRunState = {

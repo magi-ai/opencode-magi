@@ -1038,8 +1038,7 @@ export class MagiRunManager {
       state.triageCreator?.status === "repairing" ||
       state.triageCreator?.status === "blocked"
     ) {
-      state.triageCreator.status = "failed"
-      state.triageCreator.error = state.error
+      state.triageCreator.status = "cancelled"
     }
     if (state.triageCreator?.sessionId) {
       await this.input.client.session
