@@ -5,6 +5,12 @@
     "owner": "magi-ai",
     "repo": "opencode-magi"
   },
+  "agents": {
+    "permissions": {
+      "webfetch": "allow",
+      "websearch": "allow"
+    }
+  },
   "review": {
     "agents": [
       {
