@@ -329,8 +329,54 @@ export async function fetchIssue(
   repository: ResolvedRepository,
   issue: number,
 ): Promise<IssueMeta> {
+  const query = `query($owner: String!, $repo: String!, $issue: Int!) { repository(owner: $owner, name: $repo) { issue(number: $issue) { number title body url state author { login } labels(first: 100) { nodes { name } } issueType { name } } } } }`
+
+  try {
+    const raw = await exec(
+      `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F issue=${issue}`,
+    )
+    const data = JSON.parse(raw) as {
+      data?: {
+        repository?: {
+          issue?: {
+            author?: { login?: string }
+            body?: string
+            issueType?: { name?: string } | null
+            labels?: { nodes?: { name: string }[] }
+            number: number
+            state: string
+            title: string
+            url: string
+          }
+        }
+      }
+    }
+    const graphqlIssue = data.data?.repository?.issue
+
+    if (!graphqlIssue) throw new Error(`Could not fetch issue #${issue}`)
+
+    return {
+      author: graphqlIssue.author?.login ?? "",
+      body: graphqlIssue.body ?? "",
+      labels: graphqlIssue.labels?.nodes?.map((label) => label.name) ?? [],
+      number: graphqlIssue.number,
+      state: graphqlIssue.state,
+      title: graphqlIssue.title,
+      type: graphqlIssue.issueType?.name,
+      url: graphqlIssue.url,
+    }
+  } catch {
+    return fetchIssueWithCli(exec, repository, issue)
+  }
+}
+
+async function fetchIssueWithCli(
+  exec: Exec,
+  repository: ResolvedRepository,
+  issue: number,
+): Promise<IssueMeta> {
   const raw = await exec(
-    `gh issue view ${issue} --repo ${shellQuote(repoSpecifier(repository))} --json number,title,body,url,state,author,labels,type`,
+    `gh issue view ${issue} --repo ${shellQuote(repoSpecifier(repository))} --json number,title,body,url,state,author,labels`,
   )
   const data = JSON.parse(raw) as {
     author?: { login?: string }
@@ -339,7 +385,6 @@ export async function fetchIssue(
     number: number
     state: string
     title: string
-    type?: { name?: string }
     url: string
   }
 
@@ -350,7 +395,6 @@ export async function fetchIssue(
     number: data.number,
     state: data.state,
     title: data.title,
-    type: data.type?.name,
     url: data.url,
   }
 }

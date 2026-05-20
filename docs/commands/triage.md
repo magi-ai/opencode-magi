@@ -32,6 +32,8 @@ Magi fetches bounded issue relationship data, asks triage agents to vote on exis
 
 `ASK` is a normal result. It posts a question comment and does not close, create PRs, or clear labels.
 
+Issue type rules use GitHub GraphQL `issueType`. If issue types are unavailable, Magi falls back to labels and Kind Vote instead of failing triage.
+
 Triage results:
 
 | Status             | Meaning                                                                                                     |
@@ -67,19 +69,19 @@ Triage artifacts are written to the issue run output directory:
 
 Important settings:
 
-| Setting                   | Purpose                                                 |
-| ------------------------- | ------------------------------------------------------- |
-| `triage.account`          | GitHub account used for triage comments and mutations.  |
-| `triage.agents`           | Dedicated issue triage voting agents.                   |
-| `triage.creator`          | Agent used for implementation PR creation when enabled. |
-| `triage.kind.*`           | Label/type rules that can skip Kind Vote.               |
-| `triage.automation.close` | Enables closing rejected or duplicate issues.           |
-| `triage.automation.pr`    | Enables implementation PR creation for accepted issues. |
-| `triage.automation.clear` | Labels removed for non-ASK results.                     |
-| `triage.safety.*`         | Gates for initial triage and reconsideration.           |
-| `triage.concurrency.runs` | Maximum issues processed concurrently.                  |
-| `triage.output`           | Issue triage artifact directory.                        |
-| `triage.worktree`         | Worktree directory for validation and PR creation.      |
+| Setting                   | Purpose                                                                          |
+| ------------------------- | -------------------------------------------------------------------------------- |
+| `triage.account`          | GitHub account used for triage comments and mutations.                           |
+| `triage.agents`           | Dedicated issue triage voting agents.                                            |
+| `triage.creator`          | Agent used for implementation PR creation when enabled.                          |
+| `triage.kind.*`           | Label/type rules that can skip Kind Vote. Type rules require GitHub issue types. |
+| `triage.automation.close` | Enables closing rejected or duplicate issues.                                    |
+| `triage.automation.pr`    | Enables implementation PR creation for accepted issues.                          |
+| `triage.automation.clear` | Labels removed for non-ASK results.                                              |
+| `triage.safety.*`         | Gates for initial triage and reconsideration.                                    |
+| `triage.concurrency.runs` | Maximum issues processed concurrently.                                           |
+| `triage.output`           | Issue triage artifact directory.                                                 |
+| `triage.worktree`         | Worktree directory for validation and PR creation.                               |
 
 See [Config](/docs/config.md) for the complete reference.
 
