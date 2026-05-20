@@ -500,6 +500,16 @@ describe("validateConfig", () => {
     )
   })
 
+  test("does not require worktree config for review-only validation", async () => {
+    const result = await validateConfig(config, {
+      exec: async (command) => {
+        throw new Error(`unexpected command: ${command}`)
+      },
+    })
+
+    expect(result.ok).toBe(true)
+  })
+
   test("requires worktree config for editor identity configuration", async () => {
     const result = await validateConfig(config, {
       exec: async (command) => {
@@ -507,6 +517,7 @@ describe("validateConfig", () => {
 
         throw new Error(`unexpected command: ${command}`)
       },
+      requireEditor: true,
     })
 
     expect(result.ok).toBe(false)

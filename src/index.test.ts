@@ -158,6 +158,51 @@ describe("magi_validate", () => {
     expect(result).toContain("Errors:\n- None")
   })
 
+  test("validates worktree config for full config validation", async () => {
+    const home = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "magi-home-"))
+    const directory = await mkdtemp(
+      join(process.env.TMPDIR ?? "/tmp", "magi-project-"),
+    )
+    mockState.home = home
+    const globalPath = join(home, ".config", "opencode", "magi.json")
+    const projectPath = join(directory, ".opencode", "magi.json")
+    const validateMagiConfigFiles = await loadValidateMagiConfigFiles()
+
+    await writeConfig(globalPath, {
+      merge: {
+        editor: {
+          account: "bot-c",
+          author: { email: "bot-c@example.com", name: "Bot C" },
+          model: "openai/gpt",
+        },
+      },
+      review: {
+        agents: [
+          { account: "bot-a", model: "openai/gpt" },
+          { account: "bot-b", model: "openai/gpt" },
+          { account: "bot-c", model: "openai/gpt" },
+        ],
+      },
+    })
+    await writeConfig(projectPath, {
+      github: { owner: "owner", repo: "repo" },
+    })
+
+    const result = await validateMagiConfigFiles(directory, {
+      checkAuth: false,
+      exec: async (command) => {
+        if (command.startsWith("git config --bool --get")) return "false"
+
+        throw new Error(`unexpected command: ${command}`)
+      },
+    })
+
+    expect(result).toContain("Magi config validation: failed")
+    expect(result).toContain(
+      "git config extensions.worktreeConfig must be true when editor or triage PR creator is configured",
+    )
+  })
+
   test("does not require GitHub settings for global-only config", async () => {
     const home = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "magi-home-"))
     const directory = await mkdtemp(

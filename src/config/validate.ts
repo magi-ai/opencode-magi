@@ -30,6 +30,7 @@ export interface ValidationOptions {
   requireGithub?: boolean
   requireReview?: boolean
   requireTriage?: boolean
+  requireWorktreeConfig?: boolean
 }
 
 export interface ValidationResult {
@@ -999,14 +1000,13 @@ async function validateWorktreeConfig(
   errors: string[],
 ): Promise<void> {
   const agents = resolveAgents(config)
-  const checkAll = !options.requireEditor && !options.requireTriage
   const checkEditor = Boolean(
-    agents.editor && (checkAll || options.requireEditor),
+    agents.editor && (options.requireEditor || options.requireWorktreeConfig),
   )
   const checkTriageCreator = Boolean(
     config.triage?.automation?.pr &&
     agents.triageCreator &&
-    (checkAll || options.requireTriage),
+    (options.requireTriage || options.requireWorktreeConfig),
   )
 
   if (!checkEditor && !checkTriageCreator) return
