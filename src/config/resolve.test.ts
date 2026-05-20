@@ -89,6 +89,25 @@ describe("resolveRepository", () => {
       clear: ["triage"],
       close: false,
       create: false,
+      merge: false,
+      review: false,
+    })
+  })
+
+  test("resolves triage review and merge automation", () => {
+    const repo = resolveRepository({
+      github: { owner: "owner", repo: "repo" },
+      triage: {
+        account: "magi-bot",
+        agents: [],
+        automation: { create: true, merge: true, review: true },
+      },
+    })
+
+    expect(repo.triage?.automation).toMatchObject({
+      create: true,
+      merge: true,
+      review: true,
     })
   })
 

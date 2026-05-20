@@ -91,6 +91,7 @@ export interface TriageRunInput {
 export interface TriageRunResult {
   issue: number
   outputDir: string
+  prUrl?: string
   report: string
   result: FinalResult
 }
@@ -1199,6 +1200,7 @@ async function finishWithResult(input: {
   return {
     issue: input.issue.number,
     outputDir: input.outputDir,
+    prUrl,
     report,
     result: input.result,
   }

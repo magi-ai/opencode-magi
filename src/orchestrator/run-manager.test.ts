@@ -7,6 +7,7 @@ import { join } from "node:path"
 import { afterEach, describe, expect, test, vi } from "vitest"
 
 const runReviewMock = vi.hoisted(() => vi.fn())
+const runTriageMock = vi.hoisted(() => vi.fn())
 
 vi.mock("./review", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./review")>()
@@ -14,11 +15,19 @@ vi.mock("./review", async (importOriginal) => {
   return { ...actual, runReview: runReviewMock }
 })
 
+vi.mock("./triage", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./triage")>()
+
+  return { ...actual, runTriage: runTriageMock }
+})
+
 import { MagiRunManager, redactSecrets } from "./run-manager"
 
 describe("MagiRunManager notifications", () => {
   afterEach(() => {
     runReviewMock.mockReset()
+    runTriageMock.mockReset()
+    vi.restoreAllMocks()
   })
 
   function managerWithPromptCapture(directory = ".") {
@@ -142,6 +151,135 @@ describe("MagiRunManager notifications", () => {
       safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
     }
   }
+
+  function sampleTriageRepository(
+    automation: NonNullable<ResolvedRepository["triage"]>["automation"],
+  ): ResolvedRepository {
+    return {
+      ...sampleRepository(),
+      agents: {
+        ...sampleRepository().agents,
+        triage: [],
+      },
+      triage: {
+        automation,
+        categories: [],
+        concurrency: { runs: 1 },
+        prompts: {},
+        safety: {
+          allowAuthors: [],
+          allowMentionActors: [],
+          allowMentionRoles: [],
+          blockedLabels: [],
+          requiredLabels: [],
+        },
+      },
+    }
+  }
+
+  function sampleTriageState(outputDir: string): MagiRunState {
+    return {
+      command: "triage",
+      createdAt: "now",
+      issue: 115,
+      issueUrl: "https://example.com/issues/115",
+      outputDir,
+      parentSessionId: "parent-session",
+      phase: "triaging",
+      repository: "repo",
+      reviewers: {},
+      runId: "triage-run",
+      status: "running",
+      updatedAt: "now",
+    }
+  }
+
+  async function executeTriageWithAutomation(
+    automation: NonNullable<ResolvedRepository["triage"]>["automation"],
+  ) {
+    const directory = await mkdtemp(join(tmpdir(), "magi-triage-follow-up-"))
+    const { manager } = managerWithPromptCapture(directory)
+    const repository = sampleTriageRepository(automation)
+    const state = sampleTriageState(join(directory, "triage"))
+    const reviewState = sampleReviewState(join(directory, "review"))
+    const mergeState: MagiRunState = {
+      ...reviewState,
+      command: "merge",
+      outputDir: join(directory, "merge"),
+    }
+    const privateManager = manager as unknown as {
+      active: Map<string, MagiRunState>
+      executeTriage(input: Record<string, unknown>): Promise<void>
+    }
+    const startReview = vi
+      .spyOn(manager, "startReview")
+      .mockResolvedValue(reviewState)
+    const startMerge = vi
+      .spyOn(manager, "startMerge")
+      .mockResolvedValue(mergeState)
+
+    privateManager.active.set("triage-run", state)
+    runTriageMock.mockResolvedValueOnce({
+      issue: 115,
+      outputDir: state.outputDir,
+      prUrl: "https://github.com/owner/repo/pull/30",
+      report: "Triage report",
+      result: { category: "feature", disposition: "accepted" },
+    })
+
+    try {
+      await privateManager.executeTriage({
+        config: { github: { owner: "owner", repo: "repo" } },
+        dryRun: false,
+        issue: 115,
+        parentSessionId: "parent-session",
+        repository,
+        runId: "triage-run",
+      })
+
+      return { startMerge, startReview }
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  }
+
+  test("starts review automation after triage creates a PR", async () => {
+    const { startMerge, startReview } = await executeTriageWithAutomation({
+      clear: ["triage"],
+      close: false,
+      create: true,
+      merge: false,
+      review: true,
+    })
+
+    expect(startReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dryRun: false,
+        parentSessionId: "parent-session",
+        pr: 30,
+      }),
+    )
+    expect(startMerge).not.toHaveBeenCalled()
+  })
+
+  test("starts only merge automation when both triage follow-ups are enabled", async () => {
+    const { startMerge, startReview } = await executeTriageWithAutomation({
+      clear: ["triage"],
+      close: false,
+      create: true,
+      merge: true,
+      review: true,
+    })
+
+    expect(startMerge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dryRun: false,
+        parentSessionId: "parent-session",
+        pr: 30,
+      }),
+    )
+    expect(startReview).not.toHaveBeenCalled()
+  })
 
   async function withTrackedSession(
     callback: (input: {

@@ -255,6 +255,14 @@ function prUrl(repository: ResolvedRepository, pr: number): string {
   return `https://${host}/${repository.github.owner}/${repository.github.repo}/pull/${pr}`
 }
 
+function pullRequestNumberFromUrl(url: string): number | undefined {
+  const match = url.match(/(?:^|\/)pull\/(\d+)(?:[/?#].*)?$/)
+  if (!match) return undefined
+
+  const pr = Number.parseInt(match[1]!, 10)
+  return Number.isInteger(pr) && pr > 0 ? pr : undefined
+}
+
 function issueUrl(repository: ResolvedRepository, issue: number): string {
   const host = repository.github.host || "github.com"
 
@@ -1968,6 +1976,30 @@ export class MagiRunManager {
       ].join("\n"),
       { reply: true },
     )
+
+    const followUpPr = result.prUrl
+      ? pullRequestNumberFromUrl(result.prUrl)
+      : undefined
+    const triageAutomation = input.repository.triage?.automation
+    if (followUpPr != null && triageAutomation?.merge) {
+      await this.startMerge({
+        config: input.config,
+        dryRun: input.dryRun,
+        parentSessionId: input.parentSessionId,
+        pr: followUpPr,
+        repository: input.repository,
+        signal: input.signal,
+      })
+    } else if (followUpPr != null && triageAutomation?.review) {
+      await this.startReview({
+        config: input.config,
+        dryRun: input.dryRun,
+        parentSessionId: input.parentSessionId,
+        pr: followUpPr,
+        repository: input.repository,
+        signal: input.signal,
+      })
+    }
     this.active.delete(input.runId)
     this.controllers.delete(input.runId)
   }

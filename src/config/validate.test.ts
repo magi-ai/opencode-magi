@@ -127,6 +127,32 @@ describe("validateConfig", () => {
     )
   })
 
+  test("rejects triage review and merge automation without PR creation", async () => {
+    const result = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: {
+          account: "magi-bot",
+          agents: [
+            { model: "openai/gpt" },
+            { model: "anthropic/claude" },
+            { model: "google/gemini" },
+          ],
+          automation: { merge: true, review: true },
+        },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain(
+      "triage.automation.review requires triage.automation.create to be true",
+    )
+    expect(result.errors).toContain(
+      "triage.automation.merge requires triage.automation.create to be true",
+    )
+  })
+
   test("rejects old triage PR creation automation key", async () => {
     const result = await validateConfig(
       {

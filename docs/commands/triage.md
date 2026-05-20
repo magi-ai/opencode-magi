@@ -5,7 +5,7 @@
 ```txt
 /magi:triage <ISSUE...>
 /magi:triage --dry-run <ISSUE...>
-/magi:triage --no-close --no-create <ISSUE...>
+/magi:triage --no-close --create --review <ISSUE...>
 ```
 
 `<ISSUE...>` accepts one or more issue numbers, `#123` tokens, or issue URLs separated by spaces or commas.
@@ -21,6 +21,8 @@ Triage flags:
 | `--language <value>`      | `language`                 |
 | `--close`, `--no-close`   | `triage.automation.close`  |
 | `--create`, `--no-create` | `triage.automation.create` |
+| `--review`, `--no-review` | `triage.automation.review` |
+| `--merge`, `--no-merge`   | `triage.automation.merge`  |
 | `--run-concurrency <n>`   | `triage.concurrency.runs`  |
 
 ## What It Does
@@ -39,7 +41,7 @@ Magi fetches bounded issue relationship data, asks triage agents to vote on exis
 6. Resolve issue category from `triage.categories` labels/types or run Category Vote.
 7. Run the common Acceptance Vote for the selected category.
 8. Compose an author-mentioned comment or question.
-9. Apply enabled automation: close, PR creation, and label clearing.
+9. Apply enabled automation: close, PR creation, post-PR review or merge, and label clearing.
 10. Write artifacts and a report.
 
 `ASK` is a normal result. It posts a question comment and does not close, create PRs, or clear labels.
@@ -59,7 +61,7 @@ Triage results:
 
 ## Outputs
 
-Magi may post one author-mentioned issue comment through `triage.account`, close issues, close related open PRs, remove configured labels, or create an implementation PR depending on the final result and automation settings. Clear-only related PR runs do not post a comment.
+Magi may post one author-mentioned issue comment through `triage.account`, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. Clear-only related PR runs do not post a comment.
 
 Triage artifacts are written to the issue run output directory:
 
@@ -87,6 +89,8 @@ Important settings:
 | `triage.categories`        | Category IDs and label/type rules that can skip Category Vote. Type rules require GitHub issue types. |
 | `triage.automation.close`  | Enables closing rejected or duplicate issues.                                                         |
 | `triage.automation.create` | Enables implementation PR creation for accepted issues.                                               |
+| `triage.automation.review` | Starts `/magi:review` after implementation PR creation. Requires `triage.automation.create`.          |
+| `triage.automation.merge`  | Starts `/magi:merge` after implementation PR creation. Requires `triage.automation.create`.           |
 | `triage.automation.clear`  | Labels removed for non-ASK results.                                                                   |
 | `triage.safety.*`          | Gates for initial triage and reconsideration.                                                         |
 | `triage.concurrency.runs`  | Maximum issues processed concurrently.                                                                |
@@ -119,4 +123,4 @@ Magi currently fetches issue comments `last: 50`, related PR timeline items `fir
 
 ### What do the automation flags control?
 
-`triage.automation.close` allows Magi to close rejected or duplicate issues and related open PRs. `triage.automation.create` allows accepted issues to trigger creator-agent implementation PR creation. `triage.automation.clear` lists labels removed after non-`ASK` outcomes.
+`triage.automation.close` allows Magi to close rejected or duplicate issues and related open PRs. `triage.automation.create` allows accepted issues to trigger creator-agent implementation PR creation. `triage.automation.review` starts review automation after that PR is created, while `triage.automation.merge` starts merge automation and takes precedence when both are enabled. `triage.automation.clear` lists labels removed after non-`ASK` outcomes.

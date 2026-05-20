@@ -133,7 +133,13 @@ const AUTOMATION_KEYS = new Set(["close", "merge"])
 const CLEAR_KEYS = new Set(["branch", "output", "session", "worktree"])
 const CONCURRENCY_KEYS = new Set(["reviewers", "runs"])
 const OUTPUT_KEYS = new Set(["repairAttempts"])
-const TRIAGE_AUTOMATION_KEYS = new Set(["clear", "close", "create"])
+const TRIAGE_AUTOMATION_KEYS = new Set([
+  "clear",
+  "close",
+  "create",
+  "merge",
+  "review",
+])
 const TRIAGE_CATEGORY_KEYS = new Set(["description", "id", "labels", "types"])
 const TRIAGE_CONCURRENCY_KEYS = new Set(["runs"])
 const TRIAGE_SAFETY_KEYS = new Set([
@@ -861,7 +867,19 @@ function validateTriage(
   )
   validateBoolean(automation?.close, "triage.automation.close", errors)
   validateBoolean(automation?.create, "triage.automation.create", errors)
+  validateBoolean(automation?.merge, "triage.automation.merge", errors)
+  validateBoolean(automation?.review, "triage.automation.review", errors)
   validateStringArray(automation?.clear, "triage.automation.clear", errors)
+  if (automation?.review && !automation.create) {
+    errors.push(
+      "triage.automation.review requires triage.automation.create to be true",
+    )
+  }
+  if (automation?.merge && !automation.create) {
+    errors.push(
+      "triage.automation.merge requires triage.automation.create to be true",
+    )
+  }
 
   validateKnownKeys(
     concurrency,

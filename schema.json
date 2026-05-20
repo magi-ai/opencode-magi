@@ -225,6 +225,8 @@
       "properties": {
         "close": { "type": "boolean", "default": false },
         "create": { "type": "boolean", "default": false },
+        "review": { "type": "boolean", "default": false },
+        "merge": { "type": "boolean", "default": false },
         "clear": {
           "type": "array",
           "items": { "type": "string" },
