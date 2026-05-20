@@ -33,6 +33,9 @@ When editing or reviewing files that match a pattern below, read the linked rule
   - `schema.json`
   - `package.json`
   - `README.md`
+- [Documentation](.agents/rules/documentation.md):
+  - `{.agents,docs}/**/*.md`
+  - `./*.md`
 
 ## Development Commands
 
