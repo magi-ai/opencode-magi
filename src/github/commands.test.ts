@@ -165,9 +165,12 @@ describe("GitHub command helpers", () => {
   })
 
   test("excludes the current issue from duplicate search candidates", async () => {
+    const commands: string[] = []
     const result = await searchDuplicateIssues(
-      async () =>
-        JSON.stringify([
+      async (command) => {
+        commands.push(command)
+
+        return JSON.stringify([
           {
             body: "same issue",
             number: 42,
@@ -182,7 +185,8 @@ describe("GitHub command helpers", () => {
             title: "Bug report",
             url: "https://github.com/owner/repo/issues/43",
           },
-        ]),
+        ])
+      },
       repository,
       {
         author: "author",
@@ -195,7 +199,38 @@ describe("GitHub command helpers", () => {
       },
     )
 
+    expect(commands[0]).toContain("gh search issues --repo 'owner/repo'")
+    expect(commands[0]).toContain("-- 'Bug report'")
+    expect(commands[0]).not.toContain("repo:owner/repo")
+    expect(commands[0]).not.toContain(" -42")
     expect(result.map((item) => item.number)).toEqual([43])
+  })
+
+  test("keeps duplicate issue search qualifiers out of title query", async () => {
+    const commands: string[] = []
+
+    await searchDuplicateIssues(
+      async (command) => {
+        commands.push(command)
+
+        return "[]"
+      },
+      repository,
+      {
+        author: "author",
+        body: "body",
+        labels: [],
+        number: 75,
+        state: "OPEN",
+        title:
+          "Align docs/config.md triage.prompts entries with review and merge prompts",
+        url: "https://github.com/owner/repo/issues/75",
+      },
+    )
+
+    expect(commands).toEqual([
+      "gh search issues --repo 'owner/repo' --json number,title,url,state,body --limit 5 -- 'Align docs/config.md triage.prompts entries with review and merge prompts'",
+    ])
   })
 
   test("normalizes searched related pull request states", async () => {
