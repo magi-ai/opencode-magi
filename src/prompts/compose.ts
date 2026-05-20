@@ -16,6 +16,7 @@ import {
   rereviewOutputContract,
   reviewOutputContract,
   triageCommentClassificationOutputContract,
+  triageActionOutputContract,
   triageDuplicateOutputContract,
   triageVoteOutputContract,
 } from "./contracts"
@@ -108,6 +109,14 @@ export interface TriageCommentPromptInput {
   repository: ResolvedRepository
 }
 
+export interface TriageCreatePrPromptInput {
+  context: string
+  directory: string
+  issue: number
+  repository: ResolvedRepository
+  worktreePath: string
+}
+
 async function readOptionalPrompt(
   directory: string,
   path?: string,
@@ -198,14 +207,18 @@ function editValues(input: EditPromptInput): Record<string, string> {
 }
 
 function triageValues(input: {
+  author?: string
   context: string
   issue: number
   repository: ResolvedRepository
+  worktreePath?: string
 }): Record<string, string> {
   return {
     ...repositoryValues(input.repository),
+    author: input.author ?? "",
     context: input.context,
     issue: String(input.issue),
+    worktreePath: input.worktreePath ?? "",
   }
 }
 
@@ -524,13 +537,74 @@ async function composeTriageVotePrompt(input: {
     .join("\n\n")
 }
 
-export function composeTriageCommentPrompt(
+export async function composeTriageActionPrompt(
+  input: TriagePromptInput,
+): Promise<string> {
+  return composeTriageVotePrompt({
+    ...input,
+    builtin: "action",
+    customPath: input.repository.triage?.prompts.action,
+    outputContract: triageActionOutputContract,
+  })
+}
+
+export async function composeTriageCommentPrompt(
   input: TriageCommentPromptInput,
-): string {
+): Promise<string> {
+  const values = triageValues(input)
+  const task = await taskBlock({
+    builtin: "triage/comment",
+    customPath: input.repository.triage?.prompts.comment,
+    directory: input.directory,
+    values,
+  })
+
   return [
-    `<task>\nCompose one concise GitHub issue comment for issue #${input.issue}. Mention @${input.author}. Use the context below and do not include markdown fences.\n</task>`,
+    task,
     languageBlock(input.repository.language),
     `<context>\n${input.context}\n</context>`,
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+}
+
+export async function composeTriageQuestionPrompt(
+  input: TriageCommentPromptInput,
+): Promise<string> {
+  const values = triageValues(input)
+  const task = await taskBlock({
+    builtin: "triage/question",
+    customPath: input.repository.triage?.prompts.question,
+    directory: input.directory,
+    values,
+  })
+
+  return [
+    task,
+    languageBlock(input.repository.language),
+    `<context>\n${input.context}\n</context>`,
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+}
+
+export async function composeTriageCreatePrPrompt(
+  input: TriageCreatePrPromptInput,
+): Promise<string> {
+  const values = triageValues(input)
+  const task = await taskBlock({
+    builtin: "triage/create-pr",
+    customPath: input.repository.triage?.prompts.createPr,
+    directory: input.directory,
+    values,
+  })
+  const persona = input.repository.agents.triageCreator?.persona
+
+  return [
+    task,
+    languageBlock(input.repository.language),
+    personaBlock(persona),
+    editOutputContract,
   ]
     .filter(Boolean)
     .join("\n\n")
@@ -601,5 +675,18 @@ export async function composeTriageCommentClassificationPrompt(
     builtin: "comment-classification",
     customPath: input.repository.triage?.prompts.commentClassification,
     outputContract: triageCommentClassificationOutputContract,
+  })
+}
+
+export async function composeTriageReconsiderPrompt(
+  input: TriagePromptInput,
+): Promise<string> {
+  return composeTriageVotePrompt({
+    ...input,
+    builtin: "reconsider",
+    customPath: input.repository.triage?.prompts.reconsider,
+    outputContract: triageVoteOutputContract(
+      '"ASK" | "BUG_ACCEPTED" | "BUG_REJECTED" | "DUPLICATE" | "FEATURE_ACCEPTED" | "FEATURE_REJECTED"',
+    ),
   })
 }

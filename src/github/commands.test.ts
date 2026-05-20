@@ -6,6 +6,7 @@ import { describe, expect, test } from "vitest"
 import {
   createWorktree,
   fetchIssue,
+  fetchRelatedPullRequests,
   fetchPullRequest,
   fetchPullRequestCommits,
   fetchPullRequestReviews,
@@ -195,6 +196,59 @@ describe("GitHub command helpers", () => {
     )
 
     expect(result.map((item) => item.number)).toEqual([43])
+  })
+
+  test("normalizes searched related pull request states", async () => {
+    const result = await fetchRelatedPullRequests(
+      async (command) => {
+        if (command.includes("graphql")) {
+          return JSON.stringify({
+            data: {
+              repository: {
+                issue: { timelineItems: { nodes: [] } },
+              },
+            },
+          })
+        }
+
+        expect(command).toContain("gh search prs")
+
+        return JSON.stringify([
+          {
+            author: { login: "bot" },
+            body: "Fixes #58",
+            number: 10,
+            state: "MERGED",
+            title: "Fix issue",
+            url: "https://github.com/owner/repo/pull/10",
+          },
+          {
+            author: { login: "bot" },
+            body: "Closes #58",
+            number: 11,
+            state: "closed",
+            title: "Closed attempt",
+            url: "https://github.com/owner/repo/pull/11",
+          },
+          {
+            author: { login: "bot" },
+            body: "Resolves #58",
+            number: 12,
+            state: "open",
+            title: "Open attempt",
+            url: "https://github.com/owner/repo/pull/12",
+          },
+        ])
+      },
+      repository,
+      58,
+    )
+
+    expect(result.map((pr) => [pr.number, pr.state])).toEqual([
+      [10, "MERGED"],
+      [11, "CLOSED"],
+      [12, "OPEN"],
+    ])
   })
 
   test("pushes detached HEAD to the PR head repository", async () => {

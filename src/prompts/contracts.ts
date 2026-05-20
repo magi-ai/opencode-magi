@@ -224,6 +224,25 @@ The object must match this shape:
 }
 </output_contract>`.trim()
 
+export const triageActionOutputContract = `
+<output_contract>
+Return exactly one JSON object and nothing else. Do not wrap it in markdown.
+
+The object must match this shape:
+{
+  "action": "ASK" | "COMMENT" | "CLOSE" | "PR" | "CLEAR_ONLY",
+  "reason": "Short rationale."
+}
+
+Rules:
+- Choose only an action listed as allowed in the task context.
+- ASK means post an author-mentioned question and do not close, create a PR, or clear labels.
+- COMMENT means post a decision comment only.
+- CLOSE means post a decision comment and close the issue.
+- PR means post a decision comment and create an implementation PR.
+- CLEAR_ONLY means clear labels without posting a comment.
+</output_contract>`.trim()
+
 const outputContractsBySchemaName: Record<string, string> = {
   "CI classification": ciClassificationOutputContract,
   "close reconsideration": closeReconsiderationOutputContract,
@@ -232,6 +251,7 @@ const outputContractsBySchemaName: Record<string, string> = {
   rereview: rereviewOutputContract,
   "rereview close reconsideration": rereviewCloseReconsiderationOutputContract,
   review: reviewOutputContract,
+  "triage action": triageActionOutputContract,
   "triage bug": triageVoteOutputContract('"YES" | "NO" | "ASK"'),
   "triage comment classification": triageCommentClassificationOutputContract,
   "triage duplicate": triageDuplicateOutputContract,
@@ -240,6 +260,9 @@ const outputContractsBySchemaName: Record<string, string> = {
   ),
   "triage feature": triageVoteOutputContract('"YES" | "NO" | "ASK"'),
   "triage kind": triageVoteOutputContract('"BUG" | "FEATURE" | "ASK"'),
+  "triage reconsider": triageVoteOutputContract(
+    '"ASK" | "BUG_ACCEPTED" | "BUG_REJECTED" | "DUPLICATE" | "FEATURE_ACCEPTED" | "FEATURE_REJECTED"',
+  ),
 }
 
 export function repairPrompt(schemaName: string): string {

@@ -21,7 +21,6 @@ import { type ModelCatalog, validateConfig } from "./config/validate"
 import { withGitHubApiRetry } from "./github/retry"
 import { mapPool } from "./orchestrator/pool"
 import { MagiRunManager } from "./orchestrator/run-manager"
-import { runTriage } from "./orchestrator/triage"
 
 const execAsync = promisify(nodeExec)
 const GLOBAL_CONFIG_PATH = join(homedir(), ".config", "opencode", "magi.json")
@@ -190,6 +189,12 @@ function parseOptionalPr(value: string | undefined): number | undefined {
   return parsePrToken(value)
 }
 
+function parseOptionalIssue(value: string | undefined): number | undefined {
+  if (!value?.trim()) return undefined
+
+  return parseIssueToken(value)
+}
+
 function clearFlag(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined
 }
@@ -247,6 +252,16 @@ function prMarkdownLink(repository: ResolvedRepository, pr: number): string {
   const url = `https://${host}/${repository.github.owner}/${repository.github.repo}/pull/${pr}`
 
   return `[#${pr}](${url})`
+}
+
+function issueMarkdownLink(
+  repository: ResolvedRepository,
+  issue: number,
+): string {
+  const host = repository.github.host || "github.com"
+  const url = `https://${host}/${repository.github.owner}/${repository.github.repo}/issues/${issue}`
+
+  return `[#${issue}](${url})`
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -557,34 +572,38 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
               null,
               2,
             )
-          const results = await mapPool(
+          const states = await mapPool(
             parsed.issues,
             repository.triage.concurrency.runs,
             (issue) =>
-              runTriage({
-                client: modelClient,
+              runManager.startTriage({
                 config: loaded.config,
-                directory,
                 dryRun: parsed.dryRun,
-                exec: retryingExec,
                 issue,
+                parentSessionId: context.sessionID,
                 repository,
                 signal: context.abort,
               }),
             { signal: context.abort },
           )
 
-          return results.map((result) => result.report).join("\n\n")
+          return states
+            .map(
+              (state) =>
+                `Started triaging ${issueMarkdownLink(repository, state.issue as number)}.`,
+            )
+            .join("\n")
         },
       }),
       magi_status: tool({
         description: [
-          "Show Magi background run status. Optionally filter by runId or PR and wait for completion.",
+          "Show Magi background run status. Optionally filter by runId, PR, or issue and wait for completion.",
           INTERNAL_FOLLOW_UP_TOOL_NOTE,
         ].join(" "),
         args: {
           runId: tool.schema.string().optional(),
           pr: tool.schema.string().optional(),
+          issue: tool.schema.string().optional(),
           block: tool.schema.boolean().optional(),
           timeoutSeconds: tool.schema.number().optional(),
           verbose: tool.schema.boolean().optional(),
@@ -592,6 +611,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
         async execute(args) {
           const states = await runManager.status({
             block: args.block,
+            issue: parseOptionalIssue(args.issue),
             outputDir: await configuredOutputDir(),
             pr: parseOptionalPr(args.pr),
             runId: args.runId,
@@ -608,21 +628,24 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
       }),
       magi_output: tool({
         description: [
-          "Show artifacts and details for a Magi background run by runId or PR, optionally for a single reviewer.",
+          "Show artifacts and details for a Magi background run by runId, PR, or issue, optionally for a single reviewer.",
           INTERNAL_FOLLOW_UP_TOOL_NOTE,
         ].join(" "),
         args: {
           runId: tool.schema.string().optional(),
           pr: tool.schema.string().optional(),
+          issue: tool.schema.string().optional(),
           reviewer: tool.schema.string().optional(),
         },
         async execute(args) {
-          if (!args.runId && !args.pr) return "Specify runId or pr."
+          if (!args.runId && !args.pr && !args.issue)
+            return "Specify runId, pr, or issue."
 
           const outputDir = await configuredOutputDir()
           if (outputDir) await runManager.status({ outputDir })
           return runManager.output({
             outputDir,
+            issue: parseOptionalIssue(args.issue),
             pr: parseOptionalPr(args.pr),
             reviewer: args.reviewer,
             runId: args.runId,
@@ -630,18 +653,22 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
         },
       }),
       magi_cancel: tool({
-        description: "Cancel a Magi background run by runId or PR.",
+        description: "Cancel a Magi background run by runId, PR, or issue.",
         args: {
           runId: tool.schema.string().optional(),
           pr: tool.schema.string().optional(),
+          issue: tool.schema.string().optional(),
         },
         async execute(args) {
-          if (!args.runId && !args.pr) return "Specify runId or pr."
+          if (!args.runId && !args.pr && !args.issue)
+            return "Specify runId, pr, or issue."
 
           const outputDir = await configuredOutputDir()
           if (outputDir) await runManager.status({ outputDir })
           const pr = parseOptionalPr(args.pr)
+          const issue = parseOptionalIssue(args.issue)
           const state = await runManager.cancel({
+            issue,
             outputDir,
             pr,
             runId: args.runId,
@@ -650,7 +677,9 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
           if (!state) {
             return args.runId
               ? `Magi run not found: ${args.runId}`
-              : `Magi run not found for PR #${pr}`
+              : issue
+                ? `Magi run not found for issue #${issue}`
+                : `Magi run not found for PR #${pr}`
           }
 
           return runManager.formatStates([state])
@@ -662,6 +691,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
         args: {
           runId: tool.schema.string().optional(),
           pr: tool.schema.string().optional(),
+          issue: tool.schema.string().optional(),
           branch: tool.schema.enum(["true", "false"]).optional(),
           output: tool.schema.enum(["true", "false"]).optional(),
           session: tool.schema.enum(["true", "false"]).optional(),
@@ -692,6 +722,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
 
           return runManager.clear({
             options,
+            issue: parseOptionalIssue(args.issue),
             outputDir: loaded
               ? outputBaseDirs(directory, loaded.config)
               : undefined,

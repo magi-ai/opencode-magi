@@ -12,6 +12,9 @@ import {
   composeRereviewCloseReconsiderationPrompt,
   composeRereviewPrompt,
   composeReviewPrompt,
+  composeTriageCommentPrompt,
+  composeTriageCreatePrPrompt,
+  composeTriageQuestionPrompt,
 } from "./compose"
 
 function evidence(
@@ -432,5 +435,110 @@ describe("prompt composer", () => {
 
     expect(prompt).toContain("After edit cycle 2: inspect old...new.")
     expect(prompt).toContain("caused by the PR changes or the editor changes")
+  })
+
+  test("uses configured triage comment, question, and create PR prompts", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "magi-prompt-"))
+    await writeFile(
+      join(dir, "triage-comment.md"),
+      "Comment for @{author}: {context}",
+    )
+    await writeFile(
+      join(dir, "triage-question.md"),
+      "Question for @{author}: {context}",
+    )
+    await writeFile(
+      join(dir, "triage-create-pr.md"),
+      "Implement in {worktreePath}: {context}",
+    )
+
+    const repository: ResolvedRepository = {
+      agents: {
+        reviewers: [],
+        triageCreator: {
+          account: "creator",
+          author: { email: "bot@example.com", name: "Bot" },
+          model: "openai/gpt",
+          permission: { edit: "allow" },
+          persona: "Keep the PR minimal.",
+        },
+      },
+      alias: "repo",
+      automation: { close: true, merge: true },
+      checks: {
+        exclude: [],
+        retryFailedJobs: 3,
+        waitAfterEdit: true,
+        waitBeforeReview: true,
+      },
+      concurrency: { runs: 3, reviewers: 3 },
+      github: {
+        apiRetryAttempts: 3,
+        host: "github.com",
+        owner: "owner",
+        repo: "repo",
+      },
+      merge: {
+        approvalPolicy: "majority",
+        auto: true,
+        deleteBranch: true,
+        maxThreadResolutionCycles: 5,
+        mergeQueue: false,
+        method: "squash",
+      },
+      prompts: {},
+      safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
+      triage: {
+        account: "magi-bot",
+        automation: { clear: ["triage"], close: false, pr: true },
+        concurrency: { runs: 3 },
+        kind: {
+          bug: { label: ["bug"], type: ["Bug"] },
+          feature: { label: ["enhancement"], type: ["Feature"] },
+        },
+        prompts: {
+          comment: "triage-comment.md",
+          createPr: "triage-create-pr.md",
+          question: "triage-question.md",
+        },
+        safety: {
+          allowAuthors: [],
+          allowMentionActors: [],
+          allowMentionRoles: ["MEMBER"],
+          blockedLabels: [],
+          requiredLabels: ["triage"],
+        },
+      },
+    }
+
+    const commentPrompt = await composeTriageCommentPrompt({
+      author: "octocat",
+      context: "accepted",
+      directory: dir,
+      issue: 58,
+      repository,
+    })
+    const questionPrompt = await composeTriageQuestionPrompt({
+      author: "octocat",
+      context: "missing logs",
+      directory: dir,
+      issue: 58,
+      repository,
+    })
+    const createPrPrompt = await composeTriageCreatePrPrompt({
+      context: "fix issue",
+      directory: dir,
+      issue: 58,
+      repository,
+      worktreePath: "/tmp/issue-58",
+    })
+
+    expect(commentPrompt).toContain("Comment for @octocat: accepted")
+    expect(questionPrompt).toContain("Question for @octocat: missing logs")
+    expect(createPrPrompt).toContain("Implement in /tmp/issue-58: fix issue")
+    expect(createPrPrompt).toContain(
+      "<persona>\nKeep the PR minimal.\n</persona>",
+    )
+    expect(createPrPrompt).toContain('"mode": "EDITED" | "REPLIED"')
   })
 })
