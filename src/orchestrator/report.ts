@@ -2,6 +2,7 @@ import type { CheckWaitReport } from "../github/commands"
 import type {
   EditOutput,
   Finding,
+  RequirementFinding,
   ResolvedRepository,
   RereviewOutput,
   ReviewOutput,
@@ -77,6 +78,10 @@ function formatRereviewFinding(
   return `\`${line}\`: ${finding.body}`
 }
 
+function formatRequirementFinding(finding: RequirementFinding): string {
+  return `Issue #${finding.issueNumber}: ${finding.requirement}`
+}
+
 function isReviewOutput(output: ReviewerOutput): output is ReviewOutput {
   return "findings" in output
 }
@@ -140,7 +145,10 @@ function reviewerDetailLines(output: ReviewerOutput): string[] {
     if (output.verdict === "CLOSE") return output.reason ? [output.reason] : []
     if (output.verdict !== "CHANGES_REQUESTED") return []
 
-    return output.findings.map(formatFinding)
+    return [
+      ...output.findings.map(formatFinding),
+      ...output.requirementFindings.map(formatRequirementFinding),
+    ]
   }
 
   if (output.verdict === "CLOSE") return output.reason ? [output.reason] : []
@@ -148,6 +156,7 @@ function reviewerDetailLines(output: ReviewerOutput): string[] {
 
   return [
     ...output.newFindings.map(formatRereviewFinding),
+    ...output.requirementFindings.map(formatRequirementFinding),
     ...output.followUps.map(
       (item) => `Comment #${item.commentId}: ${item.body}`,
     ),

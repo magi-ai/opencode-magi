@@ -113,6 +113,8 @@ describe("prompt composer", () => {
       headSha: "head",
       pr: 1,
       repository,
+      reviewContext:
+        "<pull_request_context>\nnumber: 1\n</pull_request_context>",
       reviewer: repository.agents.reviewers[0],
       worktreePath: "/tmp/worktree",
     })
@@ -120,8 +122,14 @@ describe("prompt composer", () => {
     expect(prompt).toContain(
       "<task>\nCustom review for #1 in owner/repo.\n</task>",
     )
+    expect(prompt).toContain(
+      "<pull_request_context>\nnumber: 1\n</pull_request_context>",
+    )
     expect(prompt).not.toContain("Review pull request #1")
     expect(prompt.indexOf("Custom review for #1")).toBeLessThan(
+      prompt.indexOf("<pull_request_context>"),
+    )
+    expect(prompt.indexOf("<pull_request_context>")).toBeLessThan(
       prompt.indexOf("<output_contract>"),
     )
     expect(prompt).toContain("<language>\nja\n</language>")
@@ -143,11 +151,15 @@ describe("prompt composer", () => {
       previousHeadSha: "old",
       previousReview: "Previously requested changes for tests.",
       repository,
+      reviewContext: "<closing_issues>\n(none)\n</closing_issues>",
       reviewer: repository.agents.reviewers[0],
       unresolvedThreads: "[]",
       worktreePath: "/tmp/worktree",
     })
 
+    expect(rereviewPrompt).toContain(
+      "<closing_issues>\n(none)\n</closing_issues>",
+    )
     expect(rereviewPrompt).toContain(
       "<previous_review>\nPreviously requested changes for tests.\n</previous_review>",
     )

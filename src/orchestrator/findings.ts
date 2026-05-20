@@ -103,9 +103,10 @@ export function applyFindingValidation(input: {
       return false
     })
 
-    next[reviewer] = findings.length
-      ? { ...output, findings }
-      : { findings: [], verdict: "MERGE" }
+    next[reviewer] =
+      findings.length || output.requirementFindings.length
+        ? { ...output, findings }
+        : { findings: [], requirementFindings: [], verdict: "MERGE" }
   }
 
   return { outputs: next, summary: { discarded, kept } }

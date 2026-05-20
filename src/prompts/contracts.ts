@@ -15,16 +15,25 @@ The object must match this shape:
       "perspective": "Optional review perspective."
     }
   ],
+  "requirementFindings": [
+    {
+      "issueNumber": 47,
+      "requirement": "Required closing-issue behavior that is missing.",
+      "evidence": "Why the PR does not satisfy the requirement.",
+      "fix": "How to satisfy the requirement."
+    }
+  ],
   "reason": "Required only for CLOSE."
 }
 
 Rules:
-- MERGE requires an empty findings array.
-- CHANGES_REQUESTED requires at least one finding.
-- CLOSE requires a reason and an empty findings array.
+- MERGE requires empty findings and requirementFindings arrays.
+- CHANGES_REQUESTED requires at least one finding or requirementFinding.
+- CLOSE requires a reason and empty findings and requirementFindings arrays.
 - path must be repository-relative.
 - line and startLine must refer to lines inside the PR diff hunk.
 - Omit startLine for single-line findings.
+- Use requirementFindings for missing closing-issue requirements that do not map cleanly to a diff line.
 </output_contract>`.trim()
 
 export const rereviewOutputContract = `
@@ -37,15 +46,17 @@ The object must match this shape:
   "resolve": [{ "commentId": 123, "threadId": "..." }],
   "followUps": [{ "commentId": 123, "body": "..." }],
   "newFindings": [{ "path": "relative/path.ext", "line": 123, "startLine": 120, "body": "..." }],
+  "requirementFindings": [{ "issueNumber": 47, "requirement": "Missing requirement.", "evidence": "Why it is missing.", "fix": "How to fix it." }],
   "reason": "Required only for CLOSE."
 }
 
 Rules:
-- MERGE requires empty followUps and newFindings arrays.
-- CHANGES_REQUESTED requires at least one followUp or newFinding.
-- CLOSE requires a reason and empty followUps and newFindings arrays.
+- MERGE requires empty followUps, newFindings, and requirementFindings arrays.
+- CHANGES_REQUESTED requires at least one followUp, newFinding, or requirementFinding.
+- CLOSE requires a reason and empty followUps, newFindings, and requirementFindings arrays.
 - line and startLine must refer to lines inside the latest PR diff hunk.
 - Omit startLine for single-line findings.
+- Use requirementFindings for missing closing-issue requirements that do not map cleanly to a diff line.
 </output_contract>`.trim()
 
 export const findingValidationOutputContract = `
@@ -86,12 +97,13 @@ The object must match this shape:
       "issue": "What is wrong.",
       "fix": "How to fix it."
     }
-  ]
+  ],
+  "requirementFindings": [{ "issueNumber": 47, "requirement": "Missing requirement.", "evidence": "Why it is missing.", "fix": "How to fix it." }]
 }
 
 Rules:
-- MERGE requires an empty findings array.
-- CHANGES_REQUESTED requires at least one finding.
+- MERGE requires empty findings and requirementFindings arrays.
+- CHANGES_REQUESTED requires at least one finding or requirementFinding.
 - CLOSE is not allowed in this reconsideration step.
 - Omit startLine for single-line findings.
 </output_contract>`.trim()
@@ -105,12 +117,13 @@ The object must match this shape:
   "verdict": "MERGE" | "CHANGES_REQUESTED",
   "resolve": [{ "commentId": 123, "threadId": "..." }],
   "followUps": [{ "commentId": 123, "body": "..." }],
-  "newFindings": [{ "path": "relative/path.ext", "line": 123, "startLine": 120, "body": "..." }]
+  "newFindings": [{ "path": "relative/path.ext", "line": 123, "startLine": 120, "body": "..." }],
+  "requirementFindings": [{ "issueNumber": 47, "requirement": "Missing requirement.", "evidence": "Why it is missing.", "fix": "How to fix it." }]
 }
 
 Rules:
-- MERGE requires empty followUps and newFindings arrays.
-- CHANGES_REQUESTED requires at least one followUp or newFinding.
+- MERGE requires empty followUps, newFindings, and requirementFindings arrays.
+- CHANGES_REQUESTED requires at least one followUp, newFinding, or requirementFinding.
 - CLOSE is not allowed in this reconsideration step.
 - Omit startLine for single-line findings.
 </output_contract>`.trim()

@@ -28,6 +28,7 @@ export interface ReviewPromptInput {
   headSha: string
   pr: number
   repository: ResolvedRepository
+  reviewContext?: string
   reviewer: ResolvedReviewer
   worktreePath: string
 }
@@ -183,6 +184,7 @@ function reviewValues(input: ReviewPromptInput): Record<string, string> {
     headSha: input.headSha,
     jsonEncodedWorktreePath: JSON.stringify(input.worktreePath),
     pr: String(input.pr),
+    reviewContext: input.reviewContext ?? "",
     worktreePath: input.worktreePath,
   }
 }
@@ -236,6 +238,10 @@ function previousReviewBlock(previousReview?: string): string {
     : ""
 }
 
+function reviewContextBlock(reviewContext?: string): string {
+  return reviewContext?.trim() ? reviewContext.trim() : ""
+}
+
 async function reviewGuidelinesBlock(input: {
   directory: string
   path?: string
@@ -269,6 +275,9 @@ async function sessionContextBlocks(input: {
   values: Record<string, string>
 }): Promise<string[]> {
   return [
+    input.includeSessionContext
+      ? reviewContextBlock(input.values.reviewContext)
+      : "",
     input.includeSessionContext ? languageBlock(input.repository.language) : "",
     input.includeSessionContext ? personaBlock(input.reviewer.persona) : "",
     input.includeReviewGuidelines
@@ -294,6 +303,7 @@ export async function composeReviewPrompt(
 
   return [
     task,
+    reviewContextBlock(input.reviewContext),
     languageBlock(input.repository.language),
     personaBlock(input.reviewer.persona),
     await reviewGuidelinesBlock({
@@ -320,6 +330,7 @@ export async function composeRereviewPrompt(
 
   return [
     task,
+    reviewContextBlock(input.reviewContext),
     input.includeSessionContext === false
       ? ""
       : languageBlock(input.repository.language),
