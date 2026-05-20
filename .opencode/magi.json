@@ -60,6 +60,9 @@
         "name": "hirotomoyamada",
         "email": "hirotomo.yamada@avap.co.jp"
       }
+    },
+    "prompts": {
+      "editGuidelines": ".agents/references/pr-edit-guidelines.md"
     }
   },
   "triage": {
