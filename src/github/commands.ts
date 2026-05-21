@@ -1253,7 +1253,15 @@ export async function postCloseComment(
   }
 }
 
-function findingComment(finding: Finding): Record<string, unknown> {
+function isInlineFinding(
+  finding: Finding,
+): finding is Finding & { line: number } {
+  return finding.line != null
+}
+
+function findingComment(
+  finding: Finding & { line: number },
+): Record<string, unknown> {
   const comment: Record<string, unknown> = {
     body: `**Issue:** ${finding.issue}\n\n**Fix:** ${finding.fix}`,
     line: finding.line,
@@ -1277,6 +1285,56 @@ function requirementFindingSummary(finding: RequirementFinding): string {
   ].join("\n")
 }
 
+function findingLocation(finding: Finding): string {
+  if (finding.line == null) return finding.path
+  if (finding.startLine == null) return `${finding.path}:${finding.line}`
+
+  return `${finding.path}:${finding.startLine}-${finding.line}`
+}
+
+function findingSummary(finding: Finding): string {
+  return [
+    `- ${findingLocation(finding)}: ${finding.issue}`,
+    `  Fix: ${finding.fix}`,
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
+function changesRequestedBody(
+  findings: Finding[],
+  requirementFindings: RequirementFinding[],
+): string {
+  const inlineFindings = findings.filter(isInlineFinding)
+  const fileLevelFindings = findings.filter(
+    (finding) => !isInlineFinding(finding),
+  )
+  const sections: string[] = []
+
+  if (inlineFindings.length) {
+    sections.push(
+      ["Inline findings:", ...inlineFindings.map(findingSummary)].join("\n"),
+    )
+  }
+  if (fileLevelFindings.length) {
+    sections.push(
+      ["File-level findings:", ...fileLevelFindings.map(findingSummary)].join(
+        "\n",
+      ),
+    )
+  }
+  if (requirementFindings.length) {
+    sections.push(
+      [
+        "Requirement findings:",
+        ...requirementFindings.map(requirementFindingSummary),
+      ].join("\n"),
+    )
+  }
+
+  return sections.join("\n\n")
+}
+
 export async function postChangesRequested(
   exec: Exec,
   repository: ResolvedRepository,
@@ -1290,16 +1348,14 @@ export async function postChangesRequested(
     tmpdir(),
     `magi-review-${process.pid}-${Date.now()}.json`,
   )
-  const body = findings
-    .map((finding) => `- ${finding.issue.split("\n")[0]}`)
-    .concat(requirementFindings.map(requirementFindingSummary))
-    .join("\n")
+  const inlineFindings = findings.filter(isInlineFinding)
+  const body = changesRequestedBody(findings, requirementFindings)
 
   await writeFile(
     payloadPath,
     JSON.stringify({
       body,
-      comments: findings.map(findingComment),
+      comments: inlineFindings.map(findingComment),
       event: "REQUEST_CHANGES",
     }),
   )

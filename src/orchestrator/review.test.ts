@@ -2,6 +2,7 @@ import type { PullRequestReview } from "../github/commands"
 import { describe, expect, test } from "vitest"
 import {
   hasPendingThreadReply,
+  reviewOutputFromState,
   resolveReviewMode,
   reviewFreshnessTarget,
 } from "./review"
@@ -150,6 +151,44 @@ describe("review flow", () => {
     )
 
     expect(mode.type).toBe("already_reviewed")
+  })
+
+  test("restores skipped review findings from the posted review body", () => {
+    expect(
+      reviewOutputFromState({
+        author: { login: "bot-a" },
+        body: [
+          "File-level findings:",
+          "- src/orchestrator/merge.ts: Preserve skipped findings.",
+          "  Fix: Pass existing review findings to the editor.",
+          "",
+          "Requirement findings:",
+          "- Missing issue #124 requirement: Include body-only requests.",
+          "  Evidence: The editor prompt omits skipped review findings.",
+          "  Fix: Parse the prior review body before editing.",
+        ].join("\n"),
+        commit: { oid: "head" },
+        state: "CHANGES_REQUESTED",
+        submittedAt: "2026-01-01T00:00:00Z",
+      }),
+    ).toEqual({
+      findings: [
+        {
+          fix: "Pass existing review findings to the editor.",
+          issue: "Preserve skipped findings.",
+          path: "src/orchestrator/merge.ts",
+        },
+      ],
+      requirementFindings: [
+        {
+          evidence: "The editor prompt omits skipped review findings.",
+          fix: "Parse the prior review body before editing.",
+          issueNumber: 124,
+          requirement: "Include body-only requests.",
+        },
+      ],
+      verdict: "CHANGES_REQUESTED",
+    })
   })
 
   test("detects replies after the reviewer latest thread comment", () => {

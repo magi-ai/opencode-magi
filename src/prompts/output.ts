@@ -107,6 +107,21 @@ function requireNumber(value: unknown, path: string): number {
   return value
 }
 
+function optionalLine(value: unknown, path: string): number | undefined {
+  return value == null ? undefined : requireNumber(value, path)
+}
+
+function optionalStartLine(input: {
+  line: number | undefined
+  path: string
+  value: unknown
+}): number | undefined {
+  if (input.value == null) return undefined
+  if (input.line == null) throw new Error(`${input.path} requires line`)
+
+  return requireNumber(input.value, input.path)
+}
+
 function parseRequirementFindings(
   value: unknown,
 ): ReviewOutput["requirementFindings"] {
@@ -269,20 +284,22 @@ export function parseReviewOutput(text: string): ReviewOutput {
   const findings = requireArray(data.findings, "findings").map(
     (finding, index) => {
       const item = finding as Record<string, unknown>
+      const line = optionalLine(item.line, `findings[${index}].line`)
 
       return {
         fix: requireString(item.fix, `findings[${index}].fix`),
         issue: requireString(item.issue, `findings[${index}].issue`),
-        line: requireNumber(item.line, `findings[${index}].line`),
+        line,
         path: requireString(item.path, `findings[${index}].path`),
         perspective:
           item.perspective == null
             ? undefined
             : requireString(item.perspective, `findings[${index}].perspective`),
-        startLine:
-          item.startLine == null
-            ? undefined
-            : requireNumber(item.startLine, `findings[${index}].startLine`),
+        startLine: optionalStartLine({
+          line,
+          path: `findings[${index}].startLine`,
+          value: item.startLine,
+        }),
       }
     },
   )
@@ -356,15 +373,17 @@ export function parseRereviewOutput(text: string): RereviewOutput {
   const newFindings = requireArray(data.newFindings, "newFindings").map(
     (item, index) => {
       const value = item as Record<string, unknown>
+      const line = optionalLine(value.line, `newFindings[${index}].line`)
 
       return {
         body: requireString(value.body, `newFindings[${index}].body`),
-        line: requireNumber(value.line, `newFindings[${index}].line`),
+        line,
         path: requireString(value.path, `newFindings[${index}].path`),
-        startLine:
-          value.startLine == null
-            ? undefined
-            : requireNumber(value.startLine, `newFindings[${index}].startLine`),
+        startLine: optionalStartLine({
+          line,
+          path: `newFindings[${index}].startLine`,
+          value: value.startLine,
+        }),
       }
     },
   )
@@ -555,7 +574,7 @@ function parseEditOutputWithOptions(
     },
   )
 
-  if (options.requireResponses && !responses.length)
+  if (options.requireResponses && data.mode === "REPLIED" && !responses.length)
     throw new Error("responses must not be empty")
 
   if (data.mode === "EDITED") {

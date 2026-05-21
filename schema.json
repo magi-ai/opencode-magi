@@ -9,7 +9,11 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "permissions": { "$ref": "#/$defs/permissions" }
+        "permissions": { "$ref": "#/$defs/permissions" },
+        "refs": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/agentRef" }
+        }
       }
     },
     "clear": {
@@ -51,11 +55,33 @@
     "triage": { "$ref": "#/$defs/triage" }
   },
   "$defs": {
-    "reviewer": {
+    "agentRef": {
       "type": "object",
-      "required": ["model", "account"],
       "additionalProperties": false,
       "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "model": { "type": "string", "minLength": 1 },
+        "options": { "type": "object", "additionalProperties": true },
+        "account": { "type": "string", "minLength": 1 },
+        "author": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "email": { "type": "string", "minLength": 1 }
+          }
+        },
+        "permissions": { "$ref": "#/$defs/permissions" },
+        "persona": { "type": "string" }
+      }
+    },
+    "reviewer": {
+      "type": "object",
+      "if": { "not": { "required": ["ref"] } },
+      "then": { "required": ["model", "account"] },
+      "additionalProperties": false,
+      "properties": {
+        "ref": { "type": "string", "minLength": 1 },
         "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
         "model": { "type": "string", "minLength": 1 },
         "options": { "type": "object", "additionalProperties": true },
@@ -66,9 +92,11 @@
     },
     "editor": {
       "type": "object",
-      "required": ["model", "account", "author"],
+      "if": { "not": { "required": ["ref"] } },
+      "then": { "required": ["model", "account", "author"] },
       "additionalProperties": false,
       "properties": {
+        "ref": { "type": "string", "minLength": 1 },
         "model": { "type": "string", "minLength": 1 },
         "options": { "type": "object", "additionalProperties": true },
         "account": { "type": "string", "minLength": 1 },
@@ -87,9 +115,11 @@
     },
     "triageAgent": {
       "type": "object",
-      "required": ["model"],
+      "if": { "not": { "required": ["ref"] } },
+      "then": { "required": ["model"] },
       "additionalProperties": false,
       "properties": {
+        "ref": { "type": "string", "minLength": 1 },
         "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
         "model": { "type": "string", "minLength": 1 },
         "options": { "type": "object", "additionalProperties": true },
@@ -99,9 +129,11 @@
     },
     "triageCreator": {
       "type": "object",
-      "required": ["model", "author"],
+      "if": { "not": { "required": ["ref"] } },
+      "then": { "required": ["model", "author"] },
       "additionalProperties": false,
       "properties": {
+        "ref": { "type": "string", "minLength": 1 },
         "account": { "type": "string", "minLength": 1 },
         "model": { "type": "string", "minLength": 1 },
         "options": { "type": "object", "additionalProperties": true },

@@ -131,10 +131,26 @@ describe("prompt composer", () => {
     expect(prompt.indexOf("<pull_request_context>")).toBeLessThan(
       prompt.indexOf("<output_contract>"),
     )
-    expect(prompt).toContain("<language>\nja\n</language>")
-    expect(prompt).toContain(
-      "<review_guidelines>\nPrefer approving improvements for owner/repo.\n</review_guidelines>",
-    )
+    const optionalSessionSections = [
+      {
+        content:
+          "<review_guidelines>\nPrefer approving improvements for owner/repo.\n</review_guidelines>",
+        tag: "<review_guidelines>",
+      },
+      { content: "<language>\nja\n</language>", tag: "<language>" },
+      { content: "<persona>\nFocus on tests.\n</persona>", tag: "<persona>" },
+    ] as const
+    const optionalContextFlags = (includeOptionalContext: boolean) =>
+      includeOptionalContext
+        ? {
+            includeReviewGuidelines: true,
+            includeSessionContext: true,
+          }
+        : {}
+
+    for (const { content } of optionalSessionSections) {
+      expect(prompt).toContain(content)
+    }
     expect(prompt.indexOf("<review_guidelines>")).toBeLessThan(
       prompt.indexOf("<output_contract>"),
     )
@@ -162,9 +178,9 @@ describe("prompt composer", () => {
     expect(rereviewPrompt).toContain(
       "<previous_review>\nPreviously requested changes for tests.\n</previous_review>",
     )
-    expect(rereviewPrompt).toContain(
-      "<review_guidelines>\nPrefer approving improvements for owner/repo.\n</review_guidelines>",
-    )
+    for (const { content } of optionalSessionSections) {
+      expect(rereviewPrompt).toContain(content)
+    }
     expect(rereviewPrompt).toContain(
       '"verdict": "MERGE" | "CHANGES_REQUESTED" | "CLOSE"',
     )
@@ -189,130 +205,85 @@ describe("prompt composer", () => {
       worktreePath: "/tmp/worktree",
     })
 
-    expect(rereviewWithoutGuidelines).not.toContain("<review_guidelines>")
-    expect(rereviewWithoutGuidelines).not.toContain("<language>")
-    expect(rereviewWithoutGuidelines).not.toContain("<persona>")
+    for (const { tag } of optionalSessionSections) {
+      expect(rereviewWithoutGuidelines).not.toContain(tag)
+    }
 
-    const findingValidationPrompt = await composeFindingValidationPrompt({
-      baseSha: "base",
-      directory: dir,
-      findings: "[]",
-      headSha: "head",
-      pr: 1,
-      repository,
-      reviewer: repository.agents.reviewers[0],
-      worktreePath: "/tmp/worktree",
-    })
+    const optionalSessionPromptCases = [
+      {
+        compose: (includeOptionalContext = false) =>
+          composeFindingValidationPrompt({
+            baseSha: "base",
+            directory: dir,
+            findings: "[]",
+            headSha: "head",
+            ...optionalContextFlags(includeOptionalContext),
+            pr: 1,
+            repository,
+            reviewer: repository.agents.reviewers[0],
+            worktreePath: "/tmp/worktree",
+          }),
+      },
+      {
+        compose: (includeOptionalContext = false) =>
+          composeCloseReconsiderationPrompt({
+            baseSha: "base",
+            closeReason: "Out of scope.",
+            directory: dir,
+            headSha: "head",
+            ...optionalContextFlags(includeOptionalContext),
+            pr: 1,
+            repository,
+            reviewer: repository.agents.reviewers[0],
+            worktreePath: "/tmp/worktree",
+          }),
+      },
+      {
+        compose: (includeOptionalContext = false) =>
+          composeRereviewCloseReconsiderationPrompt({
+            baseSha: "base",
+            closeReason: "Out of scope.",
+            directory: dir,
+            headSha: "head",
+            ...optionalContextFlags(includeOptionalContext),
+            pr: 1,
+            previousHeadSha: "old",
+            repository,
+            reviewer: repository.agents.reviewers[0],
+            worktreePath: "/tmp/worktree",
+          }),
+      },
+    ] as const
 
-    expect(findingValidationPrompt).not.toContain("<review_guidelines>")
-    expect(findingValidationPrompt).not.toContain("<language>")
-    expect(findingValidationPrompt).not.toContain("<persona>")
-    expect(findingValidationPrompt).not.toContain("/tmp/worktree")
-    expect(findingValidationPrompt).not.toContain("git -C")
+    for (const { compose } of optionalSessionPromptCases) {
+      const continuingSessionPrompt = await compose()
 
-    const firstSessionFindingValidationPrompt =
-      await composeFindingValidationPrompt({
-        baseSha: "base",
-        directory: dir,
-        findings: "[]",
-        headSha: "head",
-        includeReviewGuidelines: true,
-        includeSessionContext: true,
-        pr: 1,
-        repository,
-        reviewer: repository.agents.reviewers[0],
-        worktreePath: "/tmp/worktree",
-      })
+      for (const { tag } of optionalSessionSections) {
+        expect(continuingSessionPrompt).not.toContain(tag)
+      }
 
-    expect(firstSessionFindingValidationPrompt).toContain(
-      "<review_guidelines>\nPrefer approving improvements for owner/repo.\n</review_guidelines>",
-    )
-    expect(firstSessionFindingValidationPrompt).toContain(
-      "<language>\nja\n</language>",
-    )
-    expect(firstSessionFindingValidationPrompt).toContain(
-      "<persona>\nFocus on tests.\n</persona>",
-    )
-
-    const closeReconsiderationPrompt = await composeCloseReconsiderationPrompt({
-      baseSha: "base",
-      closeReason: "Out of scope.",
-      directory: dir,
-      headSha: "head",
-      pr: 1,
-      repository,
-      reviewer: repository.agents.reviewers[0],
-      worktreePath: "/tmp/worktree",
-    })
-
-    expect(closeReconsiderationPrompt).not.toContain("<review_guidelines>")
-    expect(closeReconsiderationPrompt).not.toContain("<language>")
-    expect(closeReconsiderationPrompt).not.toContain("<persona>")
-    expect(closeReconsiderationPrompt).not.toContain("/tmp/worktree")
-    expect(closeReconsiderationPrompt).not.toContain("git -C")
-
-    const firstSessionCloseReconsiderationPrompt =
-      await composeCloseReconsiderationPrompt({
-        baseSha: "base",
-        closeReason: "Out of scope.",
-        directory: dir,
-        headSha: "head",
-        includeReviewGuidelines: true,
-        includeSessionContext: true,
-        pr: 1,
-        repository,
-        reviewer: repository.agents.reviewers[0],
-        worktreePath: "/tmp/worktree",
-      })
-
-    expect(firstSessionCloseReconsiderationPrompt).toContain(
-      "<review_guidelines>\nPrefer approving improvements for owner/repo.\n</review_guidelines>",
-    )
+      expect(continuingSessionPrompt).not.toContain("/tmp/worktree")
+      expect(continuingSessionPrompt).not.toContain("git -C")
+    }
 
     const rereviewCloseReconsiderationPrompt =
-      await composeRereviewCloseReconsiderationPrompt({
-        baseSha: "base",
-        closeReason: "Out of scope.",
-        directory: dir,
-        headSha: "head",
-        pr: 1,
-        previousHeadSha: "old",
-        repository,
-        reviewer: repository.agents.reviewers[0],
-        worktreePath: "/tmp/worktree",
-      })
+      await optionalSessionPromptCases[2].compose()
 
-    expect(rereviewCloseReconsiderationPrompt).not.toContain(
-      "<review_guidelines>",
-    )
-    expect(rereviewCloseReconsiderationPrompt).not.toContain("<language>")
-    expect(rereviewCloseReconsiderationPrompt).not.toContain("<persona>")
-    expect(rereviewCloseReconsiderationPrompt).not.toContain("/tmp/worktree")
-    expect(rereviewCloseReconsiderationPrompt).not.toContain("git -C")
+    expect(rereviewCloseReconsiderationPrompt).not.toContain("[]")
 
-    const firstSessionRereviewCloseReconsiderationPrompt =
-      await composeRereviewCloseReconsiderationPrompt({
-        baseSha: "base",
-        closeReason: "Out of scope.",
-        directory: dir,
-        headSha: "head",
-        includeReviewGuidelines: true,
-        includeSessionContext: true,
-        pr: 1,
-        previousHeadSha: "old",
-        repository,
-        reviewer: repository.agents.reviewers[0],
-        worktreePath: "/tmp/worktree",
-      })
+    for (const { compose } of optionalSessionPromptCases) {
+      const firstSessionPrompt = await compose(true)
 
-    expect(firstSessionRereviewCloseReconsiderationPrompt).toContain(
-      "<review_guidelines>\nPrefer approving improvements for owner/repo.\n</review_guidelines>",
-    )
+      for (const { content } of optionalSessionSections) {
+        expect(firstSessionPrompt).toContain(content)
+      }
+    }
 
     const editPrompt = await composeEditPrompt({
       directory: dir,
       pr: 1,
       repository,
+      reviewFindings: "[]",
       unresolvedThreads: "[]",
       worktreePath: "/tmp/worktree",
     })

@@ -36,7 +36,7 @@ During a single merge flow, Magi reuses reviewer OpenCode sessions from the init
 
 ## Flow
 
-1. Stop before agent execution when `review.safety.*` gates block the PR.
+1. Stop before agent execution when `review.safety.requiredLabels`, `review.safety.blockedPaths`, `review.safety.maxChangedFiles`, or `review.safety.allowAuthors` blocks the PR.
 2. Run the full [`/magi:review`](review.md) flow.
 3. If every configured reviewer already reviewed the current effective head, reuse those existing verdicts instead of aborting.
 4. If the review decision is `CLOSE`, close the PR when `merge.automation.close` is enabled and stop. Dry runs stop before closing.
@@ -107,9 +107,14 @@ Important settings for `/magi:merge`:
 | `merge.maxThreadResolutionCycles` | Maximum fix/reply attempts per unresolved review thread.           |
 | `review.merge.queue`              | Enqueue the PR through GitHub GraphQL and poll queue completion.   |
 | `review.merge.method`             | Merge method: `merge`, `squash`, or `rebase`.                      |
-| `merge.prompts.edit*`             | Editor prompt templates and guidelines.                            |
+| `merge.prompts.edit`              | Editor prompt template.                                            |
+| `merge.prompts.editGuidelines`    | Shared edit guidance file.                                         |
+| `merge.prompts.ciClassification`  | Post-edit failed-check classification prompt template.             |
 | `review.prompts.rereview`         | Re-review prompt template.                                         |
-| `review.safety.*`                 | Optional gates that block merge before agents run.                 |
+| `review.safety.requiredLabels`    | Required PR labels before merge flow.                              |
+| `review.safety.blockedPaths`      | Changed-file glob patterns that block merge flow.                  |
+| `review.safety.maxChangedFiles`   | Maximum changed file count before merge flow is blocked.           |
+| `review.safety.allowAuthors`      | Allowed PR authors when configured.                                |
 
 See [Config](/docs/config.md) for the complete configuration reference.
 

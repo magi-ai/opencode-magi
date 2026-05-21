@@ -16,6 +16,7 @@ import {
   fetchUnresolvedThreads,
   ghHostOption,
   mergePullRequest,
+  postChangesRequested,
   postCloseComment,
   pushHead,
   repoSpecifier,
@@ -162,12 +163,14 @@ describe("GitHub command helpers", () => {
     expect(commands[1]).toContain(
       "--json number,title,body,url,state,author,labels",
     )
-    expect(commands[1]).not.toContain("labels,type")
     expect(result.type).toBeUndefined()
   })
 
-  test("excludes the current issue from duplicate search candidates", async () => {
+  test("searches duplicate issue candidates by title and excludes the current issue", async () => {
     const commands: string[] = []
+    const title =
+      "Align docs/config.md triage.prompts entries with review and merge prompts"
+
     const result = await searchDuplicateIssues(
       async (command) => {
         commands.push(command)
@@ -196,43 +199,15 @@ describe("GitHub command helpers", () => {
         labels: [],
         number: 42,
         state: "OPEN",
-        title: "Bug report",
+        title,
         url: "https://github.com/owner/repo/issues/42",
-      },
-    )
-
-    expect(commands[0]).toContain("gh search issues --repo 'owner/repo'")
-    expect(commands[0]).toContain("-- 'Bug report'")
-    expect(commands[0]).not.toContain("repo:owner/repo")
-    expect(commands[0]).not.toContain(" -42")
-    expect(result.map((item) => item.number)).toEqual([43])
-  })
-
-  test("keeps duplicate issue search qualifiers out of title query", async () => {
-    const commands: string[] = []
-
-    await searchDuplicateIssues(
-      async (command) => {
-        commands.push(command)
-
-        return "[]"
-      },
-      repository,
-      {
-        author: "author",
-        body: "body",
-        labels: [],
-        number: 75,
-        state: "OPEN",
-        title:
-          "Align docs/config.md triage.prompts entries with review and merge prompts",
-        url: "https://github.com/owner/repo/issues/75",
       },
     )
 
     expect(commands).toEqual([
       "gh search issues --repo 'owner/repo' --json number,title,url,state,body --limit 5 -- 'Align docs/config.md triage.prompts entries with review and merge prompts'",
     ])
+    expect(result.map((item) => item.number)).toEqual([43])
   })
 
   test("normalizes searched related pull request states", async () => {
@@ -534,6 +509,59 @@ describe("GitHub command helpers", () => {
       body: "This PR should be closed.",
       event: "COMMENT",
     })
+  })
+
+  test("posts body-only findings in review body without inline comments", async () => {
+    const commands: string[] = []
+    let payload:
+      | { body: string; comments: unknown[]; event: string }
+      | undefined
+
+    await postChangesRequested(
+      async (command) => {
+        commands.push(command)
+        if (command.includes("gh auth token")) return "token"
+
+        const input = command.match(/--input '([^']+)'/)?.[1]
+        if (!input) throw new Error(`input path not found: ${command}`)
+        payload = JSON.parse(await readFile(input, "utf8"))
+
+        return "https://github.com/owner/repo/pull/7557#pullrequestreview-2"
+      },
+      repository,
+      7557,
+      "bot-a",
+      [
+        {
+          fix: "Pass structured findings to the editor.",
+          issue: "Body-only findings are lost.",
+          path: "src/orchestrator/merge.ts",
+        },
+        {
+          fix: "Validate only inline targets.",
+          issue: "Inline validation rejects file-level findings.",
+          line: 10,
+          path: "src/orchestrator/review.ts",
+        },
+      ],
+      [
+        {
+          evidence: "The runtime path is missing.",
+          fix: "Include requirement findings in the editor prompt.",
+          issueNumber: 121,
+          requirement: "Body-only findings must reach the editor.",
+        },
+      ],
+    )
+
+    expect(payload?.event).toBe("REQUEST_CHANGES")
+    expect(payload?.comments).toHaveLength(1)
+    expect(payload?.body).toContain("Inline findings:")
+    expect(payload?.body).toContain("src/orchestrator/review.ts:10")
+    expect(payload?.body).toContain("File-level findings:")
+    expect(payload?.body).toContain("src/orchestrator/merge.ts")
+    expect(payload?.body).toContain("Requirement findings:")
+    expect(commands[1]).toContain("repos/owner/repo/pulls/7557/reviews")
   })
 
   test("keeps GraphQL variables quoted in PR review query", async () => {
