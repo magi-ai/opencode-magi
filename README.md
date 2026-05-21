@@ -61,26 +61,33 @@ Add the following content to the configuration file.
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/magi-ai/opencode-magi/main/schema.json",
+  "agents": {
+    "refs": {
+      "account-1": {
+        "model": "openai/gpt-5.5",
+        "account": "account-1"
+      },
+      "account-2": {
+        "model": "anthropic/claude-opus-4-7",
+        "account": "account-2"
+      },
+      "account-3": {
+        "model": "opencode/kimi-k2-6",
+        "account": "account-3"
+      }
+    }
+  },
   "review": {
     "agents": [
-      {
-        "account": "your-account-1",
-        "model": "openai/gpt-5.5"
-      },
-      {
-        "account": "your-account-2",
-        "model": "anthropic/claude-opus-4-7"
-      },
-      {
-        "account": "your-account-3",
-        "model": "opencode/kimi-k2-6"
-      }
+      { "ref": "account-1" },
+      { "ref": "account-2" },
+      { "ref": "account-3" }
     ]
   }
 }
 ```
 
-`review.agents[].account` is the GitHub account used to post reviews and approvals. Must be authenticated with `gh auth token --user <account>` and must be unique.
+After refs are expanded, `review.agents[].account` is the GitHub account used to post reviews and approvals. Must be authenticated with `gh auth token --user <account>` and must be unique.
 
 #### Set project config
 
@@ -101,53 +108,54 @@ Add the following content to the configuration file.
     "owner": "your-owner",
     "repo": "your-repo"
   },
-  "review": {
-    "agents": [
-      {
-        "account": "your-account-1",
-        "model": "openai/gpt-5.5"
+  "agents": {
+    "refs": {
+      "account-1": {
+        "model": "openai/gpt-5.5",
+        "account": "account-1"
       },
-      {
-        "account": "your-account-2",
-        "model": "anthropic/claude-opus-4-7"
+      "account-2": {
+        "model": "anthropic/claude-opus-4-7",
+        "account": "account-2"
       },
-      {
-        "account": "your-account-3",
-        "model": "opencode/kimi-k2-6"
-      }
-    ]
-  },
-  "merge": {
-    "editor": {
-      "account": "your-editor-account",
-      "model": "openai/gpt-5.5",
-      "author": {
-        "name": "your-account",
-        "email": "your-email@example.com"
+      "account-3": {
+        "model": "opencode/kimi-k2-6",
+        "account": "account-3"
+      },
+      "account-4": {
+        "model": "openai/gpt-5.5",
+        "account": "account-4",
+        "author": {
+          "name": "account-4",
+          "email": "your-email@example.com"
+        }
       }
     }
   },
-  "triage": {
-    "account": "your-triage-account",
+  "review": {
     "agents": [
-      {
-        "id": "general",
-        "model": "openai/gpt-5.5"
-      },
-      {
-        "id": "maintenance",
-        "model": "anthropic/claude-opus-4-7"
-      },
-      {
-        "id": "product",
-        "model": "opencode/kimi-k2-6"
-      }
+      { "ref": "account-1" },
+      { "ref": "account-2" },
+      { "ref": "account-3" }
+    ]
+  },
+  "merge": {
+    "editor": { "ref": "account-4" }
+  },
+  "triage": {
+    "account": "account-5",
+    "agents": [
+      { "ref": "account-1" },
+      { "ref": "account-2" },
+      { "ref": "account-3" }
     ]
   }
 }
 ```
 
-`review.agents[].account` is the GitHub account used to post reviews and approvals. Must be authenticated with `gh auth token --user <account>` and must be unique. `merge.editor.account` is used by `/magi:merge` to push fixes, close PRs, and merge PRs.
+Entries with `ref` are expanded from `agents.refs`. Fields set alongside `ref` override fields from the preset.
+
+After refs are expanded, `review.agents[].account` is the GitHub account used to post reviews and approvals. Must be authenticated with `gh auth token --user <account>` and must be unique. `merge.editor.account` is used by `/magi:merge` to push fixes, close PRs, and merge PRs.
 
 #### Validate config
 

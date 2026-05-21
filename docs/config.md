@@ -25,26 +25,27 @@ If at least one config exists, Magi validates the merged effective config and re
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/magi-ai/opencode-magi/main/schema.json",
+  "agents": {
+    "refs": {
+      "account-1": {
+        "model": "openai/gpt-5.5",
+        "account": "account-1"
+      },
+      "account-2": {
+        "model": "anthropic/claude-opus-4-7",
+        "account": "account-2"
+      },
+      "account-3": {
+        "model": "opencode/kimi-k2-6",
+        "account": "account-3"
+      }
+    }
+  },
   "review": {
     "agents": [
-      {
-        "id": "general",
-        "model": "openai/gpt-5.5",
-        "account": "your-account-1"
-      },
-      {
-        "id": "security",
-        "model": "anthropic/claude-opus-4-7",
-        "account": "your-account-2",
-        "persona": "Focus on security vulnerabilities."
-      },
-      {
-        "id": "compat",
-        "model": "opencode/kimi-k2-6",
-        "options": { "reasoningEffort": "high" },
-        "account": "your-account-3",
-        "persona": "Focus on backward compatibility."
-      }
+      { "ref": "account-1" },
+      { "ref": "account-2" },
+      { "ref": "account-3" }
     ]
   }
 }
@@ -56,54 +57,55 @@ If at least one config exists, Magi validates the merged effective config and re
 {
   "$schema": "https://raw.githubusercontent.com/magi-ai/opencode-magi/main/schema.json",
   "github": {
-    "host": "github.com",
-    "owner": "yamada-ui",
-    "repo": "yamada-ui"
+    "owner": "your-owner",
+    "repo": "your-repo"
   },
-  "language": "ja",
-  "review": {
-    "merge": {
-      "queue": true
-    },
-    "prompts": {
-      "reviewGuidelines": ".agents/references/review-guidelines.md"
+  "agents": {
+    "refs": {
+      "account-1": {
+        "model": "openai/gpt-5.5",
+        "account": "account-1"
+      },
+      "account-2": {
+        "model": "anthropic/claude-opus-4-7",
+        "account": "account-2"
+      },
+      "account-3": {
+        "model": "opencode/kimi-k2-6",
+        "account": "account-3"
+      },
+      "account-4": {
+        "model": "openai/gpt-5.5",
+        "account": "account-4",
+        "author": {
+          "name": "account-4",
+          "email": "your-email@example.com"
+        }
+      }
     }
+  },
+  "review": {
+    "agents": [
+      { "ref": "account-1" },
+      { "ref": "account-2" },
+      { "ref": "account-3" }
+    ]
   },
   "merge": {
-    "editor": {
-      "model": "openai/gpt-5.5",
-      "account": "your-editor-account",
-      "author": {
-        "name": "your-account",
-        "email": "your-email@example.com"
-      }
-    },
-    "prompts": {
-      "editGuidelines": ".agents/references/edit-guidelines.md"
-    }
+    "editor": { "ref": "account-4" }
   },
   "triage": {
-    "account": "your-triage-account",
+    "account": "account-5",
     "agents": [
-      {
-        "id": "general",
-        "model": "openai/gpt-5.5"
-      },
-      {
-        "id": "maintenance",
-        "model": "anthropic/claude-opus-4-7"
-      },
-      {
-        "id": "product",
-        "model": "opencode/kimi-k2-6"
-      }
-    ],
-    "prompts": {
-      "createGuidelines": ".agents/references/create-guidelines.md"
-    }
+      { "ref": "account-1" },
+      { "ref": "account-2" },
+      { "ref": "account-3" }
+    ]
   }
 }
 ```
+
+Entries with `ref` are expanded from `agents.refs`. Fields set alongside `ref` override fields from the preset.
 
 ## Reference
 
@@ -116,6 +118,7 @@ If at least one config exists, Magi validates the merged effective config and re
 | `github.apiRetryAttempts`              | Project | No                               | `3`                                                  | Number of retry attempts for GitHub CLI API calls that fail with rate limit errors.                                  |
 | `language`                             | Both    | No                               | -                                                    | Default language hint for generated reviews and comments.                                                            |
 | `agents`                               | Both    | No                               | -                                                    | Common agent configuration.                                                                                          |
+| `agents.refs`                          | Both    | No                               | -                                                    | Reusable agent presets. Agent entries with `ref` are expanded from these presets before validation.                  |
 | `agents.permissions`                   | Both    | No                               | [json](/src/permissions/common.json)                 | Common OpenCode permission rules applied before per-agent `permissions`.                                             |
 | `output`                               | Both    | No                               | -                                                    | Output parsing and repair configuration.                                                                             |
 | `output.repairAttempts`                | Both    | No                               | `3`                                                  | Number of times to ask a model to repair invalid structured output.                                                  |
