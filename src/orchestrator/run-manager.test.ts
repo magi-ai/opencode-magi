@@ -372,6 +372,30 @@ describe("MagiRunManager notifications", () => {
     }
   })
 
+  test("honors explicit synchronous run timeouts", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-sync-timeout-"))
+    const { manager } = managerWithPromptCapture(directory)
+
+    runReviewMock.mockReturnValueOnce(new Promise(() => undefined))
+
+    try {
+      const statePromise = manager.startReview({
+        config: { github: { owner: "owner", repo: "repo" } },
+        pr: 7557,
+        repository: sampleRepository(),
+        sync: true,
+        timeoutMs: 1,
+      })
+
+      const state = await statePromise
+
+      expect(state.status).toBe("failed")
+      expect(state.error).toBe("Magi sync run timed out after 0.001 seconds.")
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
   test("waits without a default timeout for blocking status", async () => {
     vi.useFakeTimers()
     const directory = await mkdtemp(join(tmpdir(), "magi-status-no-timeout-"))
