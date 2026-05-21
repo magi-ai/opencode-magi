@@ -25,6 +25,7 @@ export interface ReviewerConfig {
   options?: ModelOptions
   permissions?: PermissionConfig
   persona?: string
+  ref?: string
 }
 
 export interface EditorConfig {
@@ -37,6 +38,7 @@ export interface EditorConfig {
   options?: ModelOptions
   permissions?: PermissionConfig
   persona?: string
+  ref?: string
 }
 
 export interface TriageAgentConfig {
@@ -45,6 +47,7 @@ export interface TriageAgentConfig {
   options?: ModelOptions
   permissions?: PermissionConfig
   persona?: string
+  ref?: string
 }
 
 export interface TriageCreatorConfig {
@@ -57,10 +60,25 @@ export interface TriageCreatorConfig {
   options?: ModelOptions
   permissions?: PermissionConfig
   persona?: string
+  ref?: string
+}
+
+export interface AgentRefConfig {
+  account?: string
+  author?: {
+    email?: string
+    name?: string
+  }
+  id?: string
+  model?: string
+  options?: ModelOptions
+  permissions?: PermissionConfig
+  persona?: string
 }
 
 export interface AgentsConfig {
   permissions?: PermissionConfig
+  refs?: Record<string, AgentRefConfig>
 }
 
 export interface GitHubRepoConfig {

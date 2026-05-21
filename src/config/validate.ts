@@ -182,6 +182,8 @@ const TRIAGE_PROMPT_KEYS = new Set([
   "reconsider",
 ])
 
+type AgentRefUse = Record<string, unknown> & { ref?: unknown }
+
 function githubHost(config: MagiConfig): string {
   return config.github?.host ?? "github.com"
 }
@@ -194,6 +196,104 @@ function ghHostOption(config: MagiConfig): string {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+function expandAgentRefUse(
+  value: unknown,
+  path: string,
+  refs: Record<string, unknown> | undefined,
+  refsInvalid: boolean,
+  errors: string[],
+): unknown {
+  if (!isPlainObject(value) || !Object.hasOwn(value, "ref")) return value
+
+  const use = { ...(value as AgentRefUse) }
+  const ref = use.ref
+  delete use.ref
+
+  if (typeof ref !== "string") {
+    errors.push(`${path}.ref must be a string`)
+    return use
+  }
+
+  if (refsInvalid) {
+    errors.push(`agents.refs must be an object to resolve ${path}.ref`)
+    return use
+  }
+
+  const preset = refs?.[ref]
+  if (preset == null) {
+    errors.push(`${path}.ref references unknown agents.refs preset: ${ref}`)
+    return use
+  }
+
+  if (!isPlainObject(preset)) {
+    errors.push(
+      `agents.refs.${ref} must be an object when referenced by ${path}.ref`,
+    )
+    return use
+  }
+
+  const presetFields = { ...(preset as AgentRefUse) }
+  delete presetFields.ref
+
+  return { ...presetFields, ...use }
+}
+
+function expandAgentRefs(config: MagiConfig, errors: string[]): void {
+  if (!config || typeof config !== "object") return
+
+  const magiConfig = config as MagiConfig
+  const agents = magiConfig.agents
+  const refsValue = isPlainObject(agents) ? agents.refs : undefined
+  const refsInvalid = refsValue != null && !isPlainObject(refsValue)
+  const refs = isPlainObject(refsValue) ? refsValue : undefined
+
+  if (Array.isArray(magiConfig.review?.agents)) {
+    magiConfig.review.agents = magiConfig.review.agents.map((agent, index) =>
+      expandAgentRefUse(
+        agent,
+        `review.agents[${index}]`,
+        refs,
+        refsInvalid,
+        errors,
+      ),
+    ) as ReviewerConfig[]
+  }
+
+  if (isPlainObject(magiConfig.merge?.editor)) {
+    magiConfig.merge.editor = expandAgentRefUse(
+      magiConfig.merge.editor,
+      "merge.editor",
+      refs,
+      refsInvalid,
+      errors,
+    ) as EditorConfig
+  }
+
+  if (Array.isArray(magiConfig.triage?.agents)) {
+    magiConfig.triage.agents = magiConfig.triage.agents.map((agent, index) =>
+      expandAgentRefUse(
+        agent,
+        `triage.agents[${index}]`,
+        refs,
+        refsInvalid,
+        errors,
+      ),
+    ) as TriageAgentConfig[]
+  }
+
+  if (isPlainObject(magiConfig.triage?.creator)) {
+    magiConfig.triage.creator = expandAgentRefUse(
+      magiConfig.triage.creator,
+      "triage.creator",
+      refs,
+      refsInvalid,
+      errors,
+    ) as TriageCreatorConfig
+  }
+
+  if (isPlainObject(magiConfig.agents)) delete magiConfig.agents.refs
 }
 
 function validateKnownKeys(
@@ -1165,6 +1265,8 @@ export async function validateConfig(
 
   if (!config || typeof config !== "object")
     errors.push("config must be an object")
+
+  expandAgentRefs(config, errors)
 
   if (config && typeof config === "object") validateJsonSchema(config, errors)
 
