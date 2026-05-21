@@ -2,7 +2,6 @@ import type { CheckWaitReport } from "../github/commands"
 import type {
   EditOutput,
   Finding,
-  RequirementFinding,
   ResolvedRepository,
   RereviewOutput,
   ReviewOutput,
@@ -60,11 +59,9 @@ function pullRequestLine(input: ReviewReportInput): string {
 
 function formatFinding(finding: Finding): string {
   const line =
-    finding.line == null
-      ? finding.path
-      : finding.startLine == null
-        ? `${finding.path}:${finding.line}`
-        : `${finding.path}:${finding.startLine}-${finding.line}`
+    finding.startLine == null
+      ? `${finding.path}:${finding.line}`
+      : `${finding.path}:${finding.startLine}-${finding.line}`
 
   return `\`${line}\`: ${finding.issue}`
 }
@@ -73,17 +70,11 @@ function formatRereviewFinding(
   finding: RereviewOutput["newFindings"][number],
 ): string {
   const line =
-    finding.line == null
-      ? finding.path
-      : finding.startLine == null
-        ? `${finding.path}:${finding.line}`
-        : `${finding.path}:${finding.startLine}-${finding.line}`
+    finding.startLine == null
+      ? `${finding.path}:${finding.line}`
+      : `${finding.path}:${finding.startLine}-${finding.line}`
 
   return `\`${line}\`: ${finding.body}`
-}
-
-function formatRequirementFinding(finding: RequirementFinding): string {
-  return `Issue #${finding.issueNumber}: ${finding.requirement}`
 }
 
 function isReviewOutput(output: ReviewerOutput): output is ReviewOutput {
@@ -149,10 +140,7 @@ function reviewerDetailLines(output: ReviewerOutput): string[] {
     if (output.verdict === "CLOSE") return output.reason ? [output.reason] : []
     if (output.verdict !== "CHANGES_REQUESTED") return []
 
-    return [
-      ...output.findings.map(formatFinding),
-      ...output.requirementFindings.map(formatRequirementFinding),
-    ]
+    return output.findings.map(formatFinding)
   }
 
   if (output.verdict === "CLOSE") return output.reason ? [output.reason] : []
@@ -160,7 +148,6 @@ function reviewerDetailLines(output: ReviewerOutput): string[] {
 
   return [
     ...output.newFindings.map(formatRereviewFinding),
-    ...output.requirementFindings.map(formatRequirementFinding),
     ...output.followUps.map(
       (item) => `Comment #${item.commentId}: ${item.body}`,
     ),

@@ -17,7 +17,6 @@ describe("review output", () => {
     expect(parseReviewOutput('{"verdict":"MERGE","findings":[]}')).toEqual({
       findings: [],
       reason: undefined,
-      requirementFindings: [],
       verdict: "MERGE",
     })
   })
@@ -25,11 +24,11 @@ describe("review output", () => {
   test("rejects changes requested without findings", () => {
     expect(() =>
       parseReviewOutput('{"verdict":"CHANGES_REQUESTED","findings":[]}'),
-    ).toThrow("CHANGES_REQUESTED requires findings or requirementFindings")
+    ).toThrow("CHANGES_REQUESTED requires findings")
   })
 
-  test("parses requirement findings", () => {
-    expect(
+  test("rejects requirement findings", () => {
+    expect(() =>
       parseReviewOutput(
         JSON.stringify({
           findings: [],
@@ -44,21 +43,11 @@ describe("review output", () => {
           verdict: "CHANGES_REQUESTED",
         }),
       ),
-    ).toMatchObject({
-      requirementFindings: [
-        {
-          evidence: "Runtime path is missing.",
-          fix: "Wire the handler.",
-          issueNumber: 47,
-          requirement: "Support reconsideration.",
-        },
-      ],
-      verdict: "CHANGES_REQUESTED",
-    })
+    ).toThrow("requirementFindings is not accepted")
   })
 
-  test("parses file-level findings without a line", () => {
-    expect(
+  test("rejects findings without a line", () => {
+    expect(() =>
       parseReviewOutput(
         JSON.stringify({
           findings: [
@@ -71,12 +60,30 @@ describe("review output", () => {
           verdict: "CHANGES_REQUESTED",
         }),
       ),
+    ).toThrow("findings[0].line is required")
+  })
+
+  test("parses missing closing-issue requirements as normal findings", () => {
+    expect(
+      parseReviewOutput(
+        JSON.stringify({
+          findings: [
+            {
+              fix: "Ensure every requested change is posted inline.",
+              issue:
+                "The PR claims to close issue #123 but does not preserve rereview triggering for requested changes.",
+              line: 366,
+              path: "src/orchestrator/review.ts",
+            },
+          ],
+          verdict: "CHANGES_REQUESTED",
+        }),
+      ),
     ).toMatchObject({
       findings: [
         {
-          fix: "Pass structured findings to the editor.",
-          issue: "The editor cannot see body-only findings.",
-          path: "src/orchestrator/merge.ts",
+          line: 366,
+          path: "src/orchestrator/review.ts",
         },
       ],
       verdict: "CHANGES_REQUESTED",
@@ -98,7 +105,7 @@ describe("review output", () => {
           verdict: "CHANGES_REQUESTED",
         }),
       ),
-    ).toThrow("findings[0].startLine requires line")
+    ).toThrow("findings[0].line is required")
   })
 
   test("rejects merge with requirement findings", () => {
@@ -117,7 +124,7 @@ describe("review output", () => {
           verdict: "MERGE",
         }),
       ),
-    ).toThrow("MERGE requires no findings or requirementFindings")
+    ).toThrow("requirementFindings is not accepted")
   })
 
   test("extracts json from noisy output", () => {
@@ -145,7 +152,6 @@ describe("review output", () => {
     expect(result).toEqual({
       findings: [],
       reason: undefined,
-      requirementFindings: [],
       verdict: "MERGE",
     })
   })
@@ -159,14 +165,13 @@ describe("review output", () => {
       followUps: [],
       newFindings: [],
       reason: "invalid premise",
-      requirementFindings: [],
       resolve: [],
       verdict: "CLOSE",
     })
   })
 
-  test("parses file-level rereview findings without a line", () => {
-    expect(
+  test("rejects rereview findings without a line", () => {
+    expect(() =>
       parseRereviewOutput(
         JSON.stringify({
           followUps: [],
@@ -180,15 +185,28 @@ describe("review output", () => {
           verdict: "CHANGES_REQUESTED",
         }),
       ),
-    ).toMatchObject({
-      newFindings: [
-        {
-          body: "The behavior is still incomplete.",
-          path: "src/orchestrator/merge.ts",
-        },
-      ],
-      verdict: "CHANGES_REQUESTED",
-    })
+    ).toThrow("newFindings[0].line is required")
+  })
+
+  test("rejects rereview requirement findings", () => {
+    expect(() =>
+      parseRereviewOutput(
+        JSON.stringify({
+          followUps: [],
+          newFindings: [],
+          requirementFindings: [
+            {
+              evidence: "Missing runtime behavior.",
+              fix: "Wire it.",
+              issueNumber: 47,
+              requirement: "Runtime behavior.",
+            },
+          ],
+          resolve: [],
+          verdict: "CHANGES_REQUESTED",
+        }),
+      ),
+    ).toThrow("requirementFindings is not accepted")
   })
 
   test("parses finding validation votes", () => {

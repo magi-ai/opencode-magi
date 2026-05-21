@@ -107,45 +107,20 @@ function requireNumber(value: unknown, path: string): number {
   return value
 }
 
-function optionalLine(value: unknown, path: string): number | undefined {
-  return value == null ? undefined : requireNumber(value, path)
+function requireLine(value: unknown, path: string): number {
+  if (value == null) throw new Error(`${path} is required`)
+
+  return requireNumber(value, path)
 }
 
 function optionalStartLine(input: {
-  line: number | undefined
+  line: number
   path: string
   value: unknown
 }): number | undefined {
   if (input.value == null) return undefined
-  if (input.line == null) throw new Error(`${input.path} requires line`)
 
   return requireNumber(input.value, input.path)
-}
-
-function parseRequirementFindings(
-  value: unknown,
-): ReviewOutput["requirementFindings"] {
-  return (value == null ? [] : requireArray(value, "requirementFindings")).map(
-    (finding, index) => {
-      const item = finding as Record<string, unknown>
-
-      return {
-        evidence: requireString(
-          item.evidence,
-          `requirementFindings[${index}].evidence`,
-        ),
-        fix: requireString(item.fix, `requirementFindings[${index}].fix`),
-        issueNumber: requireNumber(
-          item.issueNumber,
-          `requirementFindings[${index}].issueNumber`,
-        ),
-        requirement: requireString(
-          item.requirement,
-          `requirementFindings[${index}].requirement`,
-        ),
-      }
-    },
-  )
 }
 
 function requireOneOf<T extends string>(
@@ -278,13 +253,15 @@ export function parseReviewOutput(text: string): ReviewOutput {
 
   if (!data || typeof data !== "object")
     throw new Error("review output must be an object")
+  if (data.requirementFindings != null)
+    throw new Error("requirementFindings is not accepted")
   if (!isVerdict(data.verdict))
     throw new Error("verdict must be MERGE, CHANGES_REQUESTED, or CLOSE")
 
   const findings = requireArray(data.findings, "findings").map(
     (finding, index) => {
       const item = finding as Record<string, unknown>
-      const line = optionalLine(item.line, `findings[${index}].line`)
+      const line = requireLine(item.line, `findings[${index}].line`)
 
       return {
         fix: requireString(item.fix, `findings[${index}].fix`),
@@ -303,26 +280,13 @@ export function parseReviewOutput(text: string): ReviewOutput {
       }
     },
   )
-  const requirementFindings = parseRequirementFindings(data.requirementFindings)
 
-  if (
-    data.verdict === "MERGE" &&
-    (findings.length || requirementFindings.length)
-  )
-    throw new Error("MERGE requires no findings or requirementFindings")
-  if (
-    data.verdict === "CHANGES_REQUESTED" &&
-    !findings.length &&
-    !requirementFindings.length
-  )
-    throw new Error(
-      "CHANGES_REQUESTED requires findings or requirementFindings",
-    )
-  if (
-    data.verdict === "CLOSE" &&
-    (findings.length || requirementFindings.length)
-  )
-    throw new Error("CLOSE requires no findings or requirementFindings")
+  if (data.verdict === "MERGE" && findings.length)
+    throw new Error("MERGE requires no findings")
+  if (data.verdict === "CHANGES_REQUESTED" && !findings.length)
+    throw new Error("CHANGES_REQUESTED requires findings")
+  if (data.verdict === "CLOSE" && findings.length)
+    throw new Error("CLOSE requires no findings")
   const reason =
     typeof data.reason === "string" && data.reason.trim()
       ? data.reason
@@ -334,7 +298,6 @@ export function parseReviewOutput(text: string): ReviewOutput {
   return {
     findings,
     reason,
-    requirementFindings,
     verdict: data.verdict,
   }
 }
@@ -346,6 +309,8 @@ export function parseRereviewOutput(text: string): RereviewOutput {
     throw new Error(
       "rereview verdict must be MERGE, CHANGES_REQUESTED, or CLOSE",
     )
+  if (data.requirementFindings != null)
+    throw new Error("requirementFindings is not accepted")
 
   const resolve = requireArray(data.resolve, "resolve").map((item, index) => {
     const value = item as Record<string, unknown>
@@ -373,7 +338,7 @@ export function parseRereviewOutput(text: string): RereviewOutput {
   const newFindings = requireArray(data.newFindings, "newFindings").map(
     (item, index) => {
       const value = item as Record<string, unknown>
-      const line = optionalLine(value.line, `newFindings[${index}].line`)
+      const line = requireLine(value.line, `newFindings[${index}].line`)
 
       return {
         body: requireString(value.body, `newFindings[${index}].body`),
@@ -387,24 +352,13 @@ export function parseRereviewOutput(text: string): RereviewOutput {
       }
     },
   )
-  const requirementFindings = parseRequirementFindings(data.requirementFindings)
 
-  if (
-    data.verdict === "MERGE" &&
-    (followUps.length || newFindings.length || requirementFindings.length)
-  ) {
-    throw new Error(
-      "MERGE requires no followUps, newFindings, or requirementFindings",
-    )
+  if (data.verdict === "MERGE" && (followUps.length || newFindings.length)) {
+    throw new Error("MERGE requires no followUps or newFindings")
   }
 
-  if (
-    data.verdict === "CLOSE" &&
-    (followUps.length || newFindings.length || requirementFindings.length)
-  ) {
-    throw new Error(
-      "CLOSE requires no followUps, newFindings, or requirementFindings",
-    )
+  if (data.verdict === "CLOSE" && (followUps.length || newFindings.length)) {
+    throw new Error("CLOSE requires no followUps or newFindings")
   }
 
   if (data.verdict === "CLOSE" && !data.reason) {
@@ -414,12 +368,9 @@ export function parseRereviewOutput(text: string): RereviewOutput {
   if (
     data.verdict === "CHANGES_REQUESTED" &&
     !followUps.length &&
-    !newFindings.length &&
-    !requirementFindings.length
+    !newFindings.length
   ) {
-    throw new Error(
-      "CHANGES_REQUESTED requires followUps, newFindings, or requirementFindings",
-    )
+    throw new Error("CHANGES_REQUESTED requires followUps or newFindings")
   }
 
   return {
@@ -427,7 +378,6 @@ export function parseRereviewOutput(text: string): RereviewOutput {
     newFindings,
     reason:
       data.reason == null ? undefined : requireString(data.reason, "reason"),
-    requirementFindings,
     resolve,
     verdict: data.verdict,
   }

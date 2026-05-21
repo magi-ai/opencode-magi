@@ -6,6 +6,8 @@ Config key: `review.prompts.review`
 
 Built-in template: [`review/review.md`](/src/prompts/templates/review/review.md)
 
+Review findings must always include `path` and `line`, and `line` must target a valid right-side PR diff line. When a concern does not map exactly to one changed line, the reviewer anchors it to the nearest changed line representing the cause, responsibility, missing implementation, or affected behavior.
+
 | Placeholder                 | Meaning                                                                 |
 | --------------------------- | ----------------------------------------------------------------------- |
 | `{pr}`                      | Pull request number.                                                    |

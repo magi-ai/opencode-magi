@@ -4,7 +4,6 @@ import type {
   FindingValidationOutput,
   MagiConfig,
   ModelOptions,
-  RequirementFinding,
   ResolvedRepository,
   RereviewOutput,
   ReviewOutput,
@@ -221,7 +220,6 @@ async function postReviewOutput(
     input.pr,
     reviewer.account,
     output.findings,
-    output.requirementFindings,
   )
 }
 
@@ -383,7 +381,7 @@ function parseRereviewOutputWithInlineTargets(
 
 function parsePostedFindingLocation(
   location: string,
-): Pick<Finding, "line" | "path" | "startLine"> {
+): Pick<Finding, "line" | "path" | "startLine"> | undefined {
   const range = /^(.*):(\d+)-(\d+)$/.exec(location)
   if (range) {
     return {
@@ -396,14 +394,13 @@ function parsePostedFindingLocation(
   const line = /^(.*):(\d+)$/.exec(location)
   if (line) return { line: Number(line[2]), path: line[1] ?? location }
 
-  return { path: location }
+  return undefined
 }
 
 function reviewFindingsFromBody(
   body: string | undefined,
-): Pick<ReviewOutput, "findings" | "requirementFindings"> {
+): Pick<ReviewOutput, "findings"> {
   const findings: Finding[] = []
-  const requirementFindings: RequirementFinding[] = []
   const lines = (body ?? "").split(/\r?\n/)
   let section: "finding" | undefined
 
@@ -419,29 +416,15 @@ function reviewFindingsFromBody(
       continue
     }
 
-    const requirementMatch = /^- Missing issue #(\d+) requirement: (.+)$/.exec(
-      line ?? "",
-    )
-    const evidence = /^\s+Evidence: (.+)$/.exec(lines[index + 1] ?? "")
-    const requirementFix = /^\s+Fix: (.+)$/.exec(lines[index + 2] ?? "")
-    if (requirementMatch && evidence && requirementFix) {
-      requirementFindings.push({
-        evidence: evidence[1] ?? "See review body.",
-        fix: requirementFix[1] ?? "Please address this before merging.",
-        issueNumber: Number(requirementMatch[1]),
-        requirement: requirementMatch[2] ?? "Review requirement.",
-      })
-      index += 2
-      continue
-    }
-
     if (section === "finding") {
       const match = /^- (.*): (.+)$/.exec(line ?? "")
       const fix = /^\s+Fix: (.+)$/.exec(lines[index + 1] ?? "")
       if (!match || !fix) continue
+      const location = parsePostedFindingLocation(match[1] ?? "")
+      if (!location) continue
 
       findings.push({
-        ...parsePostedFindingLocation(match[1] ?? ""),
+        ...location,
         fix: fix[1] ?? "Please address this before merging.",
         issue: match[2] ?? "Review finding.",
       })
@@ -450,7 +433,7 @@ function reviewFindingsFromBody(
     }
   }
 
-  return { findings, requirementFindings }
+  return { findings }
 }
 
 export function reviewOutputFromState(review: PullRequestReview): ReviewOutput {
@@ -463,10 +446,9 @@ export function reviewOutputFromState(review: PullRequestReview): ReviewOutput {
     ? {
         findings: [],
         reason: review.body || "Close requested.",
-        requirementFindings: [],
         verdict,
       }
-    : { findings: [], requirementFindings: [], verdict }
+    : { findings: [], verdict }
 }
 
 export function hasPendingThreadReply(
@@ -542,8 +524,7 @@ async function postRereviewOutput(
       output.reason ?? "Close requested.",
     )
 
-  if (!output.newFindings.length && !output.requirementFindings.length)
-    return ""
+  if (!output.newFindings.length) return ""
 
   return postChangesRequested(
     input.exec,
@@ -554,10 +535,9 @@ async function postRereviewOutput(
       fix: "Please address this before merging.",
       issue: finding.body,
       path: finding.path,
-      ...(finding.line == null ? {} : { line: finding.line }),
+      line: finding.line,
       startLine: finding.startLine,
     })),
-    output.requirementFindings,
   )
 }
 

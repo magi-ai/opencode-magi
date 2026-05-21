@@ -11,10 +11,9 @@ describe("applyFindingValidation", () => {
             { fix: "fix 1", issue: "issue 1", line: 1, path: "a.ts" },
             { fix: "fix 2", issue: "issue 2", line: 2, path: "a.ts" },
           ],
-          requirementFindings: [],
         },
-        b: { findings: [], requirementFindings: [], verdict: "MERGE" },
-        c: { findings: [], requirementFindings: [], verdict: "MERGE" },
+        b: { findings: [], verdict: "MERGE" },
+        c: { findings: [], verdict: "MERGE" },
       },
       reviewerKeys: ["a", "b", "c"],
       validations: {
@@ -44,10 +43,9 @@ describe("applyFindingValidation", () => {
         a: {
           verdict: "CHANGES_REQUESTED",
           findings: [{ fix: "fix", issue: "issue", line: 1, path: "a.ts" }],
-          requirementFindings: [],
         },
-        b: { findings: [], requirementFindings: [], verdict: "MERGE" },
-        c: { findings: [], requirementFindings: [], verdict: "MERGE" },
+        b: { findings: [], verdict: "MERGE" },
+        c: { findings: [], verdict: "MERGE" },
       },
       reviewerKeys: ["a", "b", "c"],
       validations: {
@@ -58,38 +56,43 @@ describe("applyFindingValidation", () => {
 
     expect(result.outputs.a).toEqual({
       findings: [],
-      requirementFindings: [],
       verdict: "MERGE",
     })
   })
 
-  test("keeps changes requested when requirement findings remain", () => {
+  test("keeps changes requested when a normal finding remains", () => {
     const result = applyFindingValidation({
       outputs: {
         a: {
-          findings: [{ fix: "fix", issue: "issue", line: 1, path: "a.ts" }],
-          requirementFindings: [
-            {
-              evidence: "Missing runtime behavior.",
-              fix: "Implement it.",
-              issueNumber: 47,
-              requirement: "Runtime behavior.",
-            },
+          findings: [
+            { fix: "fix 1", issue: "issue 1", line: 1, path: "a.ts" },
+            { fix: "fix 2", issue: "issue 2", line: 2, path: "a.ts" },
           ],
           verdict: "CHANGES_REQUESTED",
         },
-        b: { findings: [], requirementFindings: [], verdict: "MERGE" },
-        c: { findings: [], requirementFindings: [], verdict: "MERGE" },
+        b: { findings: [], verdict: "MERGE" },
+        c: { findings: [], verdict: "MERGE" },
       },
       reviewerKeys: ["a", "b", "c"],
       validations: {
-        b: { votes: [{ findingIndex: 0, reviewer: "a", vote: "DISAGREE" }] },
-        c: { votes: [{ findingIndex: 0, reviewer: "a", vote: "DISAGREE" }] },
+        b: {
+          votes: [
+            { findingIndex: 0, reviewer: "a", vote: "DISAGREE" },
+            { findingIndex: 1, reviewer: "a", vote: "AGREE" },
+          ],
+        },
+        c: {
+          votes: [
+            { findingIndex: 0, reviewer: "a", vote: "DISAGREE" },
+            { findingIndex: 1, reviewer: "a", vote: "DISAGREE" },
+          ],
+        },
       },
     })
 
     expect(result.outputs.a.verdict).toBe("CHANGES_REQUESTED")
-    expect(result.outputs.a.findings).toEqual([])
-    expect(result.outputs.a.requirementFindings).toHaveLength(1)
+    expect(result.outputs.a.findings).toEqual([
+      { fix: "fix 2", issue: "issue 2", line: 2, path: "a.ts" },
+    ])
   })
 })

@@ -38,15 +38,15 @@ describe("inline comment targets", () => {
     ).not.toThrow()
   })
 
-  test("skips file-level findings without line targets", () => {
+  test("requires line targets", () => {
     const targets = parseRightSideDiffTargets(diff)
 
     expect(() =>
       validateInlineCommentTargets(
-        [{ path: "src/app.ts" }, { line: 10, path: "src/app.ts" }],
+        [{ path: "src/app.ts" } as never, { line: 10, path: "src/app.ts" }],
         targets,
       ),
-    ).not.toThrow()
+    ).toThrow("findings[0].line must be a positive integer")
   })
 
   test("rejects startLine without a line target", () => {
@@ -54,10 +54,10 @@ describe("inline comment targets", () => {
 
     expect(() =>
       validateInlineCommentTargets(
-        [{ path: "src/app.ts", startLine: 10 }],
+        [{ path: "src/app.ts", startLine: 10 } as never],
         targets,
       ),
-    ).toThrow("findings[0].startLine requires line")
+    ).toThrow("findings[0].line must be a positive integer")
   })
 
   for (const { context, expected, targets: comments, title } of [
