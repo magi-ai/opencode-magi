@@ -1,0 +1,45 @@
+name: Merge
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+
+jobs:
+  merge:
+    if: ${{ github.event.pull_request.user.login == 'hirotomoyamada' && !github.event.pull_request.draft }}
+    name: Merge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install OpenCode
+        uses: ./.github/composite-actions/install-opencode
+
+      - name: Authenticate GitHub reviewer accounts
+        env:
+          CREATOR_TOKEN: ${{ secrets.PAT_TOKEN }}
+          MELCHIOR_TOKEN: ${{ secrets.MAGI_MELCHIOR_TOKEN }}
+          BALTHASAR_TOKEN: ${{ secrets.MAGI_BALTHASAR_TOKEN }}
+          CASPAR_TOKEN: ${{ secrets.MAGI_CASPAR_TOKEN }}
+        run: |
+          printf '%s' "$CREATOR_TOKEN" | gh auth login --hostname github.com --with-token
+          printf '%s' "$MELCHIOR_TOKEN" | gh auth login --hostname github.com --with-token
+          printf '%s' "$BALTHASAR_TOKEN" | gh auth login --hostname github.com --with-token
+          printf '%s' "$CASPAR_TOKEN" | gh auth login --hostname github.com --with-token
+
+      - name: Run merge
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          opencode run --dir "$GITHUB_WORKSPACE" --command "magi:merge" "${{ github.event.pull_request.number }}"
