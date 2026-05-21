@@ -168,6 +168,33 @@ describe("review flow", () => {
     })
   })
 
+  test("restores skipped requirement findings without a section heading", () => {
+    expect(
+      reviewOutputFromState({
+        author: { login: "bot-a" },
+        body: [
+          "- Missing issue #128 requirement: Do not bundle broader changes.",
+          "  Evidence: The PR includes unrelated test rewrites.",
+          "  Fix: Split the unrelated changes into a separate PR.",
+        ].join("\n"),
+        commit: { oid: "head" },
+        state: "CHANGES_REQUESTED",
+        submittedAt: "2026-01-01T00:00:00Z",
+      }),
+    ).toEqual({
+      findings: [],
+      requirementFindings: [
+        {
+          evidence: "The PR includes unrelated test rewrites.",
+          fix: "Split the unrelated changes into a separate PR.",
+          issueNumber: 128,
+          requirement: "Do not bundle broader changes.",
+        },
+      ],
+      verdict: "CHANGES_REQUESTED",
+    })
+  })
+
   test("detects replies after the reviewer latest thread comment", () => {
     expect(
       hasPendingThreadReply(
