@@ -44,7 +44,7 @@ Build the issue body from the selected template. Do not keep a fixed field list 
 4. Search open and closed issues for likely duplicates.
 5. If likely duplicates exist, show them to the user and ask whether to continue.
 6. Draft the title, body, labels, and assignee decision from the selected template.
-7. Show the generated issue content to the user for confirmation before submitting.
+7. Show a concise confirmation summary before submitting: title, issue type, labels, assignee decision, and a 2-3 bullet issue summary. Do not paste the full issue body unless the user asks to review it.
 8. Create the issue, then set and verify the GitHub Issue Type.
 9. Report the issue URL and Issue Type.
 10. Ask: "Do you want to create the PR for this issue now?"
@@ -71,7 +71,7 @@ If assignment fails because of permissions or repository settings, continue crea
 ## Gotchas
 
 - Do not create an issue without a `Bug`, `Task`, or `Feature` type.
-- Do not skip user confirmation before submitting the issue.
+- Do not skip user confirmation before submitting the issue; keep the confirmation concise unless the user asks for the full body.
 - Pass the issue body through a temporary file. Do not pass bodies with backticks or other shell-sensitive text as inline command strings.
 - Do not assume `gh issue create` set the Issue Type. Verify it after creation and set it with GraphQL if needed.
 - If the user chooses to create a PR, read this repository's branch, commit, and PR rules before creating it.
