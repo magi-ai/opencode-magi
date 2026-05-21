@@ -38,37 +38,30 @@ describe("inline comment targets", () => {
     ).not.toThrow()
   })
 
-  test("rejects wildcard paths that are not concrete PR diff files", () => {
-    const targets = parseRightSideDiffTargets(diff)
+  for (const { context, expected, targets: comments, title } of [
+    {
+      expected: "path is not in the PR diff",
+      targets: [{ line: 1, path: ".changeset/*.md" }],
+      title: "rejects wildcard paths that are not concrete PR diff files",
+    },
+    {
+      expected: "line is not in a right-side PR diff hunk",
+      targets: [{ line: 100, path: "src/app.ts" }],
+      title: "rejects changed files when the line is outside right-side hunks",
+    },
+    {
+      context: "newFindings",
+      expected: "newFindings[0] targets src/app.ts:12",
+      targets: [{ line: 12, path: "src/app.ts", startLine: 10 }],
+      title: "rejects multi-line comments that span outside right-side hunks",
+    },
+  ]) {
+    test(title, () => {
+      const diffTargets = parseRightSideDiffTargets(diff)
 
-    expect(() =>
-      validateInlineCommentTargets(
-        [{ line: 1, path: ".changeset/*.md" }],
-        targets,
-      ),
-    ).toThrow("path is not in the PR diff")
-  })
-
-  test("rejects changed files when the line is outside right-side hunks", () => {
-    const targets = parseRightSideDiffTargets(diff)
-
-    expect(() =>
-      validateInlineCommentTargets(
-        [{ line: 100, path: "src/app.ts" }],
-        targets,
-      ),
-    ).toThrow("line is not in a right-side PR diff hunk")
-  })
-
-  test("rejects multi-line comments that span outside right-side hunks", () => {
-    const targets = parseRightSideDiffTargets(diff)
-
-    expect(() =>
-      validateInlineCommentTargets(
-        [{ line: 12, path: "src/app.ts", startLine: 10 }],
-        targets,
-        "newFindings",
-      ),
-    ).toThrow("newFindings[0] targets src/app.ts:12")
-  })
+      expect(() =>
+        validateInlineCommentTargets(comments, diffTargets, context),
+      ).toThrow(expected)
+    })
+  }
 })

@@ -8,7 +8,7 @@ import type {
   IssueMeta,
   RelatedPullRequest,
 } from "../github/commands"
-import type { Exec, ResolvedRepository } from "../types"
+import type { Exec, ResolvedRepository, TriageDuplicateOutput } from "../types"
 import type { ModelClient } from "./model"
 import {
   chooseDuplicateOutput,
@@ -439,51 +439,33 @@ describe("triage orchestration", () => {
     })
   })
 
-  test("skips category classification when issue type is Bug", async () => {
-    const result = await runScenario({
-      issue: issue({ type: "Bug" }),
-      outputs: [
-        vote("YES"),
-        vote("YES"),
-        vote("YES"),
-        action("COMMENT"),
-        "Bug accepted comment",
-      ],
+  for (const { category, type } of [
+    { category: "bug", type: "Bug" },
+    { category: "feature", type: "Feature" },
+  ]) {
+    test(`skips category classification when issue type is ${type}`, async () => {
+      const result = await runScenario({
+        issue: issue({ type }),
+        outputs: [
+          vote("YES"),
+          vote("YES"),
+          vote("YES"),
+          action("COMMENT"),
+          `${type} accepted comment`,
+        ],
+      })
+
+      expect(result.result.result).toEqual(decision(category, "accepted"))
+      expect(
+        result.sessionTitles.filter((title) =>
+          title.includes("triage acceptance"),
+        ),
+      ).toHaveLength(3)
+      expect(
+        result.sessionTitles.some((title) => title.includes("triage category")),
+      ).toBe(false)
     })
-
-    expect(result.result.result).toEqual(decision("bug", "accepted"))
-    expect(
-      result.sessionTitles.filter((title) =>
-        title.includes("triage acceptance"),
-      ),
-    ).toHaveLength(3)
-    expect(
-      result.sessionTitles.some((title) => title.includes("triage category")),
-    ).toBe(false)
-  })
-
-  test("skips category classification when issue type is Feature", async () => {
-    const result = await runScenario({
-      issue: issue({ type: "Feature" }),
-      outputs: [
-        vote("YES"),
-        vote("YES"),
-        vote("YES"),
-        action("COMMENT"),
-        "Feature accepted comment",
-      ],
-    })
-
-    expect(result.result.result).toEqual(decision("feature", "accepted"))
-    expect(
-      result.sessionTitles.filter((title) =>
-        title.includes("triage acceptance"),
-      ),
-    ).toHaveLength(3)
-    expect(
-      result.sessionTitles.some((title) => title.includes("triage category")),
-    ).toBe(false)
-  })
+  }
 
   test("runs category classification when issue type and category labels are absent", async () => {
     const result = await runScenario({
@@ -1028,44 +1010,48 @@ describe("triage orchestration", () => {
     ).toHaveLength(3)
   })
 
-  test("requires majority support for the same duplicate target", () => {
-    const result = chooseDuplicateOutput({
+  for (const { candidateNumbers, expectedDuplicateOf, outputs, title } of [
+    {
       candidateNumbers: [101, 202],
       outputs: [
         { duplicateOf: 101, reason: "same failure", vote: "DUPLICATE" },
         { duplicateOf: 202, reason: "same request", vote: "DUPLICATE" },
         { reason: "not the same", vote: "NOT_DUPLICATE" },
       ],
-    })
-
-    expect(result).toBeUndefined()
-  })
-
-  test("selects a duplicate target with majority support", () => {
-    const result = chooseDuplicateOutput({
+      title: "requires majority support for the same duplicate target",
+    },
+    {
       candidateNumbers: [101, 202],
+      expectedDuplicateOf: 101,
       outputs: [
         { duplicateOf: 101, reason: "same failure", vote: "DUPLICATE" },
         { duplicateOf: 101, reason: "same root cause", vote: "DUPLICATE" },
         { duplicateOf: 202, reason: "similar request", vote: "DUPLICATE" },
       ],
-    })
-
-    expect(result?.duplicateOf).toBe(101)
-  })
-
-  test("ignores duplicate targets that were not provided as candidates", () => {
-    const result = chooseDuplicateOutput({
+      title: "selects a duplicate target with majority support",
+    },
+    {
       candidateNumbers: [101],
       outputs: [
         { duplicateOf: 999, reason: "invalid target", vote: "DUPLICATE" },
         { duplicateOf: 999, reason: "invalid target", vote: "DUPLICATE" },
         { reason: "not the same", vote: "NOT_DUPLICATE" },
       ],
-    })
+      title: "ignores duplicate targets that were not provided as candidates",
+    },
+  ] satisfies {
+    candidateNumbers: number[]
+    expectedDuplicateOf?: number
+    outputs: TriageDuplicateOutput[]
+    title: string
+  }[]) {
+    test(title, () => {
+      const result = chooseDuplicateOutput({ candidateNumbers, outputs })
 
-    expect(result).toBeUndefined()
-  })
+      if (expectedDuplicateOf == null) expect(result).toBeUndefined()
+      else expect(result?.duplicateOf).toBe(expectedDuplicateOf)
+    })
+  }
 
   test("allows reconsideration mentions by actor or role", () => {
     expect(

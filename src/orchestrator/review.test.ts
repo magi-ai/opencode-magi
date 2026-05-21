@@ -17,21 +17,74 @@ function review(account: string, commit: string, submittedAt: string) {
   } satisfies PullRequestReview
 }
 
-describe("review flow", () => {
-  test("uses initial review when no configured account reviewed", () => {
-    const mode = resolveReviewMode([], accounts, {
-      headSha: "head",
-      type: "head",
-    })
+function expectActiveAssignments(
+  mode: ReturnType<typeof resolveReviewMode>,
+  assignments: string[],
+) {
+  expect(mode.type).toBe("active")
+  if (mode.type !== "active") throw new Error("expected active mode")
+  expect([...mode.assignments.values()].map((item) => item.type)).toEqual(
+    assignments,
+  )
+}
 
-    expect(mode.type).toBe("active")
-    if (mode.type !== "active") throw new Error("expected active mode")
-    expect([...mode.assignments.values()].map((item) => item.type)).toEqual([
-      "initial",
-      "initial",
-      "initial",
-    ])
-  })
+describe("review flow", () => {
+  for (const {
+    expectedAssignments,
+    pendingThreadReplyAccounts,
+    reviews,
+    title,
+  } of [
+    {
+      expectedAssignments: ["initial", "initial", "initial"],
+      reviews: [],
+      title: "uses initial review when no configured account reviewed",
+    },
+    {
+      expectedAssignments: ["skip", "rereview", "skip"],
+      pendingThreadReplyAccounts: new Set(["bot-b"]),
+      reviews: [
+        review("bot-a", "head", "2026-01-01T00:00:00Z"),
+        review("bot-b", "head", "2026-01-01T00:00:01Z"),
+        review("bot-c", "head", "2026-01-01T00:00:02Z"),
+      ],
+      title:
+        "uses rereview when a reviewed head account has a pending thread reply",
+    },
+    {
+      expectedAssignments: ["rereview", "rereview", "rereview"],
+      reviews: [
+        review("bot-a", "old", "2026-01-01T00:00:00Z"),
+        review("bot-b", "old", "2026-01-01T00:00:01Z"),
+        review("bot-c", "old", "2026-01-01T00:00:02Z"),
+      ],
+      title: "uses rereview when configured accounts reviewed an older commit",
+    },
+    {
+      expectedAssignments: ["skip", "initial", "initial"],
+      reviews: [review("bot-a", "head", "2026-01-01T00:00:00Z")],
+      title: "skips reviewed head accounts and reviews missing accounts",
+    },
+    {
+      expectedAssignments: ["skip", "rereview", "initial"],
+      reviews: [
+        review("bot-a", "head", "2026-01-01T00:00:00Z"),
+        review("bot-b", "old", "2026-01-01T00:00:01Z"),
+      ],
+      title: "mixes skip, rereview, and initial assignments",
+    },
+  ]) {
+    test(title, () => {
+      const mode = resolveReviewMode(
+        reviews,
+        accounts,
+        { headSha: "head", type: "head" },
+        pendingThreadReplyAccounts,
+      )
+
+      expectActiveAssignments(mode, expectedAssignments)
+    })
+  }
 
   test("aborts when all configured accounts already reviewed head", () => {
     expect(
@@ -45,82 +98,6 @@ describe("review flow", () => {
         { headSha: "head", type: "head" },
       ),
     ).toMatchObject({ type: "already_reviewed" })
-  })
-
-  test("uses rereview when a reviewed head account has a pending thread reply", () => {
-    const mode = resolveReviewMode(
-      [
-        review("bot-a", "head", "2026-01-01T00:00:00Z"),
-        review("bot-b", "head", "2026-01-01T00:00:01Z"),
-        review("bot-c", "head", "2026-01-01T00:00:02Z"),
-      ],
-      accounts,
-      { headSha: "head", type: "head" },
-      new Set(["bot-b"]),
-    )
-
-    expect(mode.type).toBe("active")
-    if (mode.type !== "active") throw new Error("expected active mode")
-    expect([...mode.assignments.values()].map((item) => item.type)).toEqual([
-      "skip",
-      "rereview",
-      "skip",
-    ])
-  })
-
-  test("uses rereview when configured accounts reviewed an older commit", () => {
-    const mode = resolveReviewMode(
-      [
-        review("bot-a", "old", "2026-01-01T00:00:00Z"),
-        review("bot-b", "old", "2026-01-01T00:00:01Z"),
-        review("bot-c", "old", "2026-01-01T00:00:02Z"),
-      ],
-      accounts,
-      { headSha: "head", type: "head" },
-    )
-
-    expect(mode.type).toBe("active")
-    if (mode.type !== "active") throw new Error("expected active mode")
-    expect([...mode.assignments.values()].map((item) => item.type)).toEqual([
-      "rereview",
-      "rereview",
-      "rereview",
-    ])
-  })
-
-  test("skips reviewed head accounts and reviews missing accounts", () => {
-    const mode = resolveReviewMode(
-      [review("bot-a", "head", "2026-01-01T00:00:00Z")],
-      accounts,
-      { headSha: "head", type: "head" },
-    )
-
-    expect(mode.type).toBe("active")
-    if (mode.type !== "active") throw new Error("expected active mode")
-    expect([...mode.assignments.values()].map((item) => item.type)).toEqual([
-      "skip",
-      "initial",
-      "initial",
-    ])
-  })
-
-  test("mixes skip, rereview, and initial assignments", () => {
-    const mode = resolveReviewMode(
-      [
-        review("bot-a", "head", "2026-01-01T00:00:00Z"),
-        review("bot-b", "old", "2026-01-01T00:00:01Z"),
-      ],
-      accounts,
-      { headSha: "head", type: "head" },
-    )
-
-    expect(mode.type).toBe("active")
-    if (mode.type !== "active") throw new Error("expected active mode")
-    expect([...mode.assignments.values()].map((item) => item.type)).toEqual([
-      "skip",
-      "rereview",
-      "initial",
-    ])
   })
 
   test("uses latest non-merge commit time for review freshness", () => {

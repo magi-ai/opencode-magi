@@ -44,6 +44,55 @@ function reviewer(
   }
 }
 
+function check(
+  overrides: Partial<{
+    bucket: string
+    link: string
+    name: string
+    state: string
+    workflow: string
+  }> = {},
+) {
+  return {
+    bucket: "fail",
+    link: "https://github.com/owner/repo/actions/runs/1/job/123",
+    name: "Test",
+    state: "FAILURE",
+    workflow: "CI",
+    ...overrides,
+  }
+}
+
+function classifierClient(input: {
+  classification: "SCOPE_IN" | "SCOPE_OUT"
+  reason: string
+}) {
+  return {
+    session: {
+      create: async () => ({ id: "session" }),
+      prompt: async () => ({
+        info: {
+          text: JSON.stringify({
+            checks: [
+              {
+                classification: input.classification,
+                name: "Test",
+                reason: input.reason,
+              },
+            ],
+          }),
+        },
+      }),
+    },
+  }
+}
+
+function expectNoRunRerun(commands: string[]) {
+  expect(commands.some((command) => command.includes("gh run rerun"))).toBe(
+    false,
+  )
+}
+
 describe("check handling", () => {
   test("extracts structured evidence from repeated failure logs", () => {
     const evidence = extractFailureEvidence(
@@ -127,35 +176,13 @@ describe("check handling", () => {
     let watches = 0
     let jsonCalls = 0
     const commands: string[] = []
-    const failed = [
-      {
-        bucket: "fail",
-        link: "https://github.com/owner/repo/actions/runs/1/job/123",
-        name: "Test",
-        state: "FAILURE",
-        workflow: "CI",
-      },
-    ]
+    const failed = [check()]
 
     const result = await waitForChecksWithClassification({
-      client: {
-        session: {
-          create: async () => ({ id: "session" }),
-          prompt: async () => ({
-            info: {
-              text: JSON.stringify({
-                checks: [
-                  {
-                    classification: "SCOPE_OUT",
-                    name: "Test",
-                    reason: "Flaky browser test.",
-                  },
-                ],
-              }),
-            },
-          }),
-        },
-      },
+      client: classifierClient({
+        classification: "SCOPE_OUT",
+        reason: "Flaky browser test.",
+      }),
       directory: ".",
       exec: async (command) => {
         commands.push(command)
@@ -198,35 +225,13 @@ describe("check handling", () => {
 
   test("does not rerun scope-out jobs during dry runs", async () => {
     const commands: string[] = []
-    const failed = [
-      {
-        bucket: "fail",
-        link: "https://github.com/owner/repo/actions/runs/1/job/123",
-        name: "Test",
-        state: "FAILURE",
-        workflow: "CI",
-      },
-    ]
+    const failed = [check()]
 
     const result = await waitForChecksWithClassification({
-      client: {
-        session: {
-          create: async () => ({ id: "session" }),
-          prompt: async () => ({
-            info: {
-              text: JSON.stringify({
-                checks: [
-                  {
-                    classification: "SCOPE_OUT",
-                    name: "Test",
-                    reason: "Flaky browser test.",
-                  },
-                ],
-              }),
-            },
-          }),
-        },
-      },
+      client: classifierClient({
+        classification: "SCOPE_OUT",
+        reason: "Flaky browser test.",
+      }),
       directory: ".",
       dryRun: true,
       exec: async (command) => {
@@ -249,9 +254,7 @@ describe("check handling", () => {
     expect(result?.report.dryRunRerun).toMatchObject([
       { check: failed[0], classification: "SCOPE_OUT" },
     ])
-    expect(commands.some((command) => command.includes("gh run rerun"))).toBe(
-      false,
-    )
+    expectNoRunRerun(commands)
   })
 
   test("does not report failed CI investigation while checks are pending", async () => {
@@ -302,35 +305,13 @@ describe("check handling", () => {
 
   test("classifies existing failures without waiting when wait is false", async () => {
     const commands: string[] = []
-    const failed = [
-      {
-        bucket: "fail",
-        link: "https://github.com/owner/repo/actions/runs/1/job/123",
-        name: "Test",
-        state: "FAILURE",
-        workflow: "CI",
-      },
-    ]
+    const failed = [check()]
 
     const result = await waitForChecksWithClassification({
-      client: {
-        session: {
-          create: async () => ({ id: "session" }),
-          prompt: async () => ({
-            info: {
-              text: JSON.stringify({
-                checks: [
-                  {
-                    classification: "SCOPE_IN",
-                    name: "Test",
-                    reason: "Type error in changed package.",
-                  },
-                ],
-              }),
-            },
-          }),
-        },
-      },
+      client: classifierClient({
+        classification: "SCOPE_IN",
+        reason: "Type error in changed package.",
+      }),
       directory: ".",
       exec: async (command) => {
         commands.push(command)
@@ -534,15 +515,7 @@ describe("check handling", () => {
     let jsonCalls = 0
     let promptCount = 0
     const commands: string[] = []
-    const cancelled = [
-      {
-        bucket: "cancel",
-        link: "https://github.com/owner/repo/actions/runs/1/job/123",
-        name: "Test",
-        state: "CANCELLED",
-        workflow: "CI",
-      },
-    ]
+    const cancelled = [check({ bucket: "cancel", state: "CANCELLED" })]
 
     const result = await waitForChecksWithClassification({
       client: {
@@ -592,13 +565,13 @@ describe("check handling", () => {
   test("leaves non-rerunnable cancelled checks unresolved", async () => {
     const commands: string[] = []
     const cancelled = [
-      {
+      check({
         bucket: "cancel",
         link: "https://example.com/check",
         name: "External Check",
         state: "CANCELLED",
         workflow: "",
-      },
+      }),
     ]
 
     const result = await waitForChecksWithClassification({
@@ -628,42 +601,18 @@ describe("check handling", () => {
     expect(result?.report.scopeOutsideUnresolved).toMatchObject([
       { check: cancelled[0], classification: "SCOPE_OUT" },
     ])
-    expect(commands.some((command) => command.includes("gh run rerun"))).toBe(
-      false,
-    )
+    expectNoRunRerun(commands)
   })
 
   test("returns scope-in failure context without rerunning", async () => {
     const commands: string[] = []
-    const failed = [
-      {
-        bucket: "fail",
-        link: "https://github.com/owner/repo/actions/runs/1/job/123",
-        name: "Test",
-        state: "FAILURE",
-        workflow: "CI",
-      },
-    ]
+    const failed = [check()]
 
     const result = await waitForChecksWithClassification({
-      client: {
-        session: {
-          create: async () => ({ id: "session" }),
-          prompt: async () => ({
-            info: {
-              text: JSON.stringify({
-                checks: [
-                  {
-                    classification: "SCOPE_IN",
-                    name: "Test",
-                    reason: "Type error in changed package.",
-                  },
-                ],
-              }),
-            },
-          }),
-        },
-      },
+      client: classifierClient({
+        classification: "SCOPE_IN",
+        reason: "Type error in changed package.",
+      }),
       directory: ".",
       exec: async (command) => {
         commands.push(command)
@@ -689,9 +638,7 @@ describe("check handling", () => {
       { check: failed[0], classification: "SCOPE_IN" },
     ])
     expect(result?.ciFailureContext).toContain("Type error")
-    expect(commands.some((command) => command.includes("gh run rerun"))).toBe(
-      false,
-    )
+    expectNoRunRerun(commands)
   })
 
   test("classifies CI scope by reviewer majority", async () => {
