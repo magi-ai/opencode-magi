@@ -332,7 +332,7 @@ export interface ResolvedRepository extends RepositoryConfig {
 export interface Finding {
   fix: string
   issue: string
-  line?: number
+  line: number
   path: string
   perspective?: string
   startLine?: number
@@ -340,22 +340,14 @@ export interface Finding {
 
 export interface NewFinding {
   body: string
-  line?: number
+  line: number
   path: string
   startLine?: number
-}
-
-export interface RequirementFinding {
-  evidence: string
-  fix: string
-  issueNumber: number
-  requirement: string
 }
 
 export interface ReviewOutput {
   findings: Finding[]
   reason?: string
-  requirementFindings: RequirementFinding[]
   verdict: Verdict
 }
 
@@ -363,21 +355,18 @@ export interface RereviewOutput {
   followUps: { commentId: number; body: string }[]
   newFindings: NewFinding[]
   reason?: string
-  requirementFindings: RequirementFinding[]
   resolve: { commentId: number; threadId: string }[]
   verdict: Verdict
 }
 
 export interface CloseReconsiderationOutput {
   findings: Finding[]
-  requirementFindings: RequirementFinding[]
   verdict: Exclude<Verdict, "CLOSE">
 }
 
 export interface RereviewCloseReconsiderationOutput {
   followUps: { commentId: number; body: string }[]
   newFindings: NewFinding[]
-  requirementFindings: RequirementFinding[]
   resolve: { commentId: number; threadId: string }[]
   verdict: Exclude<Verdict, "CLOSE">
 }

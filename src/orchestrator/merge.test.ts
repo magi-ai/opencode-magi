@@ -147,23 +147,16 @@ describe("merge", () => {
     })
   })
 
-  test("extracts body-only and requirement findings for the editor", () => {
+  test("extracts inline findings for the editor", () => {
     expect(
       blockingReviewFindings({
         alpha: {
           findings: [
             {
               fix: "Pass findings to the editor.",
-              issue: "Body-only findings are lost.",
+              issue: "Inline findings are lost.",
+              line: 25,
               path: "src/orchestrator/merge.ts",
-            },
-          ],
-          requirementFindings: [
-            {
-              evidence: "Missing runtime behavior.",
-              fix: "Implement the runtime path.",
-              issueNumber: 121,
-              requirement: "Preserve body-only findings.",
             },
           ],
           verdict: "CHANGES_REQUESTED",
@@ -172,18 +165,11 @@ describe("merge", () => {
     ).toEqual([
       {
         fix: "Pass findings to the editor.",
-        issue: "Body-only findings are lost.",
+        issue: "Inline findings are lost.",
+        line: 25,
         path: "src/orchestrator/merge.ts",
         reviewer: "alpha",
-        type: "file",
-      },
-      {
-        evidence: "Missing runtime behavior.",
-        fix: "Implement the runtime path.",
-        issueNumber: 121,
-        requirement: "Preserve body-only findings.",
-        reviewer: "alpha",
-        type: "requirement",
+        type: "inline",
       },
     ])
   })

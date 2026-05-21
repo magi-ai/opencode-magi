@@ -58,7 +58,7 @@ Reviewer verdicts map to GitHub actions:
 | Verdict             | GitHub action                                                                                                     |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `MERGE`             | Post an approving PR review.                                                                                      |
-| `CHANGES_REQUESTED` | Post a request-changes PR review with inline comments from `findings`.                                            |
+| `CHANGES_REQUESTED` | Post a request-changes PR review with every finding as an inline review comment.                                  |
 | `CLOSE`             | Post a PR comment with `reason`. The review command closes the PR only when `review.automation.close` is enabled. |
 
 The majority result can be `MERGE`, `CHANGES_REQUESTED`, or `CLOSE`. Reviewer count must be odd and at least 3, so one verdict must reach majority.
@@ -126,6 +126,8 @@ Each reviewer receives the diff from that reviewer's previous review commit to t
 ### How are review findings filtered?
 
 Each `CHANGES_REQUESTED` finding is validated by the other reviewers. The finding author counts as one approval; with three reviewers, at least one of the other two reviewers must agree for the finding to remain.
+
+Every finding must target a valid right-side line in the PR diff. If the problem does not have an exact changed line, reviewers anchor it to the nearest changed line that represents the cause, responsibility, missing implementation, or affected behavior, such as missing validation, wiring, requirements, tests, documentation, configuration, or a relevant call site.
 
 ### What GitHub data windows are fetched?
 

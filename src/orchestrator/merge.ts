@@ -120,16 +120,13 @@ export interface ThreadLimitNotification {
 
 interface EditorReviewFinding {
   body?: string
-  evidence?: string
   fix: string
   issue?: string
-  issueNumber?: number
-  line?: number
+  line: number
   path?: string
-  requirement?: string
   reviewer: string
   startLine?: number
-  type: "file" | "inline" | "requirement"
+  type: "inline"
 }
 
 function outputDir(input: MergeRunInput): string {
@@ -363,7 +360,7 @@ async function postRereviewOutput(
     )
   }
 
-  if (output.newFindings.length || output.requirementFindings.length) {
+  if (output.newFindings.length) {
     return postChangesRequested(
       input.exec,
       input.repository,
@@ -373,10 +370,9 @@ async function postRereviewOutput(
         fix: "Please address this before merging.",
         issue: finding.body,
         path: finding.path,
-        ...(finding.line == null ? {} : { line: finding.line }),
+        line: finding.line,
         startLine: finding.startLine,
       })),
-      output.requirementFindings,
     )
   }
 
@@ -401,11 +397,11 @@ function newFindingToEditorFinding(
   return {
     body: finding.body,
     fix: "Please address this before merging.",
+    line: finding.line,
     path: finding.path,
     reviewer,
-    ...(finding.line == null ? {} : { line: finding.line }),
     ...(finding.startLine == null ? {} : { startLine: finding.startLine }),
-    type: finding.line == null ? "file" : "inline",
+    type: "inline",
   }
 }
 
@@ -415,38 +411,21 @@ export function blockingReviewFindings(
   return Object.entries(outputs).flatMap(([reviewer, output]) => {
     if (output.verdict !== "CHANGES_REQUESTED") return []
 
-    const requirementFindings = output.requirementFindings.map((finding) => ({
-      evidence: finding.evidence,
-      fix: finding.fix,
-      issueNumber: finding.issueNumber,
-      requirement: finding.requirement,
-      reviewer,
-      type: "requirement" as const,
-    }))
-
     if ("findings" in output) {
-      return [
-        ...output.findings.map((finding) => ({
-          fix: finding.fix,
-          issue: finding.issue,
-          path: finding.path,
-          reviewer,
-          ...(finding.line == null ? {} : { line: finding.line }),
-          ...(finding.startLine == null
-            ? {}
-            : { startLine: finding.startLine }),
-          type: finding.line == null ? ("file" as const) : ("inline" as const),
-        })),
-        ...requirementFindings,
-      ]
+      return output.findings.map((finding) => ({
+        fix: finding.fix,
+        issue: finding.issue,
+        line: finding.line,
+        path: finding.path,
+        reviewer,
+        ...(finding.startLine == null ? {} : { startLine: finding.startLine }),
+        type: "inline" as const,
+      }))
     }
 
-    return [
-      ...output.newFindings.map((finding) =>
-        newFindingToEditorFinding(reviewer, finding),
-      ),
-      ...requirementFindings,
-    ]
+    return output.newFindings.map((finding) =>
+      newFindingToEditorFinding(reviewer, finding),
+    )
   })
 }
 
@@ -921,7 +900,6 @@ function syntheticReviewThreads(
   for (const [reviewer, output] of Object.entries(outputs)) {
     if ("findings" in output) {
       threads[reviewer] = output.findings.flatMap((finding) => {
-        if (finding.line == null) return []
         const commentId = nextCommentId--
 
         return [
@@ -946,7 +924,6 @@ function syntheticReviewThreads(
     }
 
     threads[reviewer] = output.newFindings.flatMap((finding) => {
-      if (finding.line == null) return []
       const commentId = nextCommentId--
 
       return [
@@ -1182,9 +1159,7 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
         threads: unresolvedThreads,
       })
       const editorFindings = blockingReviewFindings(reportOutputs)
-      const editableFindings = editableThreads.length
-        ? editorFindings
-        : editorFindings.filter((finding) => finding.type !== "inline")
+      const editableFindings = editableThreads.length ? editorFindings : []
       const findingAttemptsExhausted =
         input.repository.merge.maxThreadResolutionCycles !== 0 &&
         cycle > input.repository.merge.maxThreadResolutionCycles

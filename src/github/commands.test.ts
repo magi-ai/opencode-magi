@@ -539,7 +539,7 @@ describe("GitHub command helpers", () => {
     })
   })
 
-  test("posts body-only findings in review body without inline comments", async () => {
+  test("posts all findings as inline comments with a summary body", async () => {
     const commands: string[] = []
     let payload:
       | { body: string; comments: unknown[]; event: string }
@@ -562,7 +562,8 @@ describe("GitHub command helpers", () => {
       [
         {
           fix: "Pass structured findings to the editor.",
-          issue: "Body-only findings are lost.",
+          issue: "Findings must create review threads.",
+          line: 20,
           path: "src/orchestrator/merge.ts",
         },
         {
@@ -572,23 +573,26 @@ describe("GitHub command helpers", () => {
           path: "src/orchestrator/review.ts",
         },
       ],
-      [
-        {
-          evidence: "The runtime path is missing.",
-          fix: "Include requirement findings in the editor prompt.",
-          issueNumber: 121,
-          requirement: "Body-only findings must reach the editor.",
-        },
-      ],
     )
 
     expect(payload?.event).toBe("REQUEST_CHANGES")
-    expect(payload?.comments).toHaveLength(1)
-    expect(payload?.body).toContain("Inline findings:")
-    expect(payload?.body).toContain("src/orchestrator/review.ts:10")
-    expect(payload?.body).toContain("File-level findings:")
-    expect(payload?.body).toContain("src/orchestrator/merge.ts")
-    expect(payload?.body).toContain("Requirement findings:")
+    expect(payload?.comments).toEqual([
+      {
+        body: "**Issue:** Findings must create review threads.\n\n**Fix:** Pass structured findings to the editor.",
+        line: 20,
+        path: "src/orchestrator/merge.ts",
+        side: "RIGHT",
+      },
+      {
+        body: "**Issue:** Inline validation rejects file-level findings.\n\n**Fix:** Validate only inline targets.",
+        line: 10,
+        path: "src/orchestrator/review.ts",
+        side: "RIGHT",
+      },
+    ])
+    expect(payload?.body).toBe("Changes requested: 2 inline comments.")
+    expect(payload?.body).not.toContain("File-level findings:")
+    expect(payload?.body).not.toContain("Requirement findings:")
     expect(commands[1]).toContain("repos/owner/repo/pulls/7557/reviews")
   })
 

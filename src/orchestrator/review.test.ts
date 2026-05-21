@@ -130,19 +130,14 @@ describe("review flow", () => {
     expect(mode.type).toBe("already_reviewed")
   })
 
-  test("restores skipped review findings from the posted review body", () => {
+  test("restores legacy inline review findings from the posted review body", () => {
     expect(
       reviewOutputFromState({
         author: { login: "bot-a" },
         body: [
-          "File-level findings:",
-          "- src/orchestrator/merge.ts: Preserve skipped findings.",
+          "Inline findings:",
+          "- src/orchestrator/merge.ts:42: Preserve skipped findings.",
           "  Fix: Pass existing review findings to the editor.",
-          "",
-          "Requirement findings:",
-          "- Missing issue #124 requirement: Include body-only requests.",
-          "  Evidence: The editor prompt omits skipped review findings.",
-          "  Fix: Parse the prior review body before editing.",
         ].join("\n"),
         commit: { oid: "head" },
         state: "CHANGES_REQUESTED",
@@ -153,22 +148,15 @@ describe("review flow", () => {
         {
           fix: "Pass existing review findings to the editor.",
           issue: "Preserve skipped findings.",
+          line: 42,
           path: "src/orchestrator/merge.ts",
-        },
-      ],
-      requirementFindings: [
-        {
-          evidence: "The editor prompt omits skipped review findings.",
-          fix: "Parse the prior review body before editing.",
-          issueNumber: 124,
-          requirement: "Include body-only requests.",
         },
       ],
       verdict: "CHANGES_REQUESTED",
     })
   })
 
-  test("restores skipped requirement findings without a section heading", () => {
+  test("ignores legacy body-only requirement findings without inline targets", () => {
     expect(
       reviewOutputFromState({
         author: { login: "bot-a" },
@@ -183,14 +171,6 @@ describe("review flow", () => {
       }),
     ).toEqual({
       findings: [],
-      requirementFindings: [
-        {
-          evidence: "The PR includes unrelated test rewrites.",
-          fix: "Split the unrelated changes into a separate PR.",
-          issueNumber: 128,
-          requirement: "Do not bundle broader changes.",
-        },
-      ],
       verdict: "CHANGES_REQUESTED",
     })
   })
