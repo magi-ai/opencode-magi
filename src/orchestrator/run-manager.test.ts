@@ -263,6 +263,41 @@ describe("MagiRunManager notifications", () => {
     }
   })
 
+  test("runs triage synchronously when requested", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-triage-sync-"))
+    const { manager } = managerWithPromptCapture(directory)
+
+    runTriageMock.mockResolvedValueOnce({
+      issue: 115,
+      outputDir: join(directory, "triage"),
+      report: "Triage report",
+      result: { category: "feature", disposition: "accepted" },
+    })
+
+    try {
+      const state = await manager.startTriage({
+        config: { github: { owner: "owner", repo: "repo" } },
+        issue: 115,
+        repository: sampleTriageRepository({
+          clear: ["triage"],
+          close: false,
+          create: false,
+          merge: false,
+          review: false,
+        }),
+        sync: true,
+      })
+
+      expect(state.status).toBe("completed")
+      expect(state.phase).toBe(
+        JSON.stringify({ category: "feature", disposition: "accepted" }),
+      )
+      expect(runTriageMock).toHaveBeenCalledOnce()
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
   test("marks synchronous runs failed when execution fails", async () => {
     const directory = await mkdtemp(join(tmpdir(), "magi-sync-fail-"))
     const { manager } = managerWithPromptCapture(directory)
