@@ -120,6 +120,34 @@ function quoteEvidence(value: string): string {
   return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact
 }
 
+function errorText(error: unknown): string {
+  if (!error || typeof error !== "object") return String(error)
+
+  const value = error as {
+    message?: unknown
+    stderr?: unknown
+    stdout?: unknown
+  }
+
+  return [value.message, value.stderr, value.stdout]
+    .filter((item): item is string => typeof item === "string")
+    .join("\n")
+}
+
+function isIssueLookupFailure(error: unknown): boolean {
+  const text = errorText(error)
+
+  return (
+    /could not resolve to an issue/i.test(text) ||
+    /could not fetch issue #\d+/i.test(text) ||
+    /not an issue/i.test(text)
+  )
+}
+
+function isIssueUrl(url: string): boolean {
+  return /\/issues\/\d+(?:$|[/?#])/i.test(url)
+}
+
 function issueReferencePattern(repository: ResolvedRepository): RegExp {
   const host = escapeRegExp(repository.github.host || "github.com")
   const owner = escapeRegExp(repository.github.owner)
@@ -262,6 +290,13 @@ async function contextIssue(input: {
   const issue =
     input.issue ??
     (await fetchIssue(input.exec, input.repository, input.relationship.number))
+
+  if (!isIssueUrl(issue.url)) {
+    throw new Error(
+      `Reference #${issue.number} resolved to ${issue.url}, not an Issue`,
+    )
+  }
+
   const commentPage = await fetchIssueCommentPage(
     input.exec,
     input.repository,
@@ -285,6 +320,28 @@ async function contextIssue(input: {
     title: issue.title,
     url: issue.url,
   }
+}
+
+async function contextIssueIfIssue(input: {
+  exec: Exec
+  issue?: IssueMeta
+  limit: number
+  relationship: IssueRelationship
+  repository: ResolvedRepository
+}): Promise<ReviewContextIssue | undefined> {
+  try {
+    return await contextIssue(input)
+  } catch (error) {
+    if (isIssueLookupFailure(error)) return undefined
+
+    throw error
+  }
+}
+
+function presentIssue(
+  issue: ReviewContextIssue | undefined,
+): issue is ReviewContextIssue {
+  return Boolean(issue)
 }
 
 function orderReviewThreads(threads: ReviewThread[]): ReviewThread[] {
@@ -361,17 +418,19 @@ export async function buildReviewContextSnapshot(input: {
   )
 
   return {
-    closingIssues: await Promise.all(
-      closingRelationships.map((relationship) =>
-        contextIssue({
-          exec: input.exec,
-          issue: closingIssueMap.get(relationship.number),
-          limit: LIMITS.closingIssueComments,
-          relationship,
-          repository: input.repository,
-        }),
-      ),
-    ),
+    closingIssues: (
+      await Promise.all(
+        closingRelationships.map((relationship) =>
+          contextIssueIfIssue({
+            exec: input.exec,
+            issue: closingIssueMap.get(relationship.number),
+            limit: LIMITS.closingIssueComments,
+            relationship,
+            repository: input.repository,
+          }),
+        ),
+      )
+    ).filter(presentIssue),
     pullRequest: {
       author: input.pr.author?.login ?? safetyMeta.author,
       baseRef: input.pr.baseRefName,
@@ -389,16 +448,18 @@ export async function buildReviewContextSnapshot(input: {
       title: input.pr.title,
       url: input.pr.url,
     },
-    referencedIssues: await Promise.all(
-      referencedRelationships.map((relationship) =>
-        contextIssue({
-          exec: input.exec,
-          limit: LIMITS.referencedIssueComments,
-          relationship,
-          repository: input.repository,
-        }),
-      ),
-    ),
+    referencedIssues: (
+      await Promise.all(
+        referencedRelationships.map((relationship) =>
+          contextIssueIfIssue({
+            exec: input.exec,
+            limit: LIMITS.referencedIssueComments,
+            relationship,
+            repository: input.repository,
+          }),
+        ),
+      )
+    ).filter(presentIssue),
     reviewDiscussion: {
       prComments: boundedComments(prComments, LIMITS.prComments),
       prCommentsOmitted,

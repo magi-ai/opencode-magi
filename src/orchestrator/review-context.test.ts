@@ -150,6 +150,145 @@ describe("review context", () => {
     expect(snapshot.closingIssues[0].commentsOmitted).toBe(5)
   })
 
+  test("skips pull request references when building issue context", async () => {
+    const commands: string[] = []
+    const referencedPullRequests = new Set([124, 125, 126, 127, 128])
+
+    const snapshot = await buildReviewContextSnapshot({
+      exec: async (command) => {
+        commands.push(command)
+
+        if (command.includes("closingIssuesReferences")) {
+          return JSON.stringify({
+            data: {
+              repository: {
+                pullRequest: { closingIssuesReferences: { nodes: [] } },
+              },
+            },
+          })
+        }
+        if (command.includes("reviewThreads")) {
+          return JSON.stringify({
+            data: {
+              repository: {
+                pullRequest: {
+                  reviewThreads: {
+                    nodes: [
+                      {
+                        comments: {
+                          nodes: [
+                            {
+                              author: { login: "reviewer" },
+                              body: "This depends on #127",
+                              createdAt: "2026-01-01T00:00:00Z",
+                              databaseId: 2,
+                              line: 10,
+                              path: "src/app.ts",
+                            },
+                          ],
+                          totalCount: 1,
+                        },
+                        id: "thread-id",
+                        isResolved: false,
+                      },
+                    ],
+                    totalCount: 1,
+                  },
+                },
+              },
+            },
+          })
+        }
+        if (command.includes("files(first:")) {
+          return JSON.stringify({
+            data: {
+              repository: {
+                pullRequest: {
+                  author: { login: "author" },
+                  changedFiles: 1,
+                  files: {
+                    nodes: [{ path: "src/app.ts" }],
+                    pageInfo: { hasNextPage: false },
+                  },
+                  labels: { nodes: [] },
+                },
+              },
+            },
+          })
+        }
+        if (command.includes("pullRequest(number: $pr) { comments")) {
+          return JSON.stringify({
+            data: {
+              repository: {
+                pullRequest: {
+                  comments: {
+                    nodes: [
+                      {
+                        author: { login: "commenter" },
+                        body: "Also after #126",
+                        createdAt: "2026-01-01T00:00:00Z",
+                        databaseId: 1,
+                        url: "https://github.com/owner/repo/pull/52#issuecomment-1",
+                      },
+                    ],
+                    totalCount: 1,
+                  },
+                },
+              },
+            },
+          })
+        }
+        if (command.includes("issue(number: $issue) { comments")) {
+          throw new Error(`unexpected issue comment fetch: ${command}`)
+        }
+        if (command.includes("issue(number: $issue) { number title body")) {
+          throw Object.assign(new Error("Command failed"), {
+            stderr: "gh: Could not resolve to an Issue.",
+          })
+        }
+        if (command.startsWith("gh issue view ")) {
+          const number = Number(command.match(/gh issue view (\d+)/)?.[1])
+
+          if (!referencedPullRequests.has(number)) {
+            throw new Error(`unexpected issue view: ${command}`)
+          }
+
+          return JSON.stringify({
+            author: { login: "pr-author" },
+            body: "Pull request body",
+            labels: [],
+            number,
+            state: "MERGED",
+            title: `Pull request ${number}`,
+            url: `https://github.com/owner/repo/pull/${number}`,
+          })
+        }
+
+        throw new Error(`unexpected command: ${command}`)
+      },
+      pr: {
+        author: { login: "author" },
+        baseRefName: "main",
+        baseRefOid: "base",
+        body: "Related #125\nFixes #128",
+        headRefName: "feature",
+        headRefOid: "head",
+        isDraft: false,
+        number: 52,
+        state: "OPEN",
+        title: "After #124",
+        url: "https://github.com/owner/repo/pull/52",
+      },
+      repository,
+    })
+
+    expect(snapshot.closingIssues).toEqual([])
+    expect(snapshot.referencedIssues).toEqual([])
+    expect(
+      commands.filter((command) => command.startsWith("gh issue view ")),
+    ).toHaveLength(5)
+  })
+
   test("detects closing and referenced issue relationships", () => {
     const relationships = collectIssueRelationships({
       closingIssues: [
