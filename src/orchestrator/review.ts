@@ -405,7 +405,7 @@ function reviewFindingsFromBody(
   const findings: Finding[] = []
   const requirementFindings: RequirementFinding[] = []
   const lines = (body ?? "").split(/\r?\n/)
-  let section: "finding" | "requirement" | undefined
+  let section: "finding" | undefined
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]
@@ -415,7 +415,23 @@ function reviewFindingsFromBody(
       continue
     }
     if (line === "Requirement findings:") {
-      section = "requirement"
+      section = undefined
+      continue
+    }
+
+    const requirementMatch = /^- Missing issue #(\d+) requirement: (.+)$/.exec(
+      line ?? "",
+    )
+    const evidence = /^\s+Evidence: (.+)$/.exec(lines[index + 1] ?? "")
+    const requirementFix = /^\s+Fix: (.+)$/.exec(lines[index + 2] ?? "")
+    if (requirementMatch && evidence && requirementFix) {
+      requirementFindings.push({
+        evidence: evidence[1] ?? "See review body.",
+        fix: requirementFix[1] ?? "Please address this before merging.",
+        issueNumber: Number(requirementMatch[1]),
+        requirement: requirementMatch[2] ?? "Review requirement.",
+      })
+      index += 2
       continue
     }
 
@@ -432,21 +448,6 @@ function reviewFindingsFromBody(
       index += 1
       continue
     }
-
-    if (section !== "requirement") continue
-
-    const match = /^- Missing issue #(\d+) requirement: (.+)$/.exec(line ?? "")
-    const evidence = /^\s+Evidence: (.+)$/.exec(lines[index + 1] ?? "")
-    const fix = /^\s+Fix: (.+)$/.exec(lines[index + 2] ?? "")
-    if (!match || !evidence || !fix) continue
-
-    requirementFindings.push({
-      evidence: evidence[1] ?? "See review body.",
-      fix: fix[1] ?? "Please address this before merging.",
-      issueNumber: Number(match[1]),
-      requirement: match[2] ?? "Review requirement.",
-    })
-    index += 2
   }
 
   return { findings, requirementFindings }
