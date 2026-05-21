@@ -81,22 +81,36 @@ Triage artifacts are written to the issue run output directory:
 
 Important settings:
 
-| Setting                    | Purpose                                                                                               |
-| -------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `triage.account`           | GitHub account used for triage comments and mutations.                                                |
-| `triage.agents`            | Dedicated issue triage voting agents.                                                                 |
-| `triage.creator`           | Agent used for implementation PR creation when enabled.                                               |
-| `triage.categories`        | Category IDs and label/type rules that can skip Category Vote. Type rules require GitHub issue types. |
-| `triage.automation.close`  | Enables closing rejected or duplicate issues.                                                         |
-| `triage.automation.create` | Enables implementation PR creation for accepted issues.                                               |
-| `triage.automation.review` | Starts `/magi:review` after implementation PR creation. Requires `triage.automation.create`.          |
-| `triage.automation.merge`  | Starts `/magi:merge` after implementation PR creation. Requires `triage.automation.create`.           |
-| `triage.automation.clear`  | Labels removed for non-ASK results.                                                                   |
-| `triage.safety.*`          | Gates for initial triage and reconsideration.                                                         |
-| `triage.prompts.*`         | Triage prompt templates and PR creation guidelines.                                                   |
-| `triage.concurrency.runs`  | Maximum issues processed concurrently.                                                                |
-| `triage.output`            | Issue triage artifact directory.                                                                      |
-| `triage.worktree`          | Worktree directory for validation and PR creation.                                                    |
+| Setting                                | Purpose                                                                                               |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `triage.account`                       | GitHub account used for triage comments and mutations.                                                |
+| `triage.agents`                        | Dedicated issue triage voting agents.                                                                 |
+| `triage.creator`                       | Agent used for implementation PR creation when enabled.                                               |
+| `triage.categories`                    | Category IDs and label/type rules that can skip Category Vote. Type rules require GitHub issue types. |
+| `triage.automation.close`              | Enables closing rejected or duplicate issues.                                                         |
+| `triage.automation.create`             | Enables implementation PR creation for accepted issues.                                               |
+| `triage.automation.review`             | Starts `/magi:review` after implementation PR creation. Requires `triage.automation.create`.          |
+| `triage.automation.merge`              | Starts `/magi:merge` after implementation PR creation. Requires `triage.automation.create`.           |
+| `triage.automation.clear`              | Labels removed for non-ASK results.                                                                   |
+| `triage.safety.requiredLabels`         | Labels required before initial triage runs.                                                           |
+| `triage.safety.blockedLabels`          | Labels that prevent triage from running.                                                              |
+| `triage.safety.allowAuthors`           | Allowed issue authors when configured.                                                                |
+| `triage.safety.allowMentionActors`     | GitHub logins allowed to trigger reconsideration.                                                     |
+| `triage.safety.allowMentionRoles`      | GitHub author associations allowed to trigger reconsideration.                                        |
+| `triage.prompts.existingPr`            | Related-PR voting prompt template.                                                                    |
+| `triage.prompts.duplicate`             | Duplicate issue voting prompt template.                                                               |
+| `triage.prompts.category`              | Category voting prompt template.                                                                      |
+| `triage.prompts.acceptance`            | Acceptance voting prompt template.                                                                    |
+| `triage.prompts.action`                | Final action planning prompt template.                                                                |
+| `triage.prompts.question`              | Clarification question prompt template.                                                               |
+| `triage.prompts.comment`               | Triage result comment prompt template.                                                                |
+| `triage.prompts.commentClassification` | Mention reply classification prompt template.                                                         |
+| `triage.prompts.reconsider`            | Reconsideration prompt template.                                                                      |
+| `triage.prompts.create`                | Implementation PR creation prompt template.                                                           |
+| `triage.prompts.createGuidelines`      | Shared PR creation guidance file.                                                                     |
+| `triage.concurrency.runs`              | Maximum issues processed concurrently.                                                                |
+| `triage.output`                        | Issue triage artifact directory.                                                                      |
+| `triage.worktree`                      | Worktree directory for validation and PR creation.                                                    |
 
 See [Config](/docs/config.md) for the complete reference.
 
