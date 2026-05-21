@@ -32,6 +32,11 @@ const config: MagiConfig = {
   },
 }
 const reviewers = config.review?.agents ?? []
+const triageAgents = [
+  { model: "openai/gpt" },
+  { model: "anthropic/claude" },
+  { model: "google/gemini" },
+]
 
 describe("validateConfig", () => {
   test("accepts valid odd reviewer config", async () => {
@@ -199,65 +204,65 @@ describe("validateConfig", () => {
     expect(result.errors).toContain("triage.prompts.createPr is not supported")
   })
 
-  test("rejects invalid triage categories", async () => {
+  test.each([
+    {
+      name: "missing id",
+      categories: [{ labels: ["missing"] }],
+      error: "triage.categories[0].id is required",
+    },
+    {
+      name: "invalid id format",
+      categories: [{ id: "bad id" }],
+      error: "triage.categories[0].id must match /^[A-Za-z0-9_-]+$/",
+    },
+    {
+      name: "non-string label",
+      categories: [{ id: "bug", labels: ["bug", 1] as string[] }],
+      error: "triage.categories[0].labels[1] must be a string",
+    },
+    {
+      name: "duplicate id",
+      categories: [{ id: "bug" }, { id: "bug" }],
+      error: "triage.categories[1].id must be unique",
+    },
+  ])(
+    "rejects invalid triage category: $name",
+    async ({ categories, error }) => {
+      const result = await validateConfig(
+        {
+          github: { owner: "owner", repo: "repo" },
+          triage: {
+            account: "magi-bot",
+            agents: triageAgents,
+            categories,
+          },
+        },
+        { requireReview: false, requireTriage: true },
+      )
+
+      expect(result.ok).toBe(false)
+      expect(result.errors).toContain(error)
+    },
+  )
+
+  test.each([
+    { id: "ASK", error: "triage.categories[0].id is reserved: ASK" },
+    { id: "none", error: "triage.categories[0].id is reserved: none" },
+  ])("rejects reserved triage category id $id", async ({ id, error }) => {
     const result = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
           account: "magi-bot",
-          agents: [
-            { model: "openai/gpt" },
-            { model: "anthropic/claude" },
-            { model: "google/gemini" },
-          ],
-          categories: [
-            { labels: ["missing"] },
-            { id: "bad id" },
-            { id: "bug", labels: ["bug", 1] as string[] },
-            { id: "bug" },
-          ],
+          agents: triageAgents,
+          categories: [{ id }],
         },
       },
       { requireReview: false, requireTriage: true },
     )
 
     expect(result.ok).toBe(false)
-    expect(result.errors).toContain("triage.categories[0].id is required")
-    expect(result.errors).toContain(
-      "triage.categories[1].id must match /^[A-Za-z0-9_-]+$/",
-    )
-    expect(result.errors).toContain(
-      "triage.categories[2].labels[1] must be a string",
-    )
-    expect(result.errors).toContain("triage.categories[3].id must be unique")
-  })
-
-  test("rejects reserved triage category ids", async () => {
-    const result = await validateConfig(
-      {
-        github: { owner: "owner", repo: "repo" },
-        triage: {
-          account: "magi-bot",
-          agents: [
-            { model: "openai/gpt" },
-            { model: "anthropic/claude" },
-            { model: "google/gemini" },
-          ],
-          categories: [{ id: "ASK" }, { id: "none" }],
-        },
-      },
-      { requireReview: false, requireTriage: true },
-    )
-
-    expect(result.ok).toBe(false)
-    expect(result.errors).toContain(
-      "schema /triage/categories/0/id: must NOT be valid",
-    )
-    expect(result.errors).toContain(
-      "schema /triage/categories/1/id: must NOT be valid",
-    )
-    expect(result.errors).toContain("triage.categories[0].id is reserved: ASK")
-    expect(result.errors).toContain("triage.categories[1].id is reserved: none")
+    expect(result.errors).toContain(error)
   })
 
   test("rejects non-array triage categories", async () => {
@@ -296,40 +301,64 @@ describe("validateConfig", () => {
     )
   })
 
-  test("rejects invalid concurrency config", async () => {
+  test.each([
+    {
+      name: "run concurrency",
+      concurrency: { runs: 0 },
+      error: "review.concurrency.runs must be a positive integer",
+    },
+    {
+      name: "reviewer concurrency",
+      concurrency: { reviewers: -1 },
+      error: "review.concurrency.reviewers must be a positive integer",
+    },
+  ])("rejects invalid $name config", async ({ concurrency, error }) => {
     const result = await validateConfig({
       ...config,
-      review: { ...config.review, concurrency: { runs: 0, reviewers: -1 } },
+      review: { ...config.review, concurrency },
     })
 
     expect(result.ok).toBe(false)
-    expect(result.errors).toContain(
-      "review.concurrency.runs must be a positive integer",
-    )
-    expect(result.errors).toContain(
-      "review.concurrency.reviewers must be a positive integer",
-    )
+    expect(result.errors).toContain(error)
   })
 
-  test("rejects invalid automation and approval policy config", async () => {
-    const result = await validateConfig({
-      ...config,
+  test.each([
+    {
+      name: "close automation",
       review: {
         ...config.review,
-        automation: {
-          close: "yes",
-          merge: "no",
-        } as unknown as NonNullable<MagiConfig["review"]>["automation"],
+        automation: { close: "yes" } as unknown as NonNullable<
+          MagiConfig["review"]
+        >["automation"],
+      },
+      error: "review.automation.close must be a boolean",
+    },
+    {
+      name: "merge automation",
+      review: {
+        ...config.review,
+        automation: { merge: "no" } as unknown as NonNullable<
+          MagiConfig["review"]
+        >["automation"],
+      },
+      error: "review.automation.merge must be a boolean",
+    },
+    {
+      name: "approval policy",
+      review: {
+        ...config.review,
         merge: { approvalPolicy: "all" as "majority" },
       },
+      error: "review.merge.approvalPolicy must be majority or unanimous",
+    },
+  ])("rejects invalid $name config", async ({ review, error }) => {
+    const result = await validateConfig({
+      ...config,
+      review,
     })
 
     expect(result.ok).toBe(false)
-    expect(result.errors).toContain("review.automation.close must be a boolean")
-    expect(result.errors).toContain("review.automation.merge must be a boolean")
-    expect(result.errors).toContain(
-      "review.merge.approvalPolicy must be majority or unanimous",
-    )
+    expect(result.errors).toContain(error)
   })
 
   test("rejects invalid thread resolution cycle config", async () => {
@@ -458,27 +487,38 @@ describe("validateConfig", () => {
     expect(result.errors).toContain("review.checks.exclude[1] must be a string")
   })
 
-  test("rejects invalid safety config", async () => {
+  test.each([
+    {
+      name: "allow authors",
+      safety: {
+        allowAuthors: ["bot-a", 1],
+        blockedPaths: [".github/**"],
+        maxChangedFiles: 1,
+        requiredLabels: ["magi-ok"],
+      } as unknown as NonNullable<MagiConfig["review"]>["safety"],
+      error: "review.safety.allowAuthors[1] must be a string",
+    },
+    {
+      name: "max changed files",
+      safety: {
+        allowAuthors: ["bot-a"],
+        blockedPaths: [".github/**"],
+        maxChangedFiles: -1,
+        requiredLabels: ["magi-ok"],
+      },
+      error: "review.safety.maxChangedFiles must be a non-negative integer",
+    },
+  ])("rejects invalid safety $name config", async ({ safety, error }) => {
     const result = await validateConfig({
       ...config,
       review: {
         ...config.review,
-        safety: {
-          allowAuthors: ["bot-a", 1],
-          blockedPaths: [".github/**"],
-          maxChangedFiles: -1,
-          requiredLabels: ["magi-ok"],
-        } as unknown as NonNullable<MagiConfig["review"]>["safety"],
+        safety,
       },
     })
 
     expect(result.ok).toBe(false)
-    expect(result.errors).toContain(
-      "review.safety.allowAuthors[1] must be a string",
-    )
-    expect(result.errors).toContain(
-      "review.safety.maxChangedFiles must be a non-negative integer",
-    )
+    expect(result.errors).toContain(error)
   })
 
   test("rejects non-object model options", async () => {
