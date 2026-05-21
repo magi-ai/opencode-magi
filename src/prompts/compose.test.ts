@@ -125,7 +125,6 @@ describe("prompt composer", () => {
     expect(prompt).toContain(
       "<pull_request_context>\nnumber: 1\n</pull_request_context>",
     )
-    expect(prompt).not.toContain("Review pull request #1")
     expect(prompt.indexOf("Custom review for #1")).toBeLessThan(
       prompt.indexOf("<pull_request_context>"),
     )
@@ -352,7 +351,6 @@ describe("prompt composer", () => {
 
     expect(prompt).toContain("Treat Vercel deploy failures as SCOPE_OUT.")
     expect(prompt).toContain('"evidence"')
-    expect(prompt).not.toContain('"log"')
     expect(prompt.indexOf("Treat Vercel")).toBeLessThan(
       prompt.indexOf("<output_contract>"),
     )

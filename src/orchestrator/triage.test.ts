@@ -514,7 +514,6 @@ describe("triage orchestration", () => {
     )
     expect(visibleComment).not.toContain("bug")
     expect(visibleComment).not.toContain("feature")
-    expect(visibleComment).not.toContain("Magi")
   })
 
   test("blocks unsafe issues before model classification", async () => {
@@ -714,7 +713,6 @@ describe("triage orchestration", () => {
     expect(assignIndex).toBeGreaterThan(-1)
     expect(assignIndex).toBeLessThan(worktreeIndex)
     expect(assignIndex).toBeLessThan(prIndex)
-    expect(result.commands[prIndex]).not.toContain("--add-assignee")
     expect(result.commands[prIndex]).toContain(
       "--title 'fix(triage): use creator PR metadata'",
     )

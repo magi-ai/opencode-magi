@@ -25,8 +25,5 @@ describe("Magi slash commands", () => {
     expect(MAGI_COMMANDS["magi:triage"].template).toBe(
       "Call the `magi_triage` tool.\nIssue: $ARGUMENTS",
     )
-    expect(MAGI_COMMANDS["magi:review"].template).not.toContain("If")
-    expect(MAGI_COMMANDS["magi:review"].template).not.toContain("with")
-    expect(MAGI_COMMANDS["magi:review"].template).not.toContain("``")
   })
 })

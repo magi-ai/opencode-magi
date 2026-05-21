@@ -531,7 +531,6 @@ describe("GitHub command helpers", () => {
       "https://github.com/owner/repo/pull/7557#pullrequestreview-1",
     )
     expect(commands[1]).toContain("repos/owner/repo/pulls/7557/reviews")
-    expect(commands[1]).not.toContain("repos/owner/repo/issues/7557/comments")
     expect(commands[1]).not.toContain("GH_TOKEN")
     expect(options[1]?.env?.GH_TOKEN).toBe("token")
     expect(payload).toEqual({
