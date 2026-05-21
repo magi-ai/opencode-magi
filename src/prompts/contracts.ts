@@ -31,9 +31,10 @@ Rules:
 - CHANGES_REQUESTED requires at least one finding or requirementFinding.
 - CLOSE requires a reason and empty findings and requirementFindings arrays.
 - path must be repository-relative.
-- line and startLine must refer to lines inside the PR diff hunk.
-- Omit startLine for single-line findings.
-- Use requirementFindings for missing closing-issue requirements that do not map cleanly to a diff line.
+- line is optional. Include line only when the finding targets a valid line inside the PR diff hunk.
+- startLine is allowed only when line is present and must also refer to a line inside the PR diff hunk.
+- Omit startLine for single-line findings and omit line for file-level or body-only findings.
+- Use requirementFindings only for missing closing-issue requirements; use findings for ordinary file-level issues that do not map cleanly to a diff line.
 </output_contract>`.trim()
 
 export const rereviewOutputContract = `
@@ -54,9 +55,10 @@ Rules:
 - MERGE requires empty followUps, newFindings, and requirementFindings arrays.
 - CHANGES_REQUESTED requires at least one followUp, newFinding, or requirementFinding.
 - CLOSE requires a reason and empty followUps, newFindings, and requirementFindings arrays.
-- line and startLine must refer to lines inside the latest PR diff hunk.
-- Omit startLine for single-line findings.
-- Use requirementFindings for missing closing-issue requirements that do not map cleanly to a diff line.
+- line is optional. Include line only when the newFinding targets a valid line inside the latest PR diff hunk.
+- startLine is allowed only when line is present and must also refer to a line inside the latest PR diff hunk.
+- Omit startLine for single-line findings and omit line for file-level or body-only findings.
+- Use requirementFindings only for missing closing-issue requirements; use newFindings for ordinary file-level issues that do not map cleanly to a diff line.
 </output_contract>`.trim()
 
 export const findingValidationOutputContract = `
@@ -105,7 +107,9 @@ Rules:
 - MERGE requires empty findings and requirementFindings arrays.
 - CHANGES_REQUESTED requires at least one finding or requirementFinding.
 - CLOSE is not allowed in this reconsideration step.
-- Omit startLine for single-line findings.
+- line is optional. Include line only when the finding targets a valid line inside the PR diff hunk.
+- startLine is allowed only when line is present.
+- Omit startLine for single-line findings and omit line for file-level or body-only findings.
 </output_contract>`.trim()
 
 export const rereviewCloseReconsiderationOutputContract = `
@@ -125,7 +129,9 @@ Rules:
 - MERGE requires empty followUps, newFindings, and requirementFindings arrays.
 - CHANGES_REQUESTED requires at least one followUp, newFinding, or requirementFinding.
 - CLOSE is not allowed in this reconsideration step.
-- Omit startLine for single-line findings.
+- line is optional. Include line only when the newFinding targets a valid line inside the latest PR diff hunk.
+- startLine is allowed only when line is present.
+- Omit startLine for single-line findings and omit line for file-level or body-only findings.
 </output_contract>`.trim()
 
 export const editOutputContract = `

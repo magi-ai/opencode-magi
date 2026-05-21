@@ -60,9 +60,11 @@ function pullRequestLine(input: ReviewReportInput): string {
 
 function formatFinding(finding: Finding): string {
   const line =
-    finding.startLine == null
-      ? `${finding.path}:${finding.line}`
-      : `${finding.path}:${finding.startLine}-${finding.line}`
+    finding.line == null
+      ? finding.path
+      : finding.startLine == null
+        ? `${finding.path}:${finding.line}`
+        : `${finding.path}:${finding.startLine}-${finding.line}`
 
   return `\`${line}\`: ${finding.issue}`
 }
@@ -71,9 +73,11 @@ function formatRereviewFinding(
   finding: RereviewOutput["newFindings"][number],
 ): string {
   const line =
-    finding.startLine == null
-      ? `${finding.path}:${finding.line}`
-      : `${finding.path}:${finding.startLine}-${finding.line}`
+    finding.line == null
+      ? finding.path
+      : finding.startLine == null
+        ? `${finding.path}:${finding.line}`
+        : `${finding.path}:${finding.startLine}-${finding.line}`
 
   return `\`${line}\`: ${finding.body}`
 }

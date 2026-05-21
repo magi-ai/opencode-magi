@@ -38,6 +38,28 @@ describe("inline comment targets", () => {
     ).not.toThrow()
   })
 
+  test("skips file-level findings without line targets", () => {
+    const targets = parseRightSideDiffTargets(diff)
+
+    expect(() =>
+      validateInlineCommentTargets(
+        [{ path: "src/app.ts" }, { line: 10, path: "src/app.ts" }],
+        targets,
+      ),
+    ).not.toThrow()
+  })
+
+  test("rejects startLine without a line target", () => {
+    const targets = parseRightSideDiffTargets(diff)
+
+    expect(() =>
+      validateInlineCommentTargets(
+        [{ path: "src/app.ts", startLine: 10 }],
+        targets,
+      ),
+    ).toThrow("findings[0].startLine requires line")
+  })
+
   for (const { context, expected, targets: comments, title } of [
     {
       expected: "path is not in the PR diff",

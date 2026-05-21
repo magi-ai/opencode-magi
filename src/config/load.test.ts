@@ -51,17 +51,8 @@ describe("mergeMagiConfig", () => {
     expect(repo.merge.approvalPolicy).toBe("unanimous")
     expect(repo.merge.mergeQueue).toBe(true)
     expect(repo.automation.merge).toBe(false)
-    expect(repo.prompts).toEqual({
-      ciClassification: undefined,
-      ciClassificationAfterEdit: undefined,
-      closeReconsideration: undefined,
-      edit: "project-edit.md",
-      editGuidelines: undefined,
-      findingValidation: undefined,
-      rereview: undefined,
-      review: "project-review.md",
-      reviewGuidelines: undefined,
-    })
+    expect(repo.prompts.edit).toBe("project-edit.md")
+    expect(repo.prompts.review).toBe("project-review.md")
   })
 
   test("project reviewer array replaces global reviewer array", () => {

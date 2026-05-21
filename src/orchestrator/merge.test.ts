@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import type { ReviewThread } from "../github/commands"
 import {
+  blockingReviewFindings,
   editableReviewThreads,
   exhaustedReviewThreads,
   hasBlockingCiReports,
@@ -144,6 +145,47 @@ describe("merge", () => {
       label: "GitHub thread",
       url: "https://github.example.com/owner/repo/pull/7557#discussion_r123",
     })
+  })
+
+  test("extracts body-only and requirement findings for the editor", () => {
+    expect(
+      blockingReviewFindings({
+        alpha: {
+          findings: [
+            {
+              fix: "Pass findings to the editor.",
+              issue: "Body-only findings are lost.",
+              path: "src/orchestrator/merge.ts",
+            },
+          ],
+          requirementFindings: [
+            {
+              evidence: "Missing runtime behavior.",
+              fix: "Implement the runtime path.",
+              issueNumber: 121,
+              requirement: "Preserve body-only findings.",
+            },
+          ],
+          verdict: "CHANGES_REQUESTED",
+        },
+      }),
+    ).toEqual([
+      {
+        fix: "Pass findings to the editor.",
+        issue: "Body-only findings are lost.",
+        path: "src/orchestrator/merge.ts",
+        reviewer: "alpha",
+        type: "file",
+      },
+      {
+        evidence: "Missing runtime behavior.",
+        fix: "Implement the runtime path.",
+        issueNumber: 121,
+        requirement: "Preserve body-only findings.",
+        reviewer: "alpha",
+        type: "requirement",
+      },
+    ])
   })
 
   test("treats scope-in CI failures as merge blocking", () => {
