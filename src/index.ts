@@ -688,6 +688,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
           prs: tool.schema.string(),
           dryRun: tool.schema.boolean().optional(),
           sync: tool.schema.boolean().optional(),
+          timeoutSeconds: tool.schema.number().optional(),
         },
         async execute(args, context) {
           const parsed = parseRunArguments(
@@ -728,6 +729,10 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
                 parentSessionId: context.sessionID,
                 signal: context.abort,
                 sync,
+                timeoutMs:
+                  args.timeoutSeconds == null
+                    ? undefined
+                    : args.timeoutSeconds * 1_000,
               }),
             { signal: context.abort },
           )
@@ -750,6 +755,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
           prs: tool.schema.string(),
           dryRun: tool.schema.boolean().optional(),
           sync: tool.schema.boolean().optional(),
+          timeoutSeconds: tool.schema.number().optional(),
         },
         async execute(args, context) {
           const parsed = parseRunArguments(args.prs, args.dryRun ?? false)
@@ -785,6 +791,10 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
                 parentSessionId: context.sessionID,
                 signal: context.abort,
                 sync,
+                timeoutMs:
+                  args.timeoutSeconds == null
+                    ? undefined
+                    : args.timeoutSeconds * 1_000,
               }),
             { signal: context.abort },
           )
@@ -805,6 +815,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
           issues: tool.schema.string(),
           dryRun: tool.schema.boolean().optional(),
           sync: tool.schema.boolean().optional(),
+          timeoutSeconds: tool.schema.number().optional(),
         },
         async execute(args, context) {
           const parsed = parseIssueRunArguments(
@@ -854,6 +865,10 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
                 repository,
                 signal: context.abort,
                 sync,
+                timeoutMs:
+                  args.timeoutSeconds == null
+                    ? undefined
+                    : args.timeoutSeconds * 1_000,
               }),
             { signal: context.abort },
           )

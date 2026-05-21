@@ -151,7 +151,6 @@ const DEFAULT_CLEAR_OPTIONS: MagiClearOptions = {
   session: true,
   worktree: true,
 }
-const SYNC_RUN_TIMEOUT_MS = 600_000
 
 function createRunId(): string {
   return `run-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`
@@ -714,6 +713,7 @@ export class MagiRunManager {
     repository: ResolvedRepository
     signal?: AbortSignal
     sync?: boolean
+    timeoutMs?: number
   }): Promise<MagiRunState> {
     const runId = createRunId()
     const outputDir = prRunOutputDir({
@@ -768,7 +768,8 @@ export class MagiRunManager {
         runId,
         signal: controller.signal,
       })
-    if (input.sync) return this.executeSync(state, controller, execute)
+    if (input.sync)
+      return this.executeSync(state, controller, execute, input.timeoutMs)
 
     void execute().catch(async (error) => {
       await this.failRun(runId, error)
@@ -785,6 +786,7 @@ export class MagiRunManager {
     repository: ResolvedRepository
     signal?: AbortSignal
     sync?: boolean
+    timeoutMs?: number
   }): Promise<MagiRunState> {
     const runId = createRunId()
     const outputDir = prRunOutputDir({
@@ -845,7 +847,8 @@ export class MagiRunManager {
         runId,
         signal: controller.signal,
       })
-    if (input.sync) return this.executeSync(state, controller, execute)
+    if (input.sync)
+      return this.executeSync(state, controller, execute, input.timeoutMs)
 
     void execute().catch(async (error) => {
       await this.failRun(runId, error)
@@ -862,6 +865,7 @@ export class MagiRunManager {
     repository: ResolvedRepository
     signal?: AbortSignal
     sync?: boolean
+    timeoutMs?: number
   }): Promise<MagiRunState> {
     const runId = createRunId()
     const outputDir = issueRunOutputDir({
@@ -924,7 +928,8 @@ export class MagiRunManager {
         runId,
         signal: controller.signal,
       })
-    if (input.sync) return this.executeSync(state, controller, execute)
+    if (input.sync)
+      return this.executeSync(state, controller, execute, input.timeoutMs)
 
     void execute().catch(async (error) => {
       await this.failRun(runId, error)
@@ -943,7 +948,7 @@ export class MagiRunManager {
       timeoutMs?: number
     } = {},
   ): Promise<MagiRunState[]> {
-    const timeoutMs = Math.min(input.timeoutMs ?? 60_000, 600_000)
+    const timeoutMs = input.timeoutMs
     const startedAt = Date.now()
 
     while (input.block) {
@@ -954,7 +959,8 @@ export class MagiRunManager {
         states.every((state) => !isActiveStatus(state.status))
       )
         return states
-      if (Date.now() - startedAt >= timeoutMs) return states
+      if (timeoutMs != null && Date.now() - startedAt >= timeoutMs)
+        return states
       await new Promise((resolve) => setTimeout(resolve, 1_000))
     }
 
@@ -1808,22 +1814,29 @@ export class MagiRunManager {
     state: MagiRunState,
     controller: AbortController,
     execute: () => Promise<void>,
+    timeoutMs?: number,
   ): Promise<MagiRunState> {
     let timeout: ReturnType<typeof setTimeout> | undefined
-    const timeoutPromise = new Promise<"timeout">((resolve) => {
-      timeout = setTimeout(() => resolve("timeout"), SYNC_RUN_TIMEOUT_MS)
-    })
+    const timeoutPromise =
+      timeoutMs == null
+        ? undefined
+        : new Promise<"timeout">((resolve) => {
+            timeout = setTimeout(() => resolve("timeout"), timeoutMs)
+          })
 
     try {
-      const result = await Promise.race([
-        execute().then(() => "completed" as const),
-        timeoutPromise,
-      ])
+      const result = await (timeoutPromise
+        ? Promise.race([
+            execute().then(() => "completed" as const),
+            timeoutPromise,
+          ])
+        : execute().then(() => "completed" as const))
       if (result === "timeout") {
+        const timeoutSeconds = (timeoutMs ?? 0) / 1_000
         controller.abort()
         await this.failRun(
           state.runId,
-          new Error("Magi sync run timed out after 600 seconds."),
+          new Error(`Magi sync run timed out after ${timeoutSeconds} seconds.`),
         )
       }
     } catch (error) {
@@ -1982,6 +1995,7 @@ export class MagiRunManager {
     runId: string
     signal?: AbortSignal
     sync?: boolean
+    timeoutMs?: number
   }): Promise<void> {
     const state = this.active.get(input.runId)
     if (state) {
@@ -2047,6 +2061,7 @@ export class MagiRunManager {
         repository: input.repository,
         signal: input.signal,
         sync: input.sync,
+        timeoutMs: input.timeoutMs,
       })
       if (input.sync) this.assertSuccessfulSyncFollowUp(followUp)
     } else if (followUpPr != null && triageAutomation?.review) {
@@ -2058,6 +2073,7 @@ export class MagiRunManager {
         repository: input.repository,
         signal: input.signal,
         sync: input.sync,
+        timeoutMs: input.timeoutMs,
       })
       if (input.sync) this.assertSuccessfulSyncFollowUp(followUp)
     }
