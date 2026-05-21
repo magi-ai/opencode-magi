@@ -1,8 +1,10 @@
 import type {
   Exec,
+  Finding,
   FindingValidationOutput,
   MagiConfig,
   ModelOptions,
+  RequirementFinding,
   ResolvedRepository,
   RereviewOutput,
   ReviewOutput,
@@ -379,8 +381,82 @@ function parseRereviewOutputWithInlineTargets(
   return output
 }
 
-function reviewOutputFromState(review: PullRequestReview): ReviewOutput {
+function parsePostedFindingLocation(
+  location: string,
+): Pick<Finding, "line" | "path" | "startLine"> {
+  const range = /^(.*):(\d+)-(\d+)$/.exec(location)
+  if (range) {
+    return {
+      line: Number(range[3]),
+      path: range[1] ?? location,
+      startLine: Number(range[2]),
+    }
+  }
+
+  const line = /^(.*):(\d+)$/.exec(location)
+  if (line) return { line: Number(line[2]), path: line[1] ?? location }
+
+  return { path: location }
+}
+
+function reviewFindingsFromBody(
+  body: string | undefined,
+): Pick<ReviewOutput, "findings" | "requirementFindings"> {
+  const findings: Finding[] = []
+  const requirementFindings: RequirementFinding[] = []
+  const lines = (body ?? "").split(/\r?\n/)
+  let section: "finding" | "requirement" | undefined
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+
+    if (line === "Inline findings:" || line === "File-level findings:") {
+      section = "finding"
+      continue
+    }
+    if (line === "Requirement findings:") {
+      section = "requirement"
+      continue
+    }
+
+    if (section === "finding") {
+      const match = /^- (.*): (.+)$/.exec(line ?? "")
+      const fix = /^\s+Fix: (.+)$/.exec(lines[index + 1] ?? "")
+      if (!match || !fix) continue
+
+      findings.push({
+        ...parsePostedFindingLocation(match[1] ?? ""),
+        fix: fix[1] ?? "Please address this before merging.",
+        issue: match[2] ?? "Review finding.",
+      })
+      index += 1
+      continue
+    }
+
+    if (section !== "requirement") continue
+
+    const match = /^- Missing issue #(\d+) requirement: (.+)$/.exec(line ?? "")
+    const evidence = /^\s+Evidence: (.+)$/.exec(lines[index + 1] ?? "")
+    const fix = /^\s+Fix: (.+)$/.exec(lines[index + 2] ?? "")
+    if (!match || !evidence || !fix) continue
+
+    requirementFindings.push({
+      evidence: evidence[1] ?? "See review body.",
+      fix: fix[1] ?? "Please address this before merging.",
+      issueNumber: Number(match[1]),
+      requirement: match[2] ?? "Review requirement.",
+    })
+    index += 2
+  }
+
+  return { findings, requirementFindings }
+}
+
+export function reviewOutputFromState(review: PullRequestReview): ReviewOutput {
   const verdict = reviewStateToVerdict(review.state)
+
+  if (verdict === "CHANGES_REQUESTED")
+    return { ...reviewFindingsFromBody(review.body), verdict }
 
   return verdict === "CLOSE"
     ? {
@@ -1308,7 +1384,17 @@ export async function runReview(
       sessionIds,
       worktreePath,
     })
-    const outputs = validation.outputs
+    const activeOutputs = validation.outputs
+    const skippedOutputs = Object.fromEntries(
+      input.repository.agents.reviewers.flatMap((reviewer) => {
+        const assignment = mode.assignments.get(reviewer.account)
+
+        return assignment?.type === "skip"
+          ? [[reviewer.key, reviewOutputFromState(assignment.review)]]
+          : []
+      }),
+    )
+    const outputs = { ...skippedOutputs, ...activeOutputs }
     const remainingSkippedVerdicts = input.repository.agents.reviewers.flatMap(
       (reviewer) => {
         const assignment = mode.assignments.get(reviewer.account)
@@ -1324,7 +1410,7 @@ export async function runReview(
         ]
       },
     )
-    const activeVerdicts = Object.entries(outputs).map(
+    const activeVerdicts = Object.entries(activeOutputs).map(
       ([reviewer, output]) => ({
         reviewer,
         verdict: output.verdict,
@@ -1347,7 +1433,7 @@ export async function runReview(
       ),
       ...Object.fromEntries(
         await Promise.all(
-          Object.entries(outputs).map(async ([key, output]) => [
+          Object.entries(activeOutputs).map(async ([key, output]) => [
             key,
             input.dryRun
               ? dryRunReviewPost(key, output)
