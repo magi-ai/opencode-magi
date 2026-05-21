@@ -3,6 +3,7 @@ import { mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "vitest"
+import { resolveRepository } from "./resolve"
 import { validateConfig } from "./validate"
 
 const config: MagiConfig = {
@@ -39,6 +40,156 @@ describe("validateConfig", () => {
 
     expect(result.ok).toBe(true)
     expect(result.errors).toEqual([])
+  })
+
+  test("expands agent refs before validation and resolution", async () => {
+    const refConfig = {
+      agents: {
+        refs: {
+          shared: {
+            model: "openai/gpt",
+            options: { reasoningEffort: "high" },
+            persona: "Shared persona",
+          },
+          editor: {
+            model: "openai/gpt",
+            account: "editor-bot",
+            author: { email: "editor@example.com", name: "Editor Bot" },
+          },
+        },
+      },
+      github: { owner: "owner", repo: "repo" },
+      review: {
+        agents: [
+          { ref: "shared", id: "alpha", account: "bot-a" },
+          {
+            ref: "shared",
+            id: "beta",
+            account: "bot-b",
+            options: { reasoningEffort: "low" },
+          },
+          { ref: "shared", id: "gamma", account: "bot-c" },
+        ],
+      },
+      merge: {
+        editor: { ref: "editor", persona: "Edit carefully" },
+      },
+      triage: {
+        account: "triage-bot",
+        agents: [
+          { ref: "shared", id: "first" },
+          { ref: "shared", id: "second" },
+          { ref: "shared", id: "third" },
+        ],
+        creator: { ref: "editor", account: "creator-bot" },
+      },
+    } as unknown as MagiConfig
+
+    const result = await validateConfig(refConfig, {
+      requireTriage: true,
+    })
+    const repository = resolveRepository(refConfig)
+
+    expect(result).toMatchObject({ errors: [], ok: true })
+    expect(refConfig.agents?.refs).toBeUndefined()
+    expect(refConfig.review?.agents?.[0]).toEqual({
+      account: "bot-a",
+      id: "alpha",
+      model: "openai/gpt",
+      options: { reasoningEffort: "high" },
+      persona: "Shared persona",
+    })
+    expect(refConfig.review?.agents?.[1].options).toEqual({
+      reasoningEffort: "low",
+    })
+    expect(refConfig.review?.agents?.[0]).not.toHaveProperty("ref")
+    expect(repository.agents.reviewers[0]).toMatchObject({
+      account: "bot-a",
+      key: "alpha",
+      model: "openai/gpt",
+    })
+    expect(repository.agents.editor).toMatchObject({
+      account: "editor-bot",
+      model: "openai/gpt",
+      persona: "Edit carefully",
+    })
+    expect(repository.agents.triageCreator).toMatchObject({
+      account: "creator-bot",
+      model: "openai/gpt",
+    })
+  })
+
+  test("reports clear errors for invalid agent ref uses", async () => {
+    const refConfig = {
+      agents: { refs: { shared: { model: "openai/gpt" } } },
+      github: { owner: "owner", repo: "repo" },
+      review: {
+        agents: [
+          { ref: "missing", account: "bot-a" },
+          { ref: 1, account: "bot-b" },
+          { ref: "shared", account: "bot-c" },
+        ],
+      },
+    } as unknown as MagiConfig
+
+    const result = await validateConfig(refConfig)
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain(
+      "review.agents[0].ref references unknown agents.refs preset: missing",
+    )
+    expect(result.errors).toContain("review.agents[1].ref must be a string")
+    expect(refConfig.agents?.refs).toBeUndefined()
+    expect(refConfig.review?.agents?.[0]).not.toHaveProperty("ref")
+  })
+
+  test("does not validate unused agent refs", async () => {
+    const refConfig = {
+      agents: {
+        refs: {
+          unused: { author: "invalid", unknown: true },
+        },
+      },
+      github: { owner: "owner", repo: "repo" },
+      review: {
+        agents: [
+          { model: "openai/gpt", account: "bot-a" },
+          { model: "openai/gpt", account: "bot-b" },
+          { model: "openai/gpt", account: "bot-c" },
+        ],
+      },
+    } as unknown as MagiConfig
+
+    const result = await validateConfig(refConfig)
+
+    expect(result).toMatchObject({ errors: [], ok: true })
+    expect(refConfig.agents?.refs).toBeUndefined()
+  })
+
+  test("applies role-specific validation after agent ref expansion", async () => {
+    const refConfig = {
+      agents: {
+        refs: {
+          creator: {
+            model: "openai/gpt",
+            author: { email: "creator@example.com", name: "Creator Bot" },
+          },
+        },
+      },
+      github: { owner: "owner", repo: "repo" },
+      review: {
+        agents: [
+          { ref: "creator", account: "bot-a" },
+          { model: "openai/gpt", account: "bot-b" },
+          { model: "openai/gpt", account: "bot-c" },
+        ],
+      },
+    } as unknown as MagiConfig
+
+    const result = await validateConfig(refConfig)
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain("review.agents[0].author is not supported")
   })
 
   test("allows missing editor unless merge validation requires it", async () => {
