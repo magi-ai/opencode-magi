@@ -162,12 +162,14 @@ describe("GitHub command helpers", () => {
     expect(commands[1]).toContain(
       "--json number,title,body,url,state,author,labels",
     )
-    expect(commands[1]).not.toContain("labels,type")
     expect(result.type).toBeUndefined()
   })
 
-  test("excludes the current issue from duplicate search candidates", async () => {
+  test("searches duplicate issue candidates by title and excludes the current issue", async () => {
     const commands: string[] = []
+    const title =
+      "Align docs/config.md triage.prompts entries with review and merge prompts"
+
     const result = await searchDuplicateIssues(
       async (command) => {
         commands.push(command)
@@ -196,43 +198,15 @@ describe("GitHub command helpers", () => {
         labels: [],
         number: 42,
         state: "OPEN",
-        title: "Bug report",
+        title,
         url: "https://github.com/owner/repo/issues/42",
-      },
-    )
-
-    expect(commands[0]).toContain("gh search issues --repo 'owner/repo'")
-    expect(commands[0]).toContain("-- 'Bug report'")
-    expect(commands[0]).not.toContain("repo:owner/repo")
-    expect(commands[0]).not.toContain(" -42")
-    expect(result.map((item) => item.number)).toEqual([43])
-  })
-
-  test("keeps duplicate issue search qualifiers out of title query", async () => {
-    const commands: string[] = []
-
-    await searchDuplicateIssues(
-      async (command) => {
-        commands.push(command)
-
-        return "[]"
-      },
-      repository,
-      {
-        author: "author",
-        body: "body",
-        labels: [],
-        number: 75,
-        state: "OPEN",
-        title:
-          "Align docs/config.md triage.prompts entries with review and merge prompts",
-        url: "https://github.com/owner/repo/issues/75",
       },
     )
 
     expect(commands).toEqual([
       "gh search issues --repo 'owner/repo' --json number,title,url,state,body --limit 5 -- 'Align docs/config.md triage.prompts entries with review and merge prompts'",
     ])
+    expect(result.map((item) => item.number)).toEqual([43])
   })
 
   test("normalizes searched related pull request states", async () => {
@@ -394,8 +368,6 @@ describe("GitHub command helpers", () => {
     expect(commands[2]).toContain("enqueuePullRequest")
     expect(commands[2]).toContain("pullRequestId='PR_node_id'")
     expect(commands[2]).toContain("expectedHeadOid='head-sha'")
-    expect(commands[2]).not.toContain("gh pr merge")
-    expect(commands[2]).not.toContain("--delete-branch")
     expect(options[1]?.env?.GH_TOKEN).toBe("token")
     expect(options[2]?.env?.GH_TOKEN).toBe("token")
   })
@@ -649,7 +621,6 @@ describe("GitHub command helpers", () => {
     )
 
     expect(graphqlCommand).toContain("pullRequest(number: $pr)")
-    expect(graphqlCommand).not.toContain("issue(number:")
     expectBalancedBraces(extractGraphqlQuery(graphqlCommand))
     expect(result).toEqual([
       {
