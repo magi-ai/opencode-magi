@@ -7,7 +7,14 @@ import { join } from "node:path"
 import { afterEach, describe, expect, test, vi } from "vitest"
 
 const runReviewMock = vi.hoisted(() => vi.fn())
+const runMergeMock = vi.hoisted(() => vi.fn())
 const runTriageMock = vi.hoisted(() => vi.fn())
+
+vi.mock("./merge", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./merge")>()
+
+  return { ...actual, runMerge: runMergeMock }
+})
 
 vi.mock("./review", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./review")>()
@@ -25,6 +32,7 @@ import { MagiRunManager, redactSecrets } from "./run-manager"
 
 describe("MagiRunManager notifications", () => {
   afterEach(() => {
+    runMergeMock.mockReset()
     runReviewMock.mockReset()
     runTriageMock.mockReset()
     vi.restoreAllMocks()
@@ -194,14 +202,98 @@ describe("MagiRunManager notifications", () => {
     }
   }
 
+  test("runs review synchronously when requested", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-review-sync-"))
+    const { manager } = managerWithPromptCapture(directory)
+
+    runReviewMock.mockResolvedValueOnce({
+      outputs: {
+        security: {
+          findings: [],
+          requirementFindings: [],
+          verdict: "MERGE",
+        },
+      },
+      posted: { security: "approved" },
+      report: "Review report",
+      sessionIds: {},
+      verdict: "MERGE",
+    })
+
+    try {
+      const state = await manager.startReview({
+        config: { github: { owner: "owner", repo: "repo" } },
+        pr: 7557,
+        repository: sampleRepository(),
+        sync: true,
+      })
+
+      expect(state.status).toBe("completed")
+      expect(state.phase).toBe("completed")
+      expect(runReviewMock).toHaveBeenCalledOnce()
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test("runs merge synchronously when requested", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-merge-sync-"))
+    const { manager } = managerWithPromptCapture(directory)
+
+    runMergeMock.mockResolvedValueOnce({
+      cycles: 0,
+      pr: 7557,
+      report: "Merge report",
+      status: "approved",
+    })
+
+    try {
+      const state = await manager.startMerge({
+        config: { github: { owner: "owner", repo: "repo" } },
+        pr: 7557,
+        repository: sampleRepository(),
+        sync: true,
+      })
+
+      expect(state.status).toBe("completed")
+      expect(state.phase).toBe("approved")
+      expect(runMergeMock).toHaveBeenCalledOnce()
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test("marks synchronous runs failed when execution fails", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-sync-fail-"))
+    const { manager } = managerWithPromptCapture(directory)
+
+    runReviewMock.mockRejectedValueOnce(new Error("review failed"))
+
+    try {
+      const state = await manager.startReview({
+        config: { github: { owner: "owner", repo: "repo" } },
+        pr: 7557,
+        repository: sampleRepository(),
+        sync: true,
+      })
+
+      expect(state.status).toBe("failed")
+      expect(state.error).toBe("review failed")
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
   async function executeTriageWithAutomation(
     automation: NonNullable<ResolvedRepository["triage"]>["automation"],
+    sync = false,
   ) {
     const directory = await mkdtemp(join(tmpdir(), "magi-triage-follow-up-"))
     const { manager } = managerWithPromptCapture(directory)
     const repository = sampleTriageRepository(automation)
     const state = sampleTriageState(join(directory, "triage"))
     const reviewState = sampleReviewState(join(directory, "review"))
+    reviewState.status = "completed"
     const mergeState: MagiRunState = {
       ...reviewState,
       command: "merge",
@@ -235,6 +327,7 @@ describe("MagiRunManager notifications", () => {
         parentSessionId: "parent-session",
         repository,
         runId: "triage-run",
+        sync,
       })
 
       return { startMerge, startReview }
@@ -277,6 +370,42 @@ describe("MagiRunManager notifications", () => {
         parentSessionId: "parent-session",
         pr: 30,
       }),
+    )
+    expect(startReview).not.toHaveBeenCalled()
+  })
+
+  test("runs triage follow-up review synchronously when requested", async () => {
+    const { startMerge, startReview } = await executeTriageWithAutomation(
+      {
+        clear: ["triage"],
+        close: false,
+        create: true,
+        merge: false,
+        review: true,
+      },
+      true,
+    )
+
+    expect(startReview).toHaveBeenCalledWith(
+      expect.objectContaining({ pr: 30, sync: true }),
+    )
+    expect(startMerge).not.toHaveBeenCalled()
+  })
+
+  test("runs triage follow-up merge synchronously when requested", async () => {
+    const { startMerge, startReview } = await executeTriageWithAutomation(
+      {
+        clear: ["triage"],
+        close: false,
+        create: true,
+        merge: true,
+        review: true,
+      },
+      true,
+    )
+
+    expect(startMerge).toHaveBeenCalledWith(
+      expect.objectContaining({ pr: 30, sync: true }),
     )
     expect(startReview).not.toHaveBeenCalled()
   })

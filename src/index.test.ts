@@ -51,11 +51,19 @@ describe("parsePrs", () => {
       configOverrides: {},
       dryRun: true,
       prs: [7581],
+      sync: false,
     })
     expect(parseRunArguments("7581", true)).toEqual({
       configOverrides: {},
       dryRun: true,
       prs: [7581],
+      sync: false,
+    })
+    expect(parseRunArguments("--sync 7581", false)).toEqual({
+      configOverrides: {},
+      dryRun: false,
+      prs: [7581],
+      sync: true,
     })
   })
 
@@ -75,6 +83,7 @@ describe("parsePrs", () => {
       },
       dryRun: false,
       prs: [7581],
+      sync: false,
     })
   })
 
@@ -97,6 +106,7 @@ describe("parsePrs", () => {
       },
       dryRun: false,
       prs: [7581],
+      sync: false,
     })
   })
 
@@ -147,6 +157,13 @@ describe("parseIssues", () => {
       configOverrides: {},
       dryRun: true,
       issues: [47],
+      sync: false,
+    })
+    expect(parseIssueRunArguments("47 --sync", false)).toEqual({
+      configOverrides: {},
+      dryRun: false,
+      issues: [47],
+      sync: true,
     })
   })
 
@@ -170,6 +187,7 @@ describe("parseIssues", () => {
       },
       dryRun: false,
       issues: [47],
+      sync: false,
     })
   })
 

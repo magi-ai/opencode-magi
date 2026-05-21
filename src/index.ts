@@ -20,7 +20,7 @@ import { resolveRepository } from "./config/resolve"
 import { type ModelCatalog, validateConfig } from "./config/validate"
 import { withGitHubApiRetry } from "./github/retry"
 import { mapPool } from "./orchestrator/pool"
-import { MagiRunManager } from "./orchestrator/run-manager"
+import { MagiRunManager, type MagiRunState } from "./orchestrator/run-manager"
 
 const execAsync = promisify(nodeExec)
 const GLOBAL_CONFIG_PATH = join(homedir(), ".config", "opencode", "magi.json")
@@ -43,12 +43,14 @@ interface ParsedRunArguments {
   configOverrides: Record<string, unknown>
   dryRun: boolean
   prs: number[]
+  sync: boolean
 }
 
 interface ParsedIssueRunArguments {
   configOverrides: Record<string, unknown>
   dryRun: boolean
   issues: number[]
+  sync: boolean
 }
 
 type ModelCatalogClient = {
@@ -164,12 +166,17 @@ export function parseRunArguments(
   const tokens = value.split(/[\s,]+/).filter(Boolean)
   const configOverrides: Record<string, unknown> = {}
   const prTokens: string[] = []
+  let sync = false
 
   for (let index = 0; index < tokens.length; index++) {
     const token = tokens[index]!
 
     if (token === "--dry-run") {
       dryRun = true
+      continue
+    }
+    if (token === "--sync") {
+      sync = true
       continue
     }
 
@@ -252,7 +259,7 @@ export function parseRunArguments(
     }
   }
 
-  return { configOverrides, dryRun, prs: parsePrs(prTokens.join(" ")) }
+  return { configOverrides, dryRun, prs: parsePrs(prTokens.join(" ")), sync }
 }
 
 export function parseIssueRunArguments(
@@ -262,12 +269,17 @@ export function parseIssueRunArguments(
   const tokens = value.split(/[\s,]+/).filter(Boolean)
   const configOverrides: Record<string, unknown> = {}
   const issueTokens: string[] = []
+  let sync = false
 
   for (let index = 0; index < tokens.length; index++) {
     const token = tokens[index]!
 
     if (token === "--dry-run") {
       dryRun = true
+      continue
+    }
+    if (token === "--sync") {
+      sync = true
       continue
     }
 
@@ -332,7 +344,12 @@ export function parseIssueRunArguments(
     }
   }
 
-  return { configOverrides, dryRun, issues: parseIssues(issueTokens.join(" ")) }
+  return {
+    configOverrides,
+    dryRun,
+    issues: parseIssues(issueTokens.join(" ")),
+    sync,
+  }
 }
 
 function nextFlagValue(tokens: string[], index: number, flag: string): string {
@@ -342,6 +359,20 @@ function nextFlagValue(tokens: string[], index: number, flag: string): string {
     throw new Error(`${flag} requires a value.`)
 
   return value
+}
+
+async function syncResult(
+  runManager: MagiRunManager,
+  states: MagiRunState[],
+): Promise<string> {
+  const output = await runManager.formatStatesWithReports(states, {
+    verbose: true,
+  })
+  const failed = states.filter((state) => state.status !== "completed")
+
+  if (failed.length) throw new Error(output)
+
+  return output
 }
 
 function parseIntegerFlag(
@@ -656,6 +687,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
         args: {
           prs: tool.schema.string(),
           dryRun: tool.schema.boolean().optional(),
+          sync: tool.schema.boolean().optional(),
         },
         async execute(args, context) {
           const parsed = parseRunArguments(
@@ -683,6 +715,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
           if (!validation.ok) return JSON.stringify(validation, null, 2)
 
           const repository = resolveRepository(config)
+          const sync = parsed.sync || args.sync === true
           const states = await mapPool(
             parsed.prs,
             repository.concurrency.runs,
@@ -694,9 +727,11 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
                 pr,
                 parentSessionId: context.sessionID,
                 signal: context.abort,
+                sync,
               }),
             { signal: context.abort },
           )
+          if (sync) return syncResult(runManager, states)
 
           return states
             .map(
@@ -714,6 +749,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
         args: {
           prs: tool.schema.string(),
           dryRun: tool.schema.boolean().optional(),
+          sync: tool.schema.boolean().optional(),
         },
         async execute(args, context) {
           const parsed = parseRunArguments(args.prs, args.dryRun ?? false)
@@ -736,6 +772,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
           if (!validation.ok) return JSON.stringify(validation, null, 2)
 
           const repository = resolveRepository(config)
+          const sync = parsed.sync || args.sync === true
           const states = await mapPool(
             parsed.prs,
             repository.concurrency.runs,
@@ -747,9 +784,11 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
                 pr,
                 parentSessionId: context.sessionID,
                 signal: context.abort,
+                sync,
               }),
             { signal: context.abort },
           )
+          if (sync) return syncResult(runManager, states)
 
           return states
             .map(
@@ -765,6 +804,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
         args: {
           issues: tool.schema.string(),
           dryRun: tool.schema.boolean().optional(),
+          sync: tool.schema.boolean().optional(),
         },
         async execute(args, context) {
           const parsed = parseIssueRunArguments(
@@ -801,6 +841,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
               null,
               2,
             )
+          const sync = parsed.sync || args.sync === true
           const states = await mapPool(
             parsed.issues,
             repository.triage.concurrency.runs,
@@ -812,9 +853,11 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
                 parentSessionId: context.sessionID,
                 repository,
                 signal: context.abort,
+                sync,
               }),
             { signal: context.abort },
           )
+          if (sync) return syncResult(runManager, states)
 
           return states
             .map(

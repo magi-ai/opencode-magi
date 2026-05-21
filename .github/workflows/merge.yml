@@ -45,4 +45,4 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          opencode run --dir "$GITHUB_WORKSPACE" --command "magi:merge" "${{ github.event.pull_request.number }}"
+          opencode run --dir "$GITHUB_WORKSPACE" --command "magi:merge" "${{ github.event.pull_request.number }} --sync"
