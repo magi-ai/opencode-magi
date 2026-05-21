@@ -23,8 +23,13 @@ jobs:
         with:
           token: ${{ secrets.PAT_TOKEN }}
 
-      - name: Install
-        uses: ./.github/composite-actions/install
+      - name: Setup Node and PNPM
+        uses: ./.github/composite-actions/setup
+
+      - name: Setup Git user
+        run: |
+          git config --global user.email "hirotomo.yamada@avap.co.jp"
+          git config --global user.name "hirotomoyamada"
 
       - name: Build
         run: pnpm build

@@ -22,13 +22,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Configure Git worktree config
-        run: git config extensions.worktreeConfig true
+      - name: Setup Node and PNPM
+        uses: ./.github/composite-actions/setup
 
       - name: Install OpenCode
-        uses: ./.github/composite-actions/install-opencode
+        run: pnpm install -g opencode-ai --dangerously-allow-all-builds
 
-      - name: Authenticate GitHub reviewer accounts
+      - name: Setup Git worktree config
+        run: git config extensions.worktreeConfig true
+
+      - name: Setup GitHub accounts
         env:
           CREATOR_TOKEN: ${{ secrets.PAT_TOKEN }}
           MELCHIOR_TOKEN: ${{ secrets.MELCHIOR_TOKEN }}
@@ -40,7 +43,10 @@ jobs:
           printf '%s' "$BALTHASAR_TOKEN" | gh auth login --hostname github.com --with-token
           printf '%s' "$CASPAR_TOKEN" | gh auth login --hostname github.com --with-token
 
-      - name: Run merge
+      - name: Build
+        run: pnpm build
+
+      - name: Merge
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

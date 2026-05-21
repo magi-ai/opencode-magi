@@ -1,5 +1,5 @@
-name: Install OpenCode
-description: Sets up Node.js and runs install OpenCode
+name: Setup
+description: Sets up Node.js and PNPM
 
 runs:
   using: composite
@@ -14,6 +14,6 @@ runs:
         registry-url: "https://registry.npmjs.org"
         cache: "pnpm"
 
-    - name: Install OpenCode
+    - name: Install dependencies
       shell: bash
-      run: pnpm install -g opencode-ai --dangerously-allow-all-builds
+      run: pnpm install --ignore-scripts
