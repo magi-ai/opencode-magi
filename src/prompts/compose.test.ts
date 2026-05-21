@@ -315,6 +315,7 @@ describe("prompt composer", () => {
       directory: dir,
       pr: 1,
       repository,
+      reviewFindings: "[]",
       unresolvedThreads: "[]",
       worktreePath: "/tmp/worktree",
     })
