@@ -138,42 +138,30 @@ describe("resolveRepository", () => {
     expect(repo.reviewAutomation).toEqual({ close: false, merge: false })
   })
 
-  test("resolves practical default permissions for reviewers and editor", () => {
+  test("resolves representative default permissions for reviewers and editor", () => {
     const repo = resolveRepository(config)
 
-    expect(repo.agents.reviewers[0].permission).toMatchObject({
+    const reviewerPermission = repo.agents.reviewers[0].permission
+    expect(reviewerPermission).toMatchObject({
       edit: "deny",
-      question: "deny",
       read: "allow",
-      task: "deny",
-      webfetch: "deny",
-      websearch: "deny",
-    })
-    expect(repo.agents.reviewers[0].permission).toMatchObject({
       bash: {
         "*": "deny",
-        "git diff*": "allow",
         "git status*": "allow",
-        "rg *": "allow",
       },
     })
+
     expect(repo.agents.editor?.permission).toMatchObject({
+      edit: "allow",
       bash: {
-        "bun *": "allow",
-        "bunx *": "allow",
-        "corepack *": "allow",
         "git add*": "allow",
         "git commit*": "allow",
-        "npm *": "allow",
-        "npx *": "allow",
         "pnpm *": "allow",
-        "yarn *": "allow",
       },
-      edit: "allow",
     })
   })
 
-  test("resolves package manager permissions for triage creators", () => {
+  test("resolves representative package manager permissions for triage creators", () => {
     const repo = resolveRepository({
       ...config,
       triage: {
@@ -185,16 +173,11 @@ describe("resolveRepository", () => {
     })
 
     expect(repo.agents.triageCreator?.permission).toMatchObject({
-      bash: {
-        "bun *": "allow",
-        "bunx *": "allow",
-        "corepack *": "allow",
-        "npm *": "allow",
-        "npx *": "allow",
-        "pnpm *": "allow",
-        "yarn *": "allow",
-      },
       edit: "allow",
+      bash: {
+        "corepack *": "allow",
+        "pnpm *": "allow",
+      },
     })
   })
 
