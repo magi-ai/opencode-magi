@@ -1,5 +1,21 @@
 # opencode-magi
 
+## 0.5.0
+
+### Minor Changes
+
+- [#146](https://github.com/magi-ai/opencode-magi/pull/146) [`a800653`](https://github.com/magi-ai/opencode-magi/commit/a8006534b15fc13e559429dcf028fbba3d97b2e0) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Add synchronous run mode for review, merge, and triage commands.
+
+### Patch Changes
+
+- [#151](https://github.com/magi-ai/opencode-magi/pull/151) [`78c29fd`](https://github.com/magi-ai/opencode-magi/commit/78c29fde8f32e2c5c6b918d11d71affd57db3e93) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Restore skipped merge review requirement findings even when the prior review body omitted the requirement section heading.
+
+- [#156](https://github.com/magi-ai/opencode-magi/pull/156) [`69606ae`](https://github.com/magi-ai/opencode-magi/commit/69606ae9ac112476f034a68a8bdc7e1a7793fb07) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Skip pull request references when building review issue context.
+
+- [#149](https://github.com/magi-ai/opencode-magi/pull/149) [`42db8d1`](https://github.com/magi-ai/opencode-magi/commit/42db8d14d061c374a6bc0dadbd12b237a6128c06) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Sanitize duplicate issue search queries before passing issue titles to GitHub CLI.
+
+- [#153](https://github.com/magi-ai/opencode-magi/pull/153) [`a1e66ee`](https://github.com/magi-ai/opencode-magi/commit/a1e66ee8fda7247ed3c54a7ff04d609e7d96c90f) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Require review requested changes to be posted as inline GitHub review comments.
+
 ## 0.4.0
 
 ### Minor Changes
