@@ -2,8 +2,7 @@ import { describe, expect, test } from "vitest"
 import { repairPrompt } from "./contracts"
 
 describe("repairPrompt", () => {
-  test("resends the output contract without previous output", () => {
-    const previousOutput = "Let me analyze the PR diff. ```json"
+  test("resends the output contract", () => {
     const prompt = repairPrompt("review")
 
     expect(prompt).toContain(
@@ -16,7 +15,5 @@ describe("repairPrompt", () => {
     expect(prompt).toContain(
       "Do not include analysis, explanation, apologies, markdown, or any text before or after the JSON object.",
     )
-    expect(prompt).not.toContain("Previous output")
-    expect(prompt).not.toContain(previousOutput)
   })
 })

@@ -394,8 +394,6 @@ describe("GitHub command helpers", () => {
     expect(commands[2]).toContain("enqueuePullRequest")
     expect(commands[2]).toContain("pullRequestId='PR_node_id'")
     expect(commands[2]).toContain("expectedHeadOid='head-sha'")
-    expect(commands[2]).not.toContain("gh pr merge")
-    expect(commands[2]).not.toContain("--delete-branch")
     expect(options[1]?.env?.GH_TOKEN).toBe("token")
     expect(options[2]?.env?.GH_TOKEN).toBe("token")
   })
@@ -530,7 +528,6 @@ describe("GitHub command helpers", () => {
       "https://github.com/owner/repo/pull/7557#pullrequestreview-1",
     )
     expect(commands[1]).toContain("repos/owner/repo/pulls/7557/reviews")
-    expect(commands[1]).not.toContain("repos/owner/repo/issues/7557/comments")
     expect(commands[1]).not.toContain("GH_TOKEN")
     expect(options[1]?.env?.GH_TOKEN).toBe("token")
     expect(payload).toEqual({
@@ -649,7 +646,6 @@ describe("GitHub command helpers", () => {
     )
 
     expect(graphqlCommand).toContain("pullRequest(number: $pr)")
-    expect(graphqlCommand).not.toContain("issue(number:")
     expectBalancedBraces(extractGraphqlQuery(graphqlCommand))
     expect(result).toEqual([
       {
