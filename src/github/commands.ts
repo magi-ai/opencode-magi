@@ -692,6 +692,15 @@ function duplicateReferences(text: string): number[] {
   return [...refs]
 }
 
+function issueTitleSearchQuery(title: string, fallback: string): string {
+  return (
+    title
+      .replaceAll(/[^\p{L}\p{N}_]+/gu, " ")
+      .replaceAll(/\s+/g, " ")
+      .trim() || fallback
+  )
+}
+
 async function fetchIssueCandidate(
   exec: Exec,
   repository: ResolvedRepository,
@@ -720,7 +729,7 @@ export async function searchDuplicateIssues(
   issue: IssueMeta,
   limit = 5,
 ): Promise<DuplicateIssueCandidate[]> {
-  const query = issue.title
+  const query = issueTitleSearchQuery(issue.title, String(issue.number))
   const explicitCandidates = await Promise.all(
     duplicateReferences(issue.body)
       .filter((number) => number !== issue.number)

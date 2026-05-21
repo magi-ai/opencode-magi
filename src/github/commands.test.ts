@@ -205,9 +205,37 @@ describe("GitHub command helpers", () => {
     )
 
     expect(commands).toEqual([
-      "gh search issues --repo 'owner/repo' --json number,title,url,state,body --limit 5 -- 'Align docs/config.md triage.prompts entries with review and merge prompts'",
+      "gh search issues --repo 'owner/repo' --json number,title,url,state,body --limit 5 -- 'Align docs config md triage prompts entries with review and merge prompts'",
     ])
     expect(result.map((item) => item.number)).toEqual([43])
+  })
+
+  test("sanitizes duplicate issue search queries with slash-prefixed command titles", async () => {
+    const commands: string[] = []
+
+    const result = await searchDuplicateIssues(
+      async (command) => {
+        commands.push(command)
+
+        return "[]"
+      },
+      repository,
+      {
+        author: "author",
+        body: "body",
+        labels: [],
+        number: 141,
+        state: "OPEN",
+        title:
+          "/magi:merge skips editor when existing CHANGES_REQUESTED review has only body-level requirement findings",
+        url: "https://github.com/owner/repo/issues/141",
+      },
+    )
+
+    expect(commands).toEqual([
+      "gh search issues --repo 'owner/repo' --json number,title,url,state,body --limit 5 -- 'magi merge skips editor when existing CHANGES_REQUESTED review has only body level requirement findings'",
+    ])
+    expect(result).toEqual([])
   })
 
   test("normalizes searched related pull request states", async () => {
