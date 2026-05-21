@@ -57,6 +57,50 @@ describe("review output", () => {
     })
   })
 
+  test("parses file-level findings without a line", () => {
+    expect(
+      parseReviewOutput(
+        JSON.stringify({
+          findings: [
+            {
+              fix: "Pass structured findings to the editor.",
+              issue: "The editor cannot see body-only findings.",
+              path: "src/orchestrator/merge.ts",
+            },
+          ],
+          verdict: "CHANGES_REQUESTED",
+        }),
+      ),
+    ).toMatchObject({
+      findings: [
+        {
+          fix: "Pass structured findings to the editor.",
+          issue: "The editor cannot see body-only findings.",
+          path: "src/orchestrator/merge.ts",
+        },
+      ],
+      verdict: "CHANGES_REQUESTED",
+    })
+  })
+
+  test("rejects startLine without line", () => {
+    expect(() =>
+      parseReviewOutput(
+        JSON.stringify({
+          findings: [
+            {
+              fix: "Use line or omit startLine.",
+              issue: "startLine cannot be posted without a line.",
+              path: "src/app.ts",
+              startLine: 10,
+            },
+          ],
+          verdict: "CHANGES_REQUESTED",
+        }),
+      ),
+    ).toThrow("findings[0].startLine requires line")
+  })
+
   test("rejects merge with requirement findings", () => {
     expect(() =>
       parseReviewOutput(
@@ -121,6 +165,32 @@ describe("review output", () => {
     })
   })
 
+  test("parses file-level rereview findings without a line", () => {
+    expect(
+      parseRereviewOutput(
+        JSON.stringify({
+          followUps: [],
+          newFindings: [
+            {
+              body: "The behavior is still incomplete.",
+              path: "src/orchestrator/merge.ts",
+            },
+          ],
+          resolve: [],
+          verdict: "CHANGES_REQUESTED",
+        }),
+      ),
+    ).toMatchObject({
+      newFindings: [
+        {
+          body: "The behavior is still incomplete.",
+          path: "src/orchestrator/merge.ts",
+        },
+      ],
+      verdict: "CHANGES_REQUESTED",
+    })
+  })
+
   test("parses finding validation votes", () => {
     expect(
       parseFindingValidationOutput(
@@ -148,6 +218,26 @@ describe("review output", () => {
       filesTouched: ["src/app.ts"],
       mode: "EDITED",
       responses: [{ action: "FIXED", body: "Fixed.", commentId: 1 }],
+    })
+  })
+
+  test("allows edited editor output without thread responses", () => {
+    expect(
+      parseEditOutput(
+        JSON.stringify({
+          commitMessage: "fix: handle body-only findings",
+          commitSha: "abcdef1234567890",
+          filesTouched: ["src/app.ts"],
+          mode: "EDITED",
+          responses: [],
+        }),
+      ),
+    ).toEqual({
+      commitMessage: "fix: handle body-only findings",
+      commitSha: "abcdef1234567890",
+      filesTouched: ["src/app.ts"],
+      mode: "EDITED",
+      responses: [],
     })
   })
 

@@ -476,8 +476,8 @@ async function postRereviewOutput(
     output.newFindings.map((finding) => ({
       fix: "Please address this before merging.",
       issue: finding.body,
-      line: finding.line,
       path: finding.path,
+      ...(finding.line == null ? {} : { line: finding.line }),
       startLine: finding.startLine,
     })),
     output.requirementFindings,

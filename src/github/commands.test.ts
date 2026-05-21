@@ -16,6 +16,7 @@ import {
   fetchUnresolvedThreads,
   ghHostOption,
   mergePullRequest,
+  postChangesRequested,
   postCloseComment,
   pushHead,
   repoSpecifier,
@@ -537,6 +538,59 @@ describe("GitHub command helpers", () => {
       body: "This PR should be closed.",
       event: "COMMENT",
     })
+  })
+
+  test("posts body-only findings in review body without inline comments", async () => {
+    const commands: string[] = []
+    let payload:
+      | { body: string; comments: unknown[]; event: string }
+      | undefined
+
+    await postChangesRequested(
+      async (command) => {
+        commands.push(command)
+        if (command.includes("gh auth token")) return "token"
+
+        const input = command.match(/--input '([^']+)'/)?.[1]
+        if (!input) throw new Error(`input path not found: ${command}`)
+        payload = JSON.parse(await readFile(input, "utf8"))
+
+        return "https://github.com/owner/repo/pull/7557#pullrequestreview-2"
+      },
+      repository,
+      7557,
+      "bot-a",
+      [
+        {
+          fix: "Pass structured findings to the editor.",
+          issue: "Body-only findings are lost.",
+          path: "src/orchestrator/merge.ts",
+        },
+        {
+          fix: "Validate only inline targets.",
+          issue: "Inline validation rejects file-level findings.",
+          line: 10,
+          path: "src/orchestrator/review.ts",
+        },
+      ],
+      [
+        {
+          evidence: "The runtime path is missing.",
+          fix: "Include requirement findings in the editor prompt.",
+          issueNumber: 121,
+          requirement: "Body-only findings must reach the editor.",
+        },
+      ],
+    )
+
+    expect(payload?.event).toBe("REQUEST_CHANGES")
+    expect(payload?.comments).toHaveLength(1)
+    expect(payload?.body).toContain("Inline findings:")
+    expect(payload?.body).toContain("src/orchestrator/review.ts:10")
+    expect(payload?.body).toContain("File-level findings:")
+    expect(payload?.body).toContain("src/orchestrator/merge.ts")
+    expect(payload?.body).toContain("Requirement findings:")
+    expect(commands[1]).toContain("repos/owner/repo/pulls/7557/reviews")
   })
 
   test("keeps GraphQL variables quoted in PR review query", async () => {

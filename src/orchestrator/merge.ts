@@ -3,6 +3,7 @@ import type {
   Exec,
   MagiConfig,
   ModelOptions,
+  NewFinding,
   ResolvedRepository,
   RereviewOutput,
   ReviewOutput,
@@ -117,6 +118,20 @@ export interface ThreadLimitNotification {
   url: string
 }
 
+interface EditorReviewFinding {
+  body?: string
+  evidence?: string
+  fix: string
+  issue?: string
+  issueNumber?: number
+  line?: number
+  path?: string
+  requirement?: string
+  reviewer: string
+  startLine?: number
+  type: "file" | "inline" | "requirement"
+}
+
 function outputDir(input: MergeRunInput): string {
   return prRunOutputDir({
     config: input.config,
@@ -168,6 +183,7 @@ async function runEditor(
   input: MergeRunInput,
   worktreePath: string,
   cycle: number,
+  reviewFindings: EditorReviewFinding[],
   unresolvedThreads: ReviewThread[],
 ): Promise<EditOutput> {
   const editor = input.repository.agents.editor
@@ -186,6 +202,7 @@ async function runEditor(
     directory: input.directory,
     pr: input.pr,
     repository: input.repository,
+    reviewFindings: JSON.stringify(reviewFindings, null, 2),
     unresolvedThreads: JSON.stringify(unresolvedThreads, null, 2),
     worktreePath,
   })
@@ -346,7 +363,7 @@ async function postRereviewOutput(
     )
   }
 
-  if (output.newFindings.length) {
+  if (output.newFindings.length || output.requirementFindings.length) {
     return postChangesRequested(
       input.exec,
       input.repository,
@@ -355,10 +372,11 @@ async function postRereviewOutput(
       output.newFindings.map((finding) => ({
         fix: "Please address this before merging.",
         issue: finding.body,
-        line: finding.line,
         path: finding.path,
+        ...(finding.line == null ? {} : { line: finding.line }),
         startLine: finding.startLine,
       })),
+      output.requirementFindings,
     )
   }
 
@@ -374,6 +392,62 @@ function parseRereviewOutputWithInlineTargets(
   validateInlineCommentTargets(output.newFindings, targets, "newFindings")
 
   return output
+}
+
+function newFindingToEditorFinding(
+  reviewer: string,
+  finding: NewFinding,
+): EditorReviewFinding {
+  return {
+    body: finding.body,
+    fix: "Please address this before merging.",
+    path: finding.path,
+    reviewer,
+    ...(finding.line == null ? {} : { line: finding.line }),
+    ...(finding.startLine == null ? {} : { startLine: finding.startLine }),
+    type: finding.line == null ? "file" : "inline",
+  }
+}
+
+export function blockingReviewFindings(
+  outputs: Record<string, RereviewOutput | ReviewOutput>,
+): EditorReviewFinding[] {
+  return Object.entries(outputs).flatMap(([reviewer, output]) => {
+    if (output.verdict !== "CHANGES_REQUESTED") return []
+
+    const requirementFindings = output.requirementFindings.map((finding) => ({
+      evidence: finding.evidence,
+      fix: finding.fix,
+      issueNumber: finding.issueNumber,
+      requirement: finding.requirement,
+      reviewer,
+      type: "requirement" as const,
+    }))
+
+    if ("findings" in output) {
+      return [
+        ...output.findings.map((finding) => ({
+          fix: finding.fix,
+          issue: finding.issue,
+          path: finding.path,
+          reviewer,
+          ...(finding.line == null ? {} : { line: finding.line }),
+          ...(finding.startLine == null
+            ? {}
+            : { startLine: finding.startLine }),
+          type: finding.line == null ? ("file" as const) : ("inline" as const),
+        })),
+        ...requirementFindings,
+      ]
+    }
+
+    return [
+      ...output.newFindings.map((finding) =>
+        newFindingToEditorFinding(reviewer, finding),
+      ),
+      ...requirementFindings,
+    ]
+  })
 }
 
 async function runRereview(
@@ -846,16 +920,43 @@ function syntheticReviewThreads(
 
   for (const [reviewer, output] of Object.entries(outputs)) {
     if ("findings" in output) {
-      threads[reviewer] = output.findings.map((finding) => {
+      threads[reviewer] = output.findings.flatMap((finding) => {
+        if (finding.line == null) return []
         const commentId = nextCommentId--
 
-        return {
-          body: `Issue: ${finding.issue}\n\nFix: ${finding.fix}`,
+        return [
+          {
+            body: `Issue: ${finding.issue}\n\nFix: ${finding.fix}`,
+            commentId,
+            comments: [
+              {
+                author: reviewer,
+                body: `Issue: ${finding.issue}\n\nFix: ${finding.fix}`,
+                commentId,
+                createdAt: new Date(0).toISOString(),
+              },
+            ],
+            line: finding.line,
+            path: finding.path,
+            threadId: `dry-run:${reviewer}:${Math.abs(commentId)}`,
+          },
+        ]
+      })
+      continue
+    }
+
+    threads[reviewer] = output.newFindings.flatMap((finding) => {
+      if (finding.line == null) return []
+      const commentId = nextCommentId--
+
+      return [
+        {
+          body: finding.body,
           commentId,
           comments: [
             {
               author: reviewer,
-              body: `Issue: ${finding.issue}\n\nFix: ${finding.fix}`,
+              body: finding.body,
               commentId,
               createdAt: new Date(0).toISOString(),
             },
@@ -863,29 +964,8 @@ function syntheticReviewThreads(
           line: finding.line,
           path: finding.path,
           threadId: `dry-run:${reviewer}:${Math.abs(commentId)}`,
-        }
-      })
-      continue
-    }
-
-    threads[reviewer] = output.newFindings.map((finding) => {
-      const commentId = nextCommentId--
-
-      return {
-        body: finding.body,
-        commentId,
-        comments: [
-          {
-            author: reviewer,
-            body: finding.body,
-            commentId,
-            createdAt: new Date(0).toISOString(),
-          },
-        ],
-        line: finding.line,
-        path: finding.path,
-        threadId: `dry-run:${reviewer}:${Math.abs(commentId)}`,
-      }
+        },
+      ]
     })
   }
 
@@ -1101,8 +1181,18 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
           input.repository.merge.maxThreadResolutionCycles,
         threads: unresolvedThreads,
       })
+      const editorFindings = blockingReviewFindings(reportOutputs)
+      const editableFindings = editableThreads.length
+        ? editorFindings
+        : editorFindings.filter((finding) => finding.type !== "inline")
+      const findingAttemptsExhausted =
+        input.repository.merge.maxThreadResolutionCycles !== 0 &&
+        cycle > input.repository.merge.maxThreadResolutionCycles
 
-      if (!editableThreads.length) {
+      if (
+        !editableThreads.length &&
+        (!editableFindings.length || findingAttemptsExhausted)
+      ) {
         await input.onProgress?.({
           status: "changes_unresolved",
           type: "merge_completed",
@@ -1134,6 +1224,7 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
         abortableInput,
         review.worktreePath,
         cycle,
+        editableFindings,
         editableThreads,
       )
       editorOutputs.push(editorOutput)

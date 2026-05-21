@@ -1,7 +1,7 @@
 export type InlineCommentTargets = ReadonlyMap<string, ReadonlySet<number>>
 
 export interface InlineCommentFindingTarget {
-  line: number
+  line?: number
   path: string
   startLine?: number
 }
@@ -78,6 +78,13 @@ export function validateInlineCommentTargets(
 ): void {
   for (const [index, finding] of findings.entries()) {
     const name = `${label}[${index}]`
+
+    if (finding.line == null) {
+      if (finding.startLine != null) {
+        throw new Error(`${name}.startLine requires line`)
+      }
+      continue
+    }
 
     assertPositiveInteger(finding.line, `${name}.line`)
     if (finding.startLine != null) {

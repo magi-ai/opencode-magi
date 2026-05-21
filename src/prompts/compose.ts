@@ -46,6 +46,7 @@ export interface EditPromptInput {
   directory: string
   pr: number
   repository: ResolvedRepository
+  reviewFindings: string
   unresolvedThreads: string
   worktreePath: string
 }
@@ -204,6 +205,7 @@ function editValues(input: EditPromptInput): Record<string, string> {
   return {
     ...repositoryValues(input.repository),
     pr: String(input.pr),
+    reviewFindings: input.reviewFindings,
     unresolvedThreads: input.unresolvedThreads,
     worktreePath: input.worktreePath,
   }
