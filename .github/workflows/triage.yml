@@ -15,7 +15,8 @@ concurrency:
 
 jobs:
   triage:
-    if: ${{ github.event.issue.user.login == 'hirotomoyamada' }}
+    if: false
+    # if: ${{ github.event.issue.user.login == 'hirotomoyamada' }}
     name: Triage
     runs-on: ubuntu-latest
     steps:
