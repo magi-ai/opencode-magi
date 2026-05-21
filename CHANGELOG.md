@@ -1,5 +1,17 @@
 # opencode-magi
 
+## 0.4.0
+
+### Minor Changes
+
+- [#139](https://github.com/magi-ai/opencode-magi/pull/139) [`8d0daa5`](https://github.com/magi-ai/opencode-magi/commit/8d0daa57bf4d3651c9791624cfb193348f82c260) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Add reusable agents.refs presets for Magi agent configuration.
+
+### Patch Changes
+
+- [#124](https://github.com/magi-ai/opencode-magi/pull/124) [`340251d`](https://github.com/magi-ai/opencode-magi/commit/340251dc8b911f1c443dc9056a67eb759ebf2b7b) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Include skipped current review findings when merge editing addresses requested changes.
+
+- [#124](https://github.com/magi-ai/opencode-magi/pull/124) [`340251d`](https://github.com/magi-ai/opencode-magi/commit/340251dc8b911f1c443dc9056a67eb759ebf2b7b) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Allow review findings without inline diff line targets to be posted and handed to the merge editor.
+
 ## 0.3.0
 
 ### Minor Changes
