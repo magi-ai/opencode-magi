@@ -16,4 +16,4 @@ runs:
 
     - name: Install OpenCode
       shell: bash
-      run: pnpm install -g opencode-ai
+      run: pnpm install -g opencode-ai --dangerously-allow-all-builds
