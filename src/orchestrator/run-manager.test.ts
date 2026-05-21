@@ -36,6 +36,7 @@ describe("MagiRunManager notifications", () => {
     runReviewMock.mockReset()
     runTriageMock.mockReset()
     vi.restoreAllMocks()
+    vi.useRealTimers()
   })
 
   function managerWithPromptCapture(directory = ".") {
@@ -313,6 +314,139 @@ describe("MagiRunManager notifications", () => {
 
       expect(state.status).toBe("failed")
       expect(state.error).toBe("review failed")
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test("does not time out synchronous runs after ten minutes", async () => {
+    vi.useFakeTimers()
+    const directory = await mkdtemp(join(tmpdir(), "magi-sync-no-timeout-"))
+    const { manager } = managerWithPromptCapture(directory)
+    let resolveReview: (value: unknown) => void = () => undefined
+
+    runReviewMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveReview = resolve
+      }),
+    )
+
+    try {
+      let resolved = false
+      const statePromise = manager
+        .startReview({
+          config: { github: { owner: "owner", repo: "repo" } },
+          pr: 7557,
+          repository: sampleRepository(),
+          sync: true,
+        })
+        .then((state) => {
+          resolved = true
+
+          return state
+        })
+
+      await vi.advanceTimersByTimeAsync(600_000)
+
+      expect(resolved).toBe(false)
+
+      resolveReview({
+        outputs: {
+          security: {
+            findings: [],
+            verdict: "MERGE",
+          },
+        },
+        posted: { security: "approved" },
+        report: "Review report",
+        sessionIds: {},
+        verdict: "MERGE",
+      })
+
+      const state = await statePromise
+
+      expect(state.status).toBe("completed")
+      expect(state.phase).toBe("completed")
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test("waits without a default timeout for blocking status", async () => {
+    vi.useFakeTimers()
+    const directory = await mkdtemp(join(tmpdir(), "magi-status-no-timeout-"))
+    const { manager } = managerWithPromptCapture(directory)
+    const outputDir = join(directory, ".magi", "runs", "pr", "7557", "run")
+
+    try {
+      await mkdir(outputDir, { recursive: true })
+      await writeFile(
+        join(outputDir, "state.json"),
+        JSON.stringify(sampleReviewState(outputDir)),
+      )
+
+      let resolved = false
+      const statusPromise = manager
+        .status({ block: true, pr: 7557 })
+        .then((states) => {
+          resolved = true
+
+          return states
+        })
+
+      await vi.advanceTimersByTimeAsync(60_000)
+
+      expect(resolved).toBe(false)
+
+      await writeFile(
+        join(outputDir, "state.json"),
+        JSON.stringify({
+          ...sampleReviewState(outputDir),
+          phase: "completed",
+          status: "completed",
+        }),
+      )
+      await vi.advanceTimersByTimeAsync(1_000)
+
+      const states = await statusPromise
+
+      expect(states[0]?.status).toBe("completed")
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test("honors blocking status timeouts above ten minutes", async () => {
+    vi.useFakeTimers()
+    const directory = await mkdtemp(join(tmpdir(), "magi-status-long-timeout-"))
+    const { manager } = managerWithPromptCapture(directory)
+    const outputDir = join(directory, ".magi", "runs", "pr", "7557", "run")
+
+    try {
+      await mkdir(outputDir, { recursive: true })
+      await writeFile(
+        join(outputDir, "state.json"),
+        JSON.stringify(sampleReviewState(outputDir)),
+      )
+
+      let resolved = false
+      const statusPromise = manager
+        .status({ block: true, pr: 7557, timeoutMs: 600_001 })
+        .then((states) => {
+          resolved = true
+
+          return states
+        })
+
+      await vi.advanceTimersByTimeAsync(600_000)
+
+      expect(resolved).toBe(false)
+
+      await vi.advanceTimersByTimeAsync(1_000)
+
+      const states = await statusPromise
+
+      expect(states[0]?.status).toBe("running")
     } finally {
       await rm(directory, { force: true, recursive: true })
     }

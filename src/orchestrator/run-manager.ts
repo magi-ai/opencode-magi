@@ -151,7 +151,6 @@ const DEFAULT_CLEAR_OPTIONS: MagiClearOptions = {
   session: true,
   worktree: true,
 }
-const SYNC_RUN_TIMEOUT_MS = 600_000
 
 function createRunId(): string {
   return `run-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`
@@ -943,7 +942,7 @@ export class MagiRunManager {
       timeoutMs?: number
     } = {},
   ): Promise<MagiRunState[]> {
-    const timeoutMs = Math.min(input.timeoutMs ?? 60_000, 600_000)
+    const timeoutMs = input.timeoutMs
     const startedAt = Date.now()
 
     while (input.block) {
@@ -954,7 +953,8 @@ export class MagiRunManager {
         states.every((state) => !isActiveStatus(state.status))
       )
         return states
-      if (Date.now() - startedAt >= timeoutMs) return states
+      if (timeoutMs != null && Date.now() - startedAt >= timeoutMs)
+        return states
       await new Promise((resolve) => setTimeout(resolve, 1_000))
     }
 
@@ -1809,28 +1809,11 @@ export class MagiRunManager {
     controller: AbortController,
     execute: () => Promise<void>,
   ): Promise<MagiRunState> {
-    let timeout: ReturnType<typeof setTimeout> | undefined
-    const timeoutPromise = new Promise<"timeout">((resolve) => {
-      timeout = setTimeout(() => resolve("timeout"), SYNC_RUN_TIMEOUT_MS)
-    })
-
     try {
-      const result = await Promise.race([
-        execute().then(() => "completed" as const),
-        timeoutPromise,
-      ])
-      if (result === "timeout") {
-        controller.abort()
-        await this.failRun(
-          state.runId,
-          new Error("Magi sync run timed out after 600 seconds."),
-        )
-      }
+      await execute()
     } catch (error) {
       controller.abort()
       await this.failRun(state.runId, error)
-    } finally {
-      if (timeout) clearTimeout(timeout)
     }
 
     return (await this.readStateByRunId(state.runId)) ?? state
