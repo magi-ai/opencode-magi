@@ -229,7 +229,6 @@
         "duplicate": { "type": "string" },
         "category": { "type": "string" },
         "acceptance": { "type": "string" },
-        "action": { "type": "string" },
         "question": { "type": "string" },
         "comment": { "type": "string" },
         "commentClassification": { "type": "string" },

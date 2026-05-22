@@ -396,6 +396,7 @@ function createExec(
     if (command === "git branch --show-current") return "feature-branch\n"
     if (command.startsWith("git worktree remove")) return ""
     if (command.startsWith("git worktree prune")) return ""
+    if (command.startsWith("git cat-file -e")) return ""
     if (command.startsWith("git diff --no-ext-diff")) {
       return [
         "diff --git a/src/app.ts b/src/app.ts",
@@ -808,10 +809,6 @@ function duplicateVote(vote: string, duplicateOf?: number): string {
   return JSON.stringify({ duplicateOf, reason: `${vote} reason`, vote })
 }
 
-function triageAction(action: string): string {
-  return JSON.stringify({ action, reason: `${action} reason` })
-}
-
 function comment(overrides: Partial<IssueComment>): IssueComment {
   return {
     author: "user",
@@ -1132,12 +1129,7 @@ describe("scenario: /magi:triage", () => {
   test("skips classification when issue type maps to a category", async () => {
     const result = await runTriageScenario({
       issue: triageIssue({ type: "Bug" }),
-      outputs: [
-        triageVote("YES"),
-        triageVote("YES"),
-        triageVote("YES"),
-        triageAction("COMMENT"),
-      ],
+      outputs: [triageVote("YES"), triageVote("YES"), triageVote("YES")],
     })
 
     expect(result.result.result).toEqual({
@@ -1159,7 +1151,6 @@ describe("scenario: /magi:triage", () => {
         triageVote("YES"),
         triageVote("YES"),
         triageVote("YES"),
-        triageAction("COMMENT"),
       ],
     })
 
@@ -1179,7 +1170,6 @@ describe("scenario: /magi:triage", () => {
         duplicateVote("DUPLICATE", 10),
         duplicateVote("DUPLICATE", 10),
         duplicateVote("NOT_DUPLICATE"),
-        triageAction("COMMENT"),
       ],
     })
 
@@ -1198,7 +1188,6 @@ describe("scenario: /magi:triage", () => {
         triageVote("RELATED_PR_HANDLES_ISSUE"),
         triageVote("RELATED_PR_HANDLES_ISSUE"),
         triageVote("RELATED_PR_DOES_NOT_HANDLE_ISSUE"),
-        triageAction("CLEAR_ONLY"),
       ],
       relatedPullRequests: [
         {
@@ -1230,7 +1219,6 @@ describe("scenario: /magi:triage", () => {
         triageVote("RELATED_PR_HANDLES_ISSUE"),
         triageVote("RELATED_PR_HANDLES_ISSUE"),
         triageVote("RELATED_PR_DOES_NOT_HANDLE_ISSUE"),
-        triageAction("CLOSE"),
       ],
       relatedPullRequests: [
         {
@@ -1279,7 +1267,6 @@ describe("scenario: /magi:triage", () => {
         triageVote("NO"),
         triageVote("NO"),
         triageVote("ASK"),
-        triageAction("COMMENT"),
       ],
     })
 

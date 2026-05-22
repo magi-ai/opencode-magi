@@ -276,7 +276,7 @@ describe("validateConfig", () => {
     const generated = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
-        triage: { agents: triageAgents, reporter: "triage-1" },
+        triage: { agents: triageAgents, reporter: "voter-1" },
       },
       { requireReview: false, requireTriage: true },
     )
@@ -369,6 +369,24 @@ describe("validateConfig", () => {
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain("triage.prompts.createPr is not supported")
+  })
+
+  test("rejects obsolete triage action prompt key", async () => {
+    const result = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: {
+          agents: triageAgents,
+          prompts: {
+            action: "triage-action.md",
+          } as unknown as NonNullable<MagiConfig["triage"]>["prompts"],
+        },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain("triage.prompts.action is not supported")
   })
 
   test.each([

@@ -6,8 +6,6 @@ import type {
   RereviewCloseReconsiderationOutput,
   RereviewOutput,
   ReviewOutput,
-  TriageAction,
-  TriageActionOutput,
   TriageBinaryVote,
   TriageCommentClassification,
   TriageCommentClassificationOutput,
@@ -233,23 +231,6 @@ export function parseTriageCommentClassificationOutput(
         reason: requireString(value.reason, `comments[${index}].reason`),
       }
     }),
-  }
-}
-
-export function parseTriageActionOutput(text: string): TriageActionOutput {
-  const data = extractJson(text) as Record<string, unknown>
-  if (!data || typeof data !== "object")
-    throw new Error("triage action output must be an object")
-
-  return {
-    action: requireOneOf<TriageAction>(data.action, "action", [
-      "ASK",
-      "CLEAR_ONLY",
-      "CLOSE",
-      "COMMENT",
-      "PR",
-    ]),
-    reason: requireString(data.reason, "reason"),
   }
 }
 
