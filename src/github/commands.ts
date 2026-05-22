@@ -1407,6 +1407,24 @@ export async function waitForMergeQueue(
   }
 }
 
+export async function waitForAutoMerge(
+  exec: Exec,
+  repository: ResolvedRepository,
+  pr: number,
+  intervalMs = 30_000,
+): Promise<"dequeued" | "merged"> {
+  for (;;) {
+    const status = await fetchPullRequestMergeStatus(exec, repository, pr)
+
+    if (status.state === "MERGED") return "merged"
+    if (status.state !== "OPEN" || status.autoMergeRequest == null) {
+      return "dequeued"
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+}
+
 export async function closePullRequest(
   exec: Exec,
   repository: ResolvedRepository,

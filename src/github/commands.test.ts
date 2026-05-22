@@ -22,6 +22,7 @@ import {
   repoSpecifier,
   searchDuplicateIssues,
   shellQuote,
+  waitForAutoMerge,
   waitForChecks,
   waitForMergeQueue,
 } from "./commands"
@@ -439,6 +440,51 @@ describe("GitHub command helpers", () => {
               },
             },
           },
+        }),
+      repository,
+      7557,
+      0,
+    )
+
+    expect(result).toBe("dequeued")
+  })
+
+  test("waits for auto-merge completion", async () => {
+    const commands: string[] = []
+    const statuses = [
+      {
+        autoMergeRequest: { enabledAt: "2026-01-01T00:00:00Z" },
+        mergeStateStatus: "BLOCKED",
+        state: "OPEN",
+      },
+      { autoMergeRequest: null, mergeStateStatus: "UNKNOWN", state: "MERGED" },
+    ]
+
+    const result = await waitForAutoMerge(
+      async (command) => {
+        commands.push(command)
+
+        return JSON.stringify(statuses.shift())
+      },
+      repository,
+      7557,
+      0,
+    )
+
+    expect(result).toBe("merged")
+    expect(commands[0]).toContain(
+      "--json state,mergeStateStatus,autoMergeRequest",
+    )
+    expect(commands).toHaveLength(2)
+  })
+
+  test("returns dequeued when auto-merge is removed before merging", async () => {
+    const result = await waitForAutoMerge(
+      async () =>
+        JSON.stringify({
+          autoMergeRequest: null,
+          mergeStateStatus: "CLEAN",
+          state: "OPEN",
         }),
       repository,
       7557,
