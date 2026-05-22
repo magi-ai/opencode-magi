@@ -52,18 +52,31 @@ describe("parsePrs", () => {
       dryRun: true,
       prs: [7581],
       sync: false,
+      timeoutMs: undefined,
     })
     expect(parseRunArguments("7581", true)).toEqual({
       configOverrides: {},
       dryRun: true,
       prs: [7581],
       sync: false,
+      timeoutMs: undefined,
     })
     expect(parseRunArguments("--sync 7581", false)).toEqual({
       configOverrides: {},
       dryRun: false,
       prs: [7581],
       sync: true,
+      timeoutMs: undefined,
+    })
+  })
+
+  test("parses explicit review timeout flag", () => {
+    expect(parseRunArguments("--sync --timeout 600 7581", false)).toEqual({
+      configOverrides: {},
+      dryRun: false,
+      prs: [7581],
+      sync: true,
+      timeoutMs: 600_000,
     })
   })
 
@@ -84,6 +97,19 @@ describe("parsePrs", () => {
       dryRun: false,
       prs: [7581],
       sync: false,
+      timeoutMs: undefined,
+    })
+  })
+
+  test("parses explicit merge timeout flag", () => {
+    expect(
+      parseRunArguments("7581 --sync --timeout 120", false, "merge"),
+    ).toEqual({
+      configOverrides: {},
+      dryRun: false,
+      prs: [7581],
+      sync: true,
+      timeoutMs: 120_000,
     })
   })
 
@@ -107,6 +133,7 @@ describe("parsePrs", () => {
       dryRun: false,
       prs: [7581],
       sync: false,
+      timeoutMs: undefined,
     })
   })
 
@@ -158,12 +185,24 @@ describe("parseIssues", () => {
       dryRun: true,
       issues: [47],
       sync: false,
+      timeoutMs: undefined,
     })
     expect(parseIssueRunArguments("47 --sync", false)).toEqual({
       configOverrides: {},
       dryRun: false,
       issues: [47],
       sync: true,
+      timeoutMs: undefined,
+    })
+  })
+
+  test("parses explicit triage timeout flag", () => {
+    expect(parseIssueRunArguments("47 --sync --timeout 300", false)).toEqual({
+      configOverrides: {},
+      dryRun: false,
+      issues: [47],
+      sync: true,
+      timeoutMs: 300_000,
     })
   })
 
@@ -188,6 +227,7 @@ describe("parseIssues", () => {
       dryRun: false,
       issues: [47],
       sync: false,
+      timeoutMs: undefined,
     })
   })
 
@@ -213,7 +253,10 @@ describe("tool descriptions", () => {
       client: { session: {} },
       directory: ".",
     } as never)
-    const tools = plugin.tool as Record<string, { description: string }>
+    const tools = plugin.tool as Record<
+      string,
+      { args?: Record<string, unknown>; description: string }
+    >
 
     expect(tools.magi_review.description).toContain(
       "do not tell users to call follow-up tools by name",
@@ -221,6 +264,11 @@ describe("tool descriptions", () => {
     expect(tools.magi_merge.description).toContain(
       "do not tell users to call follow-up tools by name",
     )
+    for (const name of ["magi_review", "magi_merge", "magi_triage"]) {
+      expect(Object.keys(tools[name]?.args ?? {})).not.toContain(
+        "timeoutSeconds",
+      )
+    }
     for (const name of ["magi_status", "magi_output", "magi_cancel"]) {
       expect(tools[name]?.description).toContain(
         "Assistant-facing follow-up tool.",

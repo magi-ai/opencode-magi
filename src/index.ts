@@ -44,6 +44,7 @@ interface ParsedRunArguments {
   dryRun: boolean
   prs: number[]
   sync: boolean
+  timeoutMs?: number
 }
 
 interface ParsedIssueRunArguments {
@@ -51,6 +52,7 @@ interface ParsedIssueRunArguments {
   dryRun: boolean
   issues: number[]
   sync: boolean
+  timeoutMs?: number
 }
 
 type ModelCatalogClient = {
@@ -167,6 +169,7 @@ export function parseRunArguments(
   const configOverrides: Record<string, unknown> = {}
   const prTokens: string[] = []
   let sync = false
+  let timeoutMs: number | undefined
 
   for (let index = 0; index < tokens.length; index++) {
     const token = tokens[index]!
@@ -187,6 +190,11 @@ export function parseRunArguments(
           ["language"],
           nextFlagValue(tokens, ++index, token),
         )
+        break
+      case "--timeout":
+        timeoutMs =
+          parseIntegerFlag(nextFlagValue(tokens, ++index, token), token, 0) *
+          1_000
         break
       case "--merge":
       case "--no-merge":
@@ -259,7 +267,13 @@ export function parseRunArguments(
     }
   }
 
-  return { configOverrides, dryRun, prs: parsePrs(prTokens.join(" ")), sync }
+  return {
+    configOverrides,
+    dryRun,
+    prs: parsePrs(prTokens.join(" ")),
+    sync,
+    timeoutMs,
+  }
 }
 
 export function parseIssueRunArguments(
@@ -270,6 +284,7 @@ export function parseIssueRunArguments(
   const configOverrides: Record<string, unknown> = {}
   const issueTokens: string[] = []
   let sync = false
+  let timeoutMs: number | undefined
 
   for (let index = 0; index < tokens.length; index++) {
     const token = tokens[index]!
@@ -290,6 +305,11 @@ export function parseIssueRunArguments(
           ["language"],
           nextFlagValue(tokens, ++index, token),
         )
+        break
+      case "--timeout":
+        timeoutMs =
+          parseIntegerFlag(nextFlagValue(tokens, ++index, token), token, 0) *
+          1_000
         break
       case "--close":
       case "--no-close":
@@ -349,6 +369,7 @@ export function parseIssueRunArguments(
     dryRun,
     issues: parseIssues(issueTokens.join(" ")),
     sync,
+    timeoutMs,
   }
 }
 
@@ -688,7 +709,6 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
           prs: tool.schema.string(),
           dryRun: tool.schema.boolean().optional(),
           sync: tool.schema.boolean().optional(),
-          timeoutSeconds: tool.schema.number().optional(),
         },
         async execute(args, context) {
           const parsed = parseRunArguments(
@@ -729,10 +749,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
                 parentSessionId: context.sessionID,
                 signal: context.abort,
                 sync,
-                timeoutMs:
-                  args.timeoutSeconds == null
-                    ? undefined
-                    : args.timeoutSeconds * 1_000,
+                timeoutMs: parsed.timeoutMs,
               }),
             { signal: context.abort },
           )
@@ -755,7 +772,6 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
           prs: tool.schema.string(),
           dryRun: tool.schema.boolean().optional(),
           sync: tool.schema.boolean().optional(),
-          timeoutSeconds: tool.schema.number().optional(),
         },
         async execute(args, context) {
           const parsed = parseRunArguments(args.prs, args.dryRun ?? false)
@@ -791,10 +807,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
                 parentSessionId: context.sessionID,
                 signal: context.abort,
                 sync,
-                timeoutMs:
-                  args.timeoutSeconds == null
-                    ? undefined
-                    : args.timeoutSeconds * 1_000,
+                timeoutMs: parsed.timeoutMs,
               }),
             { signal: context.abort },
           )
@@ -815,7 +828,6 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
           issues: tool.schema.string(),
           dryRun: tool.schema.boolean().optional(),
           sync: tool.schema.boolean().optional(),
-          timeoutSeconds: tool.schema.number().optional(),
         },
         async execute(args, context) {
           const parsed = parseIssueRunArguments(
@@ -865,10 +877,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
                 repository,
                 signal: context.abort,
                 sync,
-                timeoutMs:
-                  args.timeoutSeconds == null
-                    ? undefined
-                    : args.timeoutSeconds * 1_000,
+                timeoutMs: parsed.timeoutMs,
               }),
             { signal: context.abort },
           )
