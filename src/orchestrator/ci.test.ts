@@ -726,6 +726,14 @@ describe("check handling", () => {
     expect(result?.report.scopeInside).toMatchObject([
       { check: failed[0], classification: "SCOPE_IN" },
     ])
+    expect(result?.ciFailureContext).toContain(
+      "Do not approve this PR while this ci_failure_context is present.",
+    )
+    expect(result?.ciFailureContext).toContain("Return CHANGES_REQUESTED")
+    expect(result?.ciFailureContext).toContain(
+      "nearest responsible or first relevant changed line",
+    )
+    expect(result?.ciFailureContext).not.toContain("review hint")
     expect(result?.ciFailureContext).toContain("Type error")
     expectNoRunRerun(commands)
   })
