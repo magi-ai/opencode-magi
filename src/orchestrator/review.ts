@@ -18,13 +18,16 @@ import {
   fetchUnresolvedThreads,
   closePullRequest,
   mergePullRequest,
+  ensurePullRequestCommits,
   postApproval,
   postChangesRequested,
   postCloseComment,
   postReply,
   type CheckWaitReport,
+  type PullRequestMeta,
   type PullRequestReview,
   type PullRequestCommit,
+  type PullRequestCommitRequirement,
   removeWorktree,
   resolveThread,
   shellQuote,
@@ -382,16 +385,48 @@ function parseRereviewOutputWithInlineTargets(
 }
 
 export async function inlineCommentTargetsForDiff(input: {
+  ensure?: {
+    fromSource: PullRequestCommitRequirement["source"]
+    meta: PullRequestMeta
+    repository: ResolvedRepository
+    toSource: PullRequestCommitRequirement["source"]
+  }
   exec: Exec
   fromSha: string
+  range?: "direct" | "merge-base"
   toSha: string
   worktreePath: string
 }): Promise<InlineCommentTargets> {
+  if (input.ensure) {
+    await ensurePullRequestCommits({
+      commits: [
+        {
+          label: "base",
+          sha: input.fromSha,
+          source: input.ensure.fromSource,
+        },
+        {
+          label: "head",
+          sha: input.toSha,
+          source: input.ensure.toSource,
+        },
+      ],
+      exec: input.exec,
+      meta: input.ensure.meta,
+      repository: input.ensure.repository,
+      worktreePath: input.worktreePath,
+    })
+  }
+
+  const diffRange =
+    input.range === "direct"
+      ? `${shellQuote(input.fromSha)} ${shellQuote(input.toSha)}`
+      : `${shellQuote(input.fromSha)}...${shellQuote(input.toSha)}`
+
   return parseRightSideDiffTargets(
-    await input.exec(
-      `git diff --no-ext-diff --unified=3 ${shellQuote(input.fromSha)}...${shellQuote(input.toSha)}`,
-      { cwd: input.worktreePath },
-    ),
+    await input.exec(`git diff --no-ext-diff --unified=3 ${diffRange}`, {
+      cwd: input.worktreePath,
+    }),
   )
 }
 
@@ -1154,6 +1189,12 @@ export async function runReview(
       },
     )
     const initialInlineCommentTargets = await inlineCommentTargetsForDiff({
+      ensure: {
+        fromSource: "base",
+        meta,
+        repository: input.repository,
+        toSource: "head",
+      },
       exec,
       fromSha: meta.baseRefOid,
       toSha: meta.headRefOid,
@@ -1187,6 +1228,12 @@ export async function runReview(
             )
 
           const inlineCommentTargets = await inlineCommentTargetsForDiff({
+            ensure: {
+              fromSource: "head",
+              meta,
+              repository: input.repository,
+              toSource: "head",
+            },
             exec,
             fromSha: previous.commit.oid,
             toSha: meta.headRefOid,
