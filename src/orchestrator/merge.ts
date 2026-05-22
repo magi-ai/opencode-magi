@@ -26,7 +26,6 @@ import {
   pushHead,
   removeWorktree,
   resolveThread,
-  shellQuote,
   type ReviewThread,
   waitForAutoMerge,
   waitForMergeQueue,
@@ -45,7 +44,6 @@ import {
 import { throwIfAborted, withAbortSignal } from "./abort"
 import { waitForChecksWithClassification } from "./ci"
 import {
-  parseRightSideDiffTargets,
   validateInlineCommentTargets,
   type InlineCommentTargets,
 } from "./inline-comments"
@@ -53,7 +51,11 @@ import { closeMinorityReviewers, mergeVerdictForPolicy } from "./majority"
 import { type ModelClient, runModelWithRepair } from "./model"
 import { mapPool } from "./pool"
 import { formatMergeReport } from "./report"
-import { runReview, type ReviewRunProgress } from "./review"
+import {
+  inlineCommentTargetsForDiff,
+  runReview,
+  type ReviewRunProgress,
+} from "./review"
 import { checkSafetyGate, hasSafetyGate } from "./safety"
 
 export interface MergeRunInput {
@@ -63,6 +65,7 @@ export interface MergeRunInput {
   dryRun?: boolean
   exec: Exec
   onProgress?: (progress: MergeRunProgress) => void | Promise<void>
+  parentSessionId?: string
   pr: number
   repository: ResolvedRepository
   runId?: string
@@ -233,6 +236,7 @@ async function runEditor(
           }
         },
         options: editor.options,
+        parentSessionId: input.parentSessionId,
         parse: parseEditOutput,
         permission: editor.permission,
         prompt,
@@ -450,12 +454,21 @@ async function runRereview(
 
   const meta = await fetchPullRequest(input.exec, input.repository, input.pr)
   const headSha = options.dryRunHeadSha ?? meta.headRefOid
-  const inlineCommentTargets = parseRightSideDiffTargets(
-    await input.exec(
-      `git diff --no-ext-diff --unified=3 ${shellQuote(meta.baseRefOid)} ${shellQuote(headSha)}`,
-      { cwd: worktreePath },
-    ),
-  )
+  const inlineCommentTargets = await inlineCommentTargetsForDiff({
+    ensure: options.dryRunHeadSha
+      ? undefined
+      : {
+          fromSource: "base",
+          meta,
+          repository: input.repository,
+          toSource: "head",
+        },
+    exec: input.exec,
+    fromSha: meta.baseRefOid,
+    range: "direct",
+    toSha: headSha,
+    worktreePath,
+  })
   const artifactDir = outputDir(input)
   let entries = await mapPool(
     input.repository.agents.reviewers,
@@ -521,6 +534,7 @@ async function runRereview(
               }
             },
             options: reviewer.options,
+            parentSessionId: input.parentSessionId,
             parse: (text) =>
               parseRereviewOutputWithInlineTargets(text, inlineCommentTargets),
             permission: reviewer.permission,
@@ -627,6 +641,7 @@ async function runRereview(
                 }
               },
               options: reviewer.options,
+              parentSessionId: input.parentSessionId,
               parse: (text) => {
                 const output = parseRereviewCloseReconsiderationOutput(text)
 
@@ -1164,7 +1179,7 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
         threads: unresolvedThreads,
       })
       const editorFindings = blockingReviewFindings(reportOutputs)
-      const editableFindings = editableThreads.length ? editorFindings : []
+      const editableFindings = editorFindings
       const findingAttemptsExhausted =
         input.repository.merge.maxThreadResolutionCycles !== 0 &&
         cycle > input.repository.merge.maxThreadResolutionCycles
@@ -1261,6 +1276,7 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
             exec,
             headSha: editedHeadSha,
             onProgress: (phase) => input.onProgress?.({ phase, type: "phase" }),
+            parentSessionId: input.parentSessionId,
             pr: input.pr,
             repairAttempts: input.config.output?.repairAttempts ?? 3,
             repository: input.repository,

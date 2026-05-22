@@ -19,7 +19,11 @@ export interface ModelClient {
   }
   session: {
     create(input: {
-      body: { permission?: OpenCodePermissionRule[]; title: string }
+      body: {
+        parentID?: string
+        permission?: OpenCodePermissionRule[]
+        title: string
+      }
     }): Promise<unknown>
     abort?(input: { path: { id: string } }): Promise<unknown>
     delete?(input: { path: { id: string } }): Promise<unknown>
@@ -170,12 +174,14 @@ function extractText(result: unknown, allowEmpty = false): string {
 
 export async function createModelSession(input: {
   client: ModelClient
+  parentSessionId?: string
   permission?: PermissionConfig
   title: string
 }): Promise<string> {
   return extractSessionId(
     await input.client.session.create({
       body: {
+        parentID: input.parentSessionId,
         permission: toOpenCodePermissionRules(input.permission),
         title: input.title,
       },
@@ -193,17 +199,27 @@ export async function promptModelText(input: {
 }): Promise<string> {
   throwIfAborted(input.signal)
 
-  const result = await input.client.session.prompt({
-    body: {
-      model: modelBody(input.model),
-      parts: [{ type: "text", text: input.prompt }],
-    },
-    path: { id: input.sessionId },
-  })
+  const abort = () => {
+    void input.client.session
+      .abort?.({ path: { id: input.sessionId } })
+      .catch(() => undefined)
+  }
+  input.signal?.addEventListener("abort", abort, { once: true })
+  try {
+    const result = await input.client.session.prompt({
+      body: {
+        model: modelBody(input.model),
+        parts: [{ type: "text", text: input.prompt }],
+      },
+      path: { id: input.sessionId },
+    })
 
-  throwIfAborted(input.signal)
+    throwIfAborted(input.signal)
 
-  return extractText(result, input.allowEmpty)
+    return extractText(result, input.allowEmpty)
+  } finally {
+    input.signal?.removeEventListener("abort", abort)
+  }
 }
 
 async function sendPrompt(
@@ -223,6 +239,7 @@ export async function runModelText(input: {
   model: string
   onProgress?: (progress: ModelRunProgress) => void | Promise<void>
   options?: ModelOptions
+  parentSessionId?: string
   permission?: PermissionConfig
   prompt: string
   signal?: AbortSignal
@@ -232,6 +249,7 @@ export async function runModelText(input: {
 
   const sessionId = await createModelSession({
     client: input.client,
+    parentSessionId: input.parentSessionId,
     permission: input.permission,
     title: input.title,
   })
@@ -273,6 +291,7 @@ export async function runModelWithRepair<T>(input: {
   onProgress?: (progress: ModelRunProgress) => void | Promise<void>
   options?: ModelOptions
   parse: (text: string) => T
+  parentSessionId?: string
   permission?: PermissionConfig
   prompt: string
   repairAttempts: number
@@ -296,6 +315,7 @@ export async function runModelWithRepair<T>(input: {
         : extractSessionId(
             await input.client.session.create({
               body: {
+                parentID: input.parentSessionId,
                 permission: toOpenCodePermissionRules(input.permission),
                 title: input.title,
               },

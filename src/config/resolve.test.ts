@@ -1,6 +1,6 @@
 import type { MagiConfig } from "../types"
 import { describe, expect, test } from "vitest"
-import { resolveRepository, reviewerKey } from "./resolve"
+import { resolveRepository, reviewerKey, triageAgentKey } from "./resolve"
 
 const config: MagiConfig = {
   agents: {},
@@ -34,6 +34,11 @@ describe("resolveRepository", () => {
     expect(reviewerKey({ id: "security" }, 1)).toBe("security")
   })
 
+  test("uses voter triage agent keys unless id is configured", () => {
+    expect(triageAgentKey({}, 0)).toBe("voter-1")
+    expect(triageAgentKey({ id: "product" }, 1)).toBe("product")
+  })
+
   test("resolves repository defaults", () => {
     const repo = resolveRepository(config)
 
@@ -62,7 +67,7 @@ describe("resolveRepository", () => {
   test("resolves default triage categories", () => {
     const repo = resolveRepository({
       github: { owner: "owner", repo: "repo" },
-      triage: { account: "magi-bot", agents: [] },
+      triage: { agents: [] },
     })
 
     expect(repo.triage?.categories).toEqual([
@@ -98,7 +103,6 @@ describe("resolveRepository", () => {
     const repo = resolveRepository({
       github: { owner: "owner", repo: "repo" },
       triage: {
-        account: "magi-bot",
         agents: [],
         automation: { create: true, merge: true, review: true },
       },
@@ -115,7 +119,6 @@ describe("resolveRepository", () => {
     const repo = resolveRepository({
       github: { owner: "owner", repo: "repo" },
       triage: {
-        account: "magi-bot",
         agents: [],
         categories: [{ id: "question" }],
       },
