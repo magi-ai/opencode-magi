@@ -46,7 +46,7 @@ export function reviewerKey(reviewer: { id?: string }, index: number): string {
 }
 
 export function triageAgentKey(agent: { id?: string }, index: number): string {
-  return agent.id ?? `triage-${index + 1}`
+  return agent.id ?? `voter-${index + 1}`
 }
 
 export function validateReviewerId(id: string): boolean {

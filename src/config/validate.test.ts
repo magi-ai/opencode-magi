@@ -276,7 +276,7 @@ describe("validateConfig", () => {
     const generated = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
-        triage: { agents: triageAgents, reporter: "triage-1" },
+        triage: { agents: triageAgents, reporter: "voter-1" },
       },
       { requireReview: false, requireTriage: true },
     )
