@@ -34,9 +34,9 @@ const config: MagiConfig = {
 }
 const reviewers = config.review?.agents ?? []
 const triageAgents = [
-  { model: "openai/gpt" },
-  { model: "anthropic/claude" },
-  { model: "google/gemini" },
+  { account: "triage-a", model: "openai/gpt" },
+  { account: "triage-b", model: "anthropic/claude" },
+  { account: "triage-c", model: "google/gemini" },
 ]
 
 describe("validateConfig", () => {
@@ -80,11 +80,10 @@ describe("validateConfig", () => {
         editor: { ref: "editor", persona: "Edit carefully" },
       },
       triage: {
-        account: "triage-bot",
         agents: [
-          { ref: "shared", id: "first" },
-          { ref: "shared", id: "second" },
-          { ref: "shared", id: "third" },
+          { ref: "shared", account: "triage-a", id: "first" },
+          { ref: "shared", account: "triage-b", id: "second" },
+          { ref: "shared", account: "triage-c", id: "third" },
         ],
         creator: { ref: "editor", account: "creator-bot" },
       },
@@ -246,11 +245,10 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          account: "magi-bot",
           agents: [
-            { model: "openai/gpt" },
-            { id: "product", model: "anthropic/claude" },
-            { id: "maintainer", model: "google/gemini" },
+            { account: "triage-a", model: "openai/gpt" },
+            { account: "triage-b", id: "product", model: "anthropic/claude" },
+            { account: "triage-c", id: "maintainer", model: "google/gemini" },
           ],
         },
       },
@@ -260,17 +258,50 @@ describe("validateConfig", () => {
     expect(result).toMatchObject({ errors: [], ok: true })
   })
 
+  test("validates triage reporter against resolved triage agent keys", async () => {
+    const result = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: {
+          agents: [
+            { account: "triage-a", model: "openai/gpt" },
+            { account: "triage-b", id: "product", model: "anthropic/claude" },
+            { account: "triage-c", model: "google/gemini" },
+          ],
+          reporter: "product",
+        },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+    const generated = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: { agents: triageAgents, reporter: "voter-1" },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+    const invalid = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: { agents: triageAgents, reporter: "missing" },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+
+    expect(result).toMatchObject({ errors: [], ok: true })
+    expect(generated).toMatchObject({ errors: [], ok: true })
+    expect(invalid.ok).toBe(false)
+    expect(invalid.errors).toContain(
+      "triage.reporter must match a triage agent key: missing",
+    )
+  })
+
   test("requires triage creator when PR creation automation is enabled", async () => {
     const result = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          account: "magi-bot",
-          agents: [
-            { model: "openai/gpt" },
-            { model: "anthropic/claude" },
-            { model: "google/gemini" },
-          ],
+          agents: triageAgents,
           automation: { create: true },
         },
       },
@@ -288,12 +319,7 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          account: "magi-bot",
-          agents: [
-            { model: "openai/gpt" },
-            { model: "anthropic/claude" },
-            { model: "google/gemini" },
-          ],
+          agents: triageAgents,
           automation: { merge: true, review: true },
         },
       },
@@ -314,12 +340,7 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          account: "magi-bot",
-          agents: [
-            { model: "openai/gpt" },
-            { model: "anthropic/claude" },
-            { model: "google/gemini" },
-          ],
+          agents: triageAgents,
           automation: { pr: true } as unknown as NonNullable<
             MagiConfig["triage"]
           >["automation"],
@@ -337,12 +358,7 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          account: "magi-bot",
-          agents: [
-            { model: "openai/gpt" },
-            { model: "anthropic/claude" },
-            { model: "google/gemini" },
-          ],
+          agents: triageAgents,
           prompts: {
             createPr: "triage-create.md",
           } as unknown as NonNullable<MagiConfig["triage"]>["prompts"],
@@ -353,6 +369,24 @@ describe("validateConfig", () => {
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain("triage.prompts.createPr is not supported")
+  })
+
+  test("rejects obsolete triage action prompt key", async () => {
+    const result = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: {
+          agents: triageAgents,
+          prompts: {
+            action: "triage-action.md",
+          } as unknown as NonNullable<MagiConfig["triage"]>["prompts"],
+        },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain("triage.prompts.action is not supported")
   })
 
   test.each([
@@ -383,7 +417,6 @@ describe("validateConfig", () => {
         {
           github: { owner: "owner", repo: "repo" },
           triage: {
-            account: "magi-bot",
             agents: triageAgents,
             categories,
           },
@@ -404,7 +437,6 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          account: "magi-bot",
           agents: triageAgents,
           categories: [{ id }],
         },
@@ -421,12 +453,7 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          account: "magi-bot",
-          agents: [
-            { model: "openai/gpt" },
-            { model: "anthropic/claude" },
-            { model: "google/gemini" },
-          ],
+          agents: triageAgents,
           categories: {} as NonNullable<MagiConfig["triage"]>["categories"],
         },
       },
@@ -589,12 +616,7 @@ describe("validateConfig", () => {
           },
         },
         triage: {
-          account: "magi-bot",
-          agents: [
-            { model: "openai/gpt" },
-            { model: "anthropic/claude" },
-            { model: "google/gemini" },
-          ],
+          agents: triageAgents,
           prompts: { createGuidelines: "create-guide.txt" },
         },
       },
@@ -889,12 +911,7 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          account: "magi-bot",
-          agents: [
-            { model: "openai/gpt" },
-            { model: "anthropic/claude" },
-            { model: "google/gemini" },
-          ],
+          agents: triageAgents,
           automation: { create: true },
           creator: {
             account: "creator-bot",
