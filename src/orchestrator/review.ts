@@ -851,7 +851,9 @@ async function runCloseReconsideration(input: {
             prompt,
             repairAttempts:
               input.reviewInput.config.output?.repairAttempts ?? 3,
-            schemaName: "close reconsideration",
+            schemaName: isReviewEntry
+              ? "close reconsideration"
+              : "rereview close reconsideration",
             sessionId: input.sessionIds[reviewer.key],
             signal: input.reviewInput.signal,
             title: `magi reconsider close ${input.reviewInput.repository.alias}#${input.reviewInput.pr} ${reviewer.key}`,
