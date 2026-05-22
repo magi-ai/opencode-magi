@@ -874,7 +874,8 @@ describe("check handling", () => {
     ])
   })
 
-  test("does not convert classifier failures to scope-in", async () => {
+  test("fails when any classifier agent fails", async () => {
+    const failures: string[] = []
     const failed = [
       {
         bucket: "fail",
@@ -889,8 +890,26 @@ describe("check handling", () => {
       waitForChecksWithClassification({
         client: {
           session: {
-            create: async () => ({ id: "session" }),
-            prompt: async () => ({ parts: [] }),
+            create: async (input) => ({
+              id: input.body.title.includes(" a") ? "session-a" : "session",
+            }),
+            prompt: async (input) => {
+              if (input.path.id === "session-a") return { parts: [] }
+
+              return {
+                info: {
+                  text: JSON.stringify({
+                    checks: [
+                      {
+                        classification: "SCOPE_OUT",
+                        name: "Test",
+                        reason: "Unrelated transient failure.",
+                      },
+                    ],
+                  }),
+                },
+              }
+            },
           },
         },
         directory: ".",
@@ -903,15 +922,27 @@ describe("check handling", () => {
         },
         pr: 1,
         repairAttempts: 0,
+        onClassifierProgress: (progress) => {
+          if (progress.type === "classifier_failed") {
+            failures.push(progress.error)
+          }
+        },
         wait: true,
         repository: {
           ...repository,
           checks: { ...repository.checks, retryFailedJobs: 0 },
           agents: {
-            reviewers: [reviewer({ account: "a", key: "a" })],
+            reviewers: [
+              reviewer({ account: "a", key: "a" }),
+              reviewer({ account: "b", index: 1, key: "b" }),
+              reviewer({ account: "c", index: 2, key: "c" }),
+            ],
           },
         },
       }),
-    ).rejects.toThrow("CI classification did not reach majority for Test")
+    ).rejects.toThrow("OpenCode session.prompt did not return text output")
+    expect(failures).toEqual([
+      "OpenCode session.prompt did not return text output",
+    ])
   })
 })
