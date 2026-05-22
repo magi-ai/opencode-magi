@@ -396,6 +396,7 @@ function createExec(
     if (command === "git branch --show-current") return "feature-branch\n"
     if (command.startsWith("git worktree remove")) return ""
     if (command.startsWith("git worktree prune")) return ""
+    if (command.startsWith("git cat-file -e")) return ""
     if (command.startsWith("git diff --no-ext-diff")) {
       return [
         "diff --git a/src/app.ts b/src/app.ts",

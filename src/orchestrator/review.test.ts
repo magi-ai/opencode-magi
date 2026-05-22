@@ -1,5 +1,6 @@
-import type { PullRequestReview } from "../github/commands"
+import type { PullRequestMeta, PullRequestReview } from "../github/commands"
 import { describe, expect, test } from "vitest"
+import type { ResolvedRepository } from "../types"
 import {
   hasPendingThreadReply,
   inlineCommentTargetsForDiff,
@@ -9,6 +10,49 @@ import {
 } from "./review"
 
 const accounts = ["bot-a", "bot-b", "bot-c"]
+
+const repository: ResolvedRepository = {
+  agents: { reviewers: [] },
+  alias: "repo",
+  automation: { close: true, merge: true },
+  checks: {
+    exclude: [],
+    retryFailedJobs: 3,
+    waitAfterEdit: true,
+    waitBeforeReview: true,
+  },
+  concurrency: { runs: 3, reviewers: 3 },
+  github: {
+    apiRetryAttempts: 3,
+    host: "github.example.com",
+    owner: "owner",
+    repo: "repo",
+  },
+  merge: {
+    auto: true,
+    approvalPolicy: "majority",
+    deleteBranch: true,
+    maxThreadResolutionCycles: 5,
+    mergeQueue: false,
+    method: "squash",
+  },
+  prompts: {},
+  safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
+}
+
+const pullRequestMeta: PullRequestMeta = {
+  author: { login: "author" },
+  baseRefName: "main",
+  baseRefOid: "base-sha",
+  headRefName: "feature-branch",
+  headRefOid: "head-sha",
+  headRepository: { name: "repo" },
+  headRepositoryOwner: { login: "owner" },
+  isDraft: false,
+  number: 7,
+  title: "Fix diff targets",
+  url: "https://github.example.com/owner/repo/pull/7",
+}
 
 function review(account: string, commit: string, submittedAt: string) {
   return {
@@ -158,6 +202,95 @@ describe("review flow", () => {
       },
     ])
     expect(targets.get("src/app.ts")?.has(2)).toBe(true)
+  })
+
+  test("fetches missing pull request refs before building inline targets", async () => {
+    const calls: { command: string; cwd?: string }[] = []
+    const localCommits = new Set(["head-sha"])
+    const targets = await inlineCommentTargetsForDiff({
+      ensure: {
+        fromSource: "base",
+        meta: pullRequestMeta,
+        repository,
+        toSource: "head",
+      },
+      exec: async (command, options) => {
+        calls.push({ command, cwd: options?.cwd })
+
+        if (command.startsWith("git cat-file -e")) {
+          const sha = /'([^']+)\^\{commit\}'/.exec(command)?.[1]
+          if (sha && localCommits.has(sha)) return ""
+
+          throw new Error("missing commit")
+        }
+        if (command.startsWith("git fetch --no-tags")) {
+          localCommits.add("base-sha")
+
+          return ""
+        }
+
+        return [
+          "diff --git a/src/app.ts b/src/app.ts",
+          "--- a/src/app.ts",
+          "+++ b/src/app.ts",
+          "@@ -1 +1,2 @@",
+          " existing",
+          "+added",
+        ].join("\n")
+      },
+      fromSha: "base-sha",
+      toSha: "head-sha",
+      worktreePath: "/tmp/worktree",
+    })
+
+    expect(calls).toEqual([
+      {
+        command: "git cat-file -e 'base-sha^{commit}'",
+        cwd: "/tmp/worktree",
+      },
+      {
+        command: "git cat-file -e 'head-sha^{commit}'",
+        cwd: "/tmp/worktree",
+      },
+      {
+        command:
+          "git fetch --no-tags 'https://github.example.com/owner/repo.git' 'refs/heads/main'",
+        cwd: "/tmp/worktree",
+      },
+      {
+        command: "git cat-file -e 'base-sha^{commit}'",
+        cwd: "/tmp/worktree",
+      },
+      {
+        command: "git diff --no-ext-diff --unified=3 'base-sha'...'head-sha'",
+        cwd: "/tmp/worktree",
+      },
+    ])
+    expect(targets.get("src/app.ts")?.has(2)).toBe(true)
+  })
+
+  test("reports a clear error when a diff commit stays unavailable", async () => {
+    await expect(
+      inlineCommentTargetsForDiff({
+        ensure: {
+          fromSource: "base",
+          meta: pullRequestMeta,
+          repository,
+          toSource: "head",
+        },
+        exec: async (command) => {
+          if (command === "git cat-file -e 'head-sha^{commit}'") return ""
+          if (command.startsWith("git fetch --no-tags")) return ""
+
+          throw new Error("missing commit")
+        },
+        fromSha: "base-sha",
+        toSha: "head-sha",
+        worktreePath: "/tmp/worktree",
+      }),
+    ).rejects.toThrow(
+      "base commit base-sha is unavailable after fetching base ref main",
+    )
   })
 
   test("restores legacy inline review findings from the posted review body", () => {

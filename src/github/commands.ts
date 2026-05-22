@@ -200,6 +200,12 @@ export interface CreatedWorktree {
   path: string
 }
 
+export interface PullRequestCommitRequirement {
+  label: string
+  sha: string
+  source: "base" | "head"
+}
+
 const WORKTREE_CHECKOUT_RETRY_ATTEMPTS = 5
 const WORKTREE_CHECKOUT_RETRY_DELAY_MS = 100
 const worktreeCreateLocks = new Map<string, Promise<void>>()
@@ -216,6 +222,107 @@ function errorText(error: unknown): string {
   return [value.message, value.stderr, value.stdout]
     .filter((item): item is string => typeof item === "string")
     .join("\n")
+}
+
+async function localCommitExists(
+  exec: Exec,
+  worktreePath: string,
+  sha: string,
+): Promise<boolean> {
+  try {
+    await exec(`git cat-file -e ${shellQuote(`${sha}^{commit}`)}`, {
+      cwd: worktreePath,
+    })
+
+    return true
+  } catch {
+    return false
+  }
+}
+
+function pullRequestCommitSource(input: {
+  meta: PullRequestMeta
+  repository: ResolvedRepository
+  source: PullRequestCommitRequirement["source"]
+}): { owner: string; refName: string; repo: string } {
+  if (input.source === "base") {
+    return {
+      owner: input.repository.github.owner,
+      refName: input.meta.baseRefName,
+      repo: input.repository.github.repo,
+    }
+  }
+
+  return {
+    owner:
+      input.meta.headRepositoryOwner?.login ?? input.repository.github.owner,
+    refName: input.meta.headRefName,
+    repo: input.meta.headRepository?.name ?? input.repository.github.repo,
+  }
+}
+
+async function fetchPullRequestCommitSource(input: {
+  exec: Exec
+  meta: PullRequestMeta
+  repository: ResolvedRepository
+  source: PullRequestCommitRequirement["source"]
+  worktreePath: string
+}): Promise<void> {
+  const commitSource = pullRequestCommitSource(input)
+
+  try {
+    await input.exec(
+      `git fetch --no-tags ${shellQuote(repositoryGitUrl(input.repository, commitSource.owner, commitSource.repo))} ${shellQuote(`refs/heads/${commitSource.refName}`)}`,
+      { cwd: input.worktreePath },
+    )
+  } catch (error) {
+    throw new Error(
+      `Could not fetch ${input.source} ref ${commitSource.refName} for #${input.meta.number}: ${errorText(error)}`,
+    )
+  }
+}
+
+export async function ensurePullRequestCommits(input: {
+  commits: PullRequestCommitRequirement[]
+  exec: Exec
+  meta: PullRequestMeta
+  repository: ResolvedRepository
+  worktreePath: string
+}): Promise<void> {
+  const missing: PullRequestCommitRequirement[] = []
+
+  for (const commit of input.commits) {
+    if (
+      !(await localCommitExists(input.exec, input.worktreePath, commit.sha))
+    ) {
+      missing.push(commit)
+    }
+  }
+
+  for (const source of new Set(missing.map((commit) => commit.source))) {
+    await fetchPullRequestCommitSource({
+      exec: input.exec,
+      meta: input.meta,
+      repository: input.repository,
+      source,
+      worktreePath: input.worktreePath,
+    })
+  }
+
+  for (const commit of missing) {
+    if (await localCommitExists(input.exec, input.worktreePath, commit.sha)) {
+      continue
+    }
+
+    const source = pullRequestCommitSource({
+      meta: input.meta,
+      repository: input.repository,
+      source: commit.source,
+    })
+    throw new Error(
+      `${commit.label} commit ${commit.sha} is unavailable after fetching ${commit.source} ref ${source.refName}`,
+    )
+  }
 }
 
 function isCheckoutConfigLockError(error: unknown): boolean {
