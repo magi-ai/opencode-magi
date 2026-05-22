@@ -5,12 +5,15 @@
 ```txt
 /magi:merge <PR...>
 /magi:merge --dry-run <PR...>
+/magi:merge --sync <PR...>
 /magi:merge --no-merge --max-cycles 1 <PR...>
 ```
 
 `<PR...>` accepts one or more PR numbers or PR URLs separated by spaces or commas.
 
 Use `--dry-run` to run review, editor, re-review, majority voting, and reporting without posting to GitHub, pushing editor commits, resolving threads, merging, closing, or rerunning CI jobs. The editor may still modify and commit inside Magi's temporary worktree so reviewers can inspect the local diff.
+
+Use `--sync` to wait for the merge flow to complete and return the run report instead of only starting a background run.
 
 Per-run flags override merged config before validation and resolution. If both positive and negative boolean flags are supplied, the later flag wins. `--dry-run` remains the strongest safety mode and prevents GitHub mutations even when automation-enabling flags are supplied.
 
@@ -25,6 +28,7 @@ Merge flags:
 | `--retry-failed-jobs <n>`                                 | `review.checks.retryFailedJobs`   |
 | `--reviewer-concurrency <n>`                              | `review.concurrency.reviewers`    |
 | `--run-concurrency <n>`                                   | `review.concurrency.runs`         |
+| `--sync`                                                  | Wait for completion               |
 | `--wait-checks`, `--no-wait-checks`                       | `review.checks.wait`              |
 | `--wait-checks-after-edit`, `--no-wait-checks-after-edit` | `merge.checks.wait`               |
 
@@ -69,6 +73,7 @@ Merge outcomes:
 | `closed`             | A review or re-review majority was `CLOSE` and Magi ran `gh pr close`.                                                  |
 | `close_requested`    | A review or re-review decision was `CLOSE`, comments were posted, and `merge.automation.close` disabled the close step. |
 | `dequeued`           | With `review.merge.queue: true`, GitHub removed the PR from auto-merge or the merge queue.                              |
+| `safety_blocked`     | A merge safety gate blocked the PR before agent execution.                                                              |
 | `changes_unresolved` | Unresolved review threads reached the per-thread `merge.maxThreadResolutionCycles` limit without a `MERGE` majority.    |
 | `ci_unresolved`      | Review and approvals completed, but scope-outside CI remained unresolved so Magi did not merge.                         |
 
@@ -78,18 +83,19 @@ Magi may post reviews, comments, editor replies, approvals, close comments, and 
 
 Merge artifacts are written to the run output directory:
 
-| File                                                           | Contents                                                |
-| -------------------------------------------------------------- | ------------------------------------------------------- |
-| `editor.cycle-{cycle}.prompt.txt`                              | Final prompt sent to the editor model.                  |
-| `editor.cycle-{cycle}.raw.txt`                                 | Raw editor model output.                                |
-| `editor.cycle-{cycle}.json`                                    | Parsed editor JSON.                                     |
-| `{reviewer}.close-reconsideration.cycle-{cycle}.prompt.txt`    | Final close reconsideration prompt sent to the reviewer. |
-| `{reviewer}.close-reconsideration.cycle-{cycle}.raw.txt`       | Raw close reconsideration model output.                 |
-| `{reviewer}.close-reconsideration.cycle-{cycle}.json`          | Parsed close reconsideration JSON.                      |
-| `{reviewer}.rereview.cycle-{cycle}.prompt.txt`                 | Final re-review prompt sent to the reviewer.            |
-| `{reviewer}.rereview.cycle-{cycle}.raw.txt`                    | Raw re-review model output.                             |
-| `{reviewer}.rereview.cycle-{cycle}.json`                       | Parsed re-review JSON.                                  |
-| `rereview-majority.cycle-{cycle}.json`                         | Re-review majority counts and result.                   |
+| File                                                        | Contents                                                 |
+| ----------------------------------------------------------- | -------------------------------------------------------- |
+| `editor.cycle-{cycle}.prompt.txt`                           | Final prompt sent to the editor model.                   |
+| `editor.cycle-{cycle}.raw.txt`                              | Raw editor model output.                                 |
+| `editor.cycle-{cycle}.json`                                 | Parsed editor JSON.                                      |
+| `{reviewer}.close-reconsideration.cycle-{cycle}.prompt.txt` | Final close reconsideration prompt sent to the reviewer. |
+| `{reviewer}.close-reconsideration.cycle-{cycle}.raw.txt`    | Raw close reconsideration model output.                  |
+| `{reviewer}.close-reconsideration.cycle-{cycle}.json`       | Parsed close reconsideration JSON.                       |
+| `{reviewer}.rereview.cycle-{cycle}.prompt.txt`              | Final re-review prompt sent to the reviewer.             |
+| `{reviewer}.rereview.cycle-{cycle}.raw.txt`                 | Raw re-review model output.                              |
+| `{reviewer}.rereview.cycle-{cycle}.json`                    | Parsed re-review JSON.                                   |
+| `rereview-majority.cycle-{cycle}.json`                      | Re-review majority counts and result.                    |
+| `report.md`                                                 | Final human-readable merge run report.                   |
 
 The merge flow also writes the review artifacts listed in [`/magi:review`](review.md).
 
@@ -97,27 +103,28 @@ The merge flow also writes the review artifacts listed in [`/magi:review`](revie
 
 Important settings for `/magi:merge`:
 
-| Setting                           | Purpose                                                            |
-| --------------------------------- | ------------------------------------------------------------------ |
-| `merge.editor`                    | Editor agent, model, persona, permissions, GitHub account, author. |
-| `review.agents`                   | Reviewer agents used for initial review and re-review.             |
-| `merge.automation.close`          | Run `gh pr close` after a close decision.                          |
-| `merge.automation.merge`          | Merge or enqueue the PR after approval.                            |
-| `merge.checks.wait`               | Wait for PR checks after editor changes.                           |
-| `review.merge.approvalPolicy`     | Decide readiness by `majority` or `unanimous`.                     |
-| `review.merge.auto`               | Pass `--auto` to `gh pr merge` outside merge queue mode.           |
-| `review.merge.deleteBranch`       | Delete the PR branch during non-queue merges when configured.      |
-| `merge.maxThreadResolutionCycles` | Maximum fix/reply attempts per unresolved review thread.           |
-| `review.merge.queue`              | Enqueue the PR through GitHub GraphQL and poll queue completion.   |
-| `review.merge.method`             | Merge method: `merge`, `squash`, or `rebase`.                      |
-| `merge.prompts.edit`              | Editor prompt template.                                            |
-| `merge.prompts.editGuidelines`    | Shared edit guidance file.                                         |
-| `merge.prompts.ciClassification`  | Post-edit failed-check classification prompt template.             |
-| `review.prompts.rereview`         | Re-review prompt template.                                         |
-| `review.safety.requiredLabels`    | Required PR labels before merge flow.                              |
-| `review.safety.blockedPaths`      | Changed-file glob patterns that block merge flow.                  |
-| `review.safety.maxChangedFiles`   | Maximum changed file count before merge flow is blocked.           |
-| `review.safety.allowAuthors`      | Allowed PR authors when configured.                                |
+| Setting                               | Purpose                                                            |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| `merge.editor`                        | Editor agent, model, persona, permissions, GitHub account, author. |
+| `review.agents`                       | Reviewer agents used for initial review and re-review.             |
+| `merge.automation.close`              | Run `gh pr close` after a close decision.                          |
+| `merge.automation.merge`              | Merge or enqueue the PR after approval.                            |
+| `merge.checks.wait`                   | Wait for PR checks after editor changes.                           |
+| `review.merge.approvalPolicy`         | Decide readiness by `majority` or `unanimous`.                     |
+| `review.merge.auto`                   | Pass `--auto` to `gh pr merge` outside merge queue mode.           |
+| `review.merge.deleteBranch`           | Delete the PR branch during non-queue merges when configured.      |
+| `merge.maxThreadResolutionCycles`     | Maximum fix/reply attempts per unresolved review thread.           |
+| `review.merge.queue`                  | Enqueue the PR through GitHub GraphQL and poll queue completion.   |
+| `review.merge.method`                 | Merge method: `merge`, `squash`, or `rebase`.                      |
+| `merge.prompts.edit`                  | Editor prompt template.                                            |
+| `merge.prompts.editGuidelines`        | Shared edit guidance file.                                         |
+| `merge.prompts.ciClassification`      | Post-edit failed-check classification prompt template.             |
+| `review.prompts.rereview`             | Re-review prompt template.                                         |
+| `review.prompts.closeReconsideration` | Close reconsideration prompt template used during re-review.       |
+| `review.safety.requiredLabels`        | Required PR labels before merge flow.                              |
+| `review.safety.blockedPaths`          | Changed-file glob patterns that block merge flow.                  |
+| `review.safety.maxChangedFiles`       | Maximum changed file count before merge flow is blocked.           |
+| `review.safety.allowAuthors`          | Allowed PR authors when configured.                                |
 
 See [Config](/docs/config.md) for the complete configuration reference.
 
