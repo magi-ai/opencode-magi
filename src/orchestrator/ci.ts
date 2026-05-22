@@ -293,7 +293,15 @@ function ciFailureContextForClassified(
 
   return [
     "CI has scope-in failures that may be caused by this PR.",
-    "Use this as a review hint; still inspect the PR diff before reporting findings.",
+    "Treat these failures as blocking review issues until the checks pass.",
+    [
+      "Do not approve this PR while this ci_failure_context is present.",
+      "Return CHANGES_REQUESTED and include a finding for each failing CI check.",
+    ].join(" "),
+    [
+      "Still inspect the PR diff before reporting findings.",
+      "If a CI failure does not map to an exact changed line, anchor the finding to the nearest responsible or first relevant changed line.",
+    ].join(" "),
     "",
     ...sections,
   ].join("\n\n")
