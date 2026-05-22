@@ -336,7 +336,7 @@ function reviewStateToVerdict(
   if (state === "APPROVED") return "MERGE"
   if (state === "CHANGES_REQUESTED") return "CHANGES_REQUESTED"
 
-  return "CLOSE"
+  throw new Error(`Unsupported GitHub review state: ${state}`)
 }
 
 function hasBlockingCiReports(reports: CheckWaitReport[]): boolean {
