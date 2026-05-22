@@ -361,11 +361,14 @@ function createExec(
 ): { commands: string[]; exec: Exec } {
   const commands: string[] = []
   let checksRead = 0
+  let merged = false
 
   const exec: Exec = async (command) => {
     commands.push(command)
 
-    if (command.startsWith("gh pr view 7")) return pullRequest()
+    if (command.startsWith("gh pr view 7")) {
+      return pullRequest({ state: merged ? "MERGED" : "OPEN" })
+    }
     if (command.startsWith("gh auth token")) return "token\n"
     if (command.startsWith("gh pr review 7")) return "review posted"
     if (
@@ -375,7 +378,11 @@ function createExec(
       return "https://github.com/owner/repo/pull/7#pullrequestreview-1"
     }
     if (command.startsWith("gh pr close 7")) return "closed"
-    if (command.startsWith("gh pr merge 7")) return "merged"
+    if (command.startsWith("gh pr merge 7")) {
+      merged = true
+
+      return "merged"
+    }
     if (command.startsWith("gh pr checks 7") && command.includes("--watch")) {
       return ""
     }
