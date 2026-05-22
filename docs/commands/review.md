@@ -5,6 +5,7 @@
 ```txt
 /magi:review <PR...>
 /magi:review --dry-run <PR...>
+/magi:review --sync <PR...>
 /magi:review --no-merge --run-concurrency 1 <PR...>
 ```
 
@@ -12,19 +13,23 @@
 
 Use `--dry-run` to run CI classification, reviewer agents, majority voting, and reporting without posting GitHub reviews or comments. Scope-out CI jobs are classified, but reruns are reported as planned actions instead of being triggered.
 
+Use `--sync` to wait for the review run to complete before returning the command output.
+
 Per-run flags override merged config before validation and resolution. If both positive and negative boolean flags are supplied, the later flag wins. `--dry-run` remains the strongest safety mode and prevents GitHub mutations even when automation-enabling flags are supplied.
 
 Review flags:
 
-| Flag                                | Overrides                       |
-| ----------------------------------- | ------------------------------- |
-| `--language <value>`                | `language`                      |
-| `--merge`, `--no-merge`             | `review.automation.merge`       |
-| `--close`, `--no-close`             | `review.automation.close`       |
-| `--retry-failed-jobs <n>`           | `review.checks.retryFailedJobs` |
-| `--reviewer-concurrency <n>`        | `review.concurrency.reviewers`  |
-| `--run-concurrency <n>`             | `review.concurrency.runs`       |
-| `--wait-checks`, `--no-wait-checks` | `review.checks.wait`            |
+| Flag                                | Effect or override                                     |
+| ----------------------------------- | ------------------------------------------------------ |
+| `--dry-run`                         | Prevents GitHub mutations and CI reruns.               |
+| `--sync`                            | Waits for the review run to complete before returning. |
+| `--language <value>`                | `language`                                             |
+| `--merge`, `--no-merge`             | `review.automation.merge`                              |
+| `--close`, `--no-close`             | `review.automation.close`                              |
+| `--retry-failed-jobs <n>`           | `review.checks.retryFailedJobs`                        |
+| `--reviewer-concurrency <n>`        | `review.concurrency.reviewers`                         |
+| `--run-concurrency <n>`             | `review.concurrency.runs`                              |
+| `--wait-checks`, `--no-wait-checks` | `review.checks.wait`                                   |
 
 ## What It Does
 
@@ -40,18 +45,19 @@ It skips reviewer accounts that already reviewed the current effective head. If 
 4. Fetch existing PR reviews for configured `review.agents[].account` values.
 5. Determine review freshness against the latest non-merge PR commit.
 6. Skip current reviewers, use re-review mode for stale reviewers, and use initial review mode for reviewers with no prior review.
-7. Wait for PR checks when `review.checks.wait` is enabled.
-8. If checks fail, remove checks matching `review.checks.exclude`, fetch failed job logs, classify each remaining failure as `SCOPE_IN` or `SCOPE_OUT`, rerun only `SCOPE_OUT` GitHub Actions jobs up to `review.checks.retryFailedJobs`, and pass `SCOPE_IN` failure context to reviewers. Dry runs skip the rerun and report it as a planned action.
-9. Create a detached git worktree under `review.worktree` and check out the PR branch.
-10. Run each non-skipped reviewer agent through the reviewer worker pool.
-11. Parse each reviewer response as the fixed review or re-review JSON schema.
-12. Validate each `CHANGES_REQUESTED` finding by asking the other reviewers to vote on it.
-13. Keep only findings that reach finding-level majority.
-14. Reconsider any minority `CLOSE` verdict before posting.
-15. Aggregate active reviewer verdicts plus skipped reviewer verdicts from existing GitHub review state by majority vote.
-16. Post each active reviewer result to GitHub with that reviewer's configured account, unless `--dry-run` is set.
-17. If configured, merge or close the PR according to `review.automation`.
-18. Remove the temporary worktree and recorded worktree branch.
+7. Fetch and write review context for the PR, related issues, PR comments, and review discussion.
+8. Wait for PR checks when `review.checks.wait` is enabled.
+9. If checks fail, remove checks matching `review.checks.exclude`, fetch failed job logs, classify each remaining failure as `SCOPE_IN` or `SCOPE_OUT`, rerun only `SCOPE_OUT` GitHub Actions jobs up to `review.checks.retryFailedJobs`, and pass `SCOPE_IN` failure context to reviewers. Dry runs skip the rerun and report it as a planned action.
+10. Create a detached git worktree under `review.worktree` and check out the PR branch.
+11. Run each non-skipped reviewer agent through the reviewer worker pool.
+12. Parse each reviewer response as the fixed review or re-review JSON schema.
+13. Validate each `CHANGES_REQUESTED` finding by asking the other reviewers to vote on it.
+14. Keep only findings that reach finding-level majority.
+15. Reconsider any minority `CLOSE` verdict before posting.
+16. Aggregate active reviewer verdicts plus skipped reviewer verdicts from existing GitHub review state by majority vote.
+17. Post each active reviewer result to GitHub with that reviewer's configured account, unless `--dry-run` is set.
+18. If configured, merge or close the PR according to `review.automation`.
+19. Remove the temporary worktree and recorded worktree branch.
 
 Reviewer verdicts map to GitHub actions:
 
@@ -69,16 +75,29 @@ Magi posts GitHub reviews and comments from each active reviewer account.
 
 Review artifacts are written to the run output directory:
 
-| File                                 | Contents                                       |
-| ------------------------------------ | ---------------------------------------------- |
-| `{reviewer}.review.prompt.txt`       | Final prompt sent to the reviewer model.       |
-| `{reviewer}.review.raw.txt`          | Raw model output after any repair attempts.    |
-| `{reviewer}.review.json`             | Parsed review JSON.                            |
-| `{reviewer}.finding-validation.json` | Parsed finding validation votes.               |
-| `finding-validation.json`            | Kept and discarded findings after voting.      |
-| `majority.json`                      | Majority counts, reviewers, threshold, result. |
-| `sessions.json`                      | OpenCode session ID per reviewer.              |
-| `posted.json`                        | GitHub posting result per reviewer.            |
+| File                                          | Contents                                                                 |
+| --------------------------------------------- | ------------------------------------------------------------------------ |
+| `review-context.json`                         | Structured PR, related issue, PR comment, and review discussion context. |
+| `review-context.md`                           | Rendered review context passed to reviewer prompts.                      |
+| `{reviewer}.ci-classification.prompt.txt`     | Final failed-check classification prompt.                                |
+| `{reviewer}.ci-classification.raw.txt`        | Raw failed-check classification output.                                  |
+| `{reviewer}.review.prompt.txt`                | Final initial review prompt sent to the reviewer model.                  |
+| `{reviewer}.review.raw.txt`                   | Raw initial review model output after any repair attempts.               |
+| `{reviewer}.review.json`                      | Parsed initial review JSON.                                              |
+| `{reviewer}.rereview.prompt.txt`              | Final re-review prompt for stale reviewers.                              |
+| `{reviewer}.rereview.raw.txt`                 | Raw re-review model output after any repair attempts.                    |
+| `{reviewer}.rereview.json`                    | Parsed re-review JSON.                                                   |
+| `{reviewer}.finding-validation.prompt.txt`    | Final prompt for validating another reviewer's findings.                 |
+| `{reviewer}.finding-validation.raw.txt`       | Raw finding validation output.                                           |
+| `{reviewer}.finding-validation.json`          | Parsed finding validation votes.                                         |
+| `finding-validation.json`                     | Validation votes plus kept and discarded findings after voting.          |
+| `{reviewer}.close-reconsideration.prompt.txt` | Final prompt for reconsidering a minority `CLOSE` verdict.               |
+| `{reviewer}.close-reconsideration.raw.txt`    | Raw close reconsideration output.                                        |
+| `{reviewer}.close-reconsideration.json`       | Parsed close reconsideration JSON.                                       |
+| `majority.json`                               | `approvalPolicy`, final `verdict`, and reviewer `verdicts`.              |
+| `sessions.json`                               | OpenCode session ID per reviewer.                                        |
+| `posted.json`                                 | GitHub posting, dry-run, skip, and automation result per reviewer.       |
+| `report.md`                                   | Human-readable run report.                                               |
 
 ## Configuration
 
@@ -131,7 +150,15 @@ Every finding must target a valid right-side line in the PR diff. If the problem
 
 ### What GitHub data windows are fetched?
 
-Magi currently queries reviews first 100, commits first 100, review threads first 100, and comments first 50 per thread. Very large PRs can miss older data when determining review freshness or unresolved thread state.
+Magi currently uses different windows for freshness, review context, and unresolved thread checks:
+
+| Purpose                  | Window                                                                                                                                          |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Review freshness         | Reviews first 100 and commits first 100.                                                                                                        |
+| Review context           | PR comments last 20, review threads last 50, review thread comments last 20, closing issue comments last 20, referenced issue comments last 10. |
+| Unresolved thread checks | Review threads first 100 and comments first 50 per thread, filtered to unresolved threads and, for re-review, the target reviewer.              |
+
+Review context comment bodies are truncated after 4000 characters. Very large PRs can miss older data when determining review freshness, building review context, or checking unresolved thread state.
 
 ### Which GitHub accounts are used?
 

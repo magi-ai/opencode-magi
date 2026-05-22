@@ -20,3 +20,4 @@ New findings follow the same inline target rules as initial review findings: eve
 | `{ciFailureContextBlock}`         | Full `<ci_failure_context>` block when context exists, otherwise empty.               |
 | `{previousReview}`                | Previous GitHub review metadata, when available.                                      |
 | `{previousReviewBlock}`           | Full `<previous_review>` block when previous review metadata exists, otherwise empty. |
+| `{reviewContext}`                 | Rendered PR, related issue, PR comment, and review discussion context.                |
