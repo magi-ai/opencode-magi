@@ -453,6 +453,7 @@ async function classifyChecks(input: {
     progress: CiClassifierProgress,
   ) => void | Promise<void>
   outputDir?: string
+  parentSessionId?: string
   pr: number
   repository: ResolvedRepository
   repairAttempts: number
@@ -545,6 +546,7 @@ async function classifyChecks(input: {
             }
           },
           options: reviewer.options,
+          parentSessionId: input.parentSessionId,
           parse: (text) => {
             const output = parseCiClassificationOutput(text)
 
@@ -674,6 +676,7 @@ export async function waitForChecksWithClassification(input: {
     progress: CiClassifierProgress,
   ) => void | Promise<void>
   outputDir?: string
+  parentSessionId?: string
   pr: number
   repairAttempts: number
   repository: ResolvedRepository
@@ -765,6 +768,7 @@ export async function waitForChecksWithClassification(input: {
         directory: input.directory,
         onClassifierProgress: input.onClassifierProgress,
         outputDir: input.outputDir,
+        parentSessionId: input.parentSessionId,
         pr: input.pr,
         repairAttempts: input.repairAttempts,
         repository: input.repository,

@@ -223,6 +223,7 @@ describe("MagiRunManager notifications", () => {
     try {
       const state = await manager.startReview({
         config: { github: { owner: "owner", repo: "repo" } },
+        parentSessionId: "parent-session",
         pr: 7557,
         repository: sampleRepository(),
         sync: true,
@@ -230,7 +231,9 @@ describe("MagiRunManager notifications", () => {
 
       expect(state.status).toBe("completed")
       expect(state.phase).toBe("completed")
-      expect(runReviewMock).toHaveBeenCalledOnce()
+      expect(runReviewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ parentSessionId: "parent-session" }),
+      )
     } finally {
       await rm(directory, { force: true, recursive: true })
     }
@@ -250,6 +253,7 @@ describe("MagiRunManager notifications", () => {
     try {
       const state = await manager.startMerge({
         config: { github: { owner: "owner", repo: "repo" } },
+        parentSessionId: "parent-session",
         pr: 7557,
         repository: sampleRepository(),
         sync: true,
@@ -257,7 +261,9 @@ describe("MagiRunManager notifications", () => {
 
       expect(state.status).toBe("completed")
       expect(state.phase).toBe("approved")
-      expect(runMergeMock).toHaveBeenCalledOnce()
+      expect(runMergeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ parentSessionId: "parent-session" }),
+      )
     } finally {
       await rm(directory, { force: true, recursive: true })
     }
@@ -278,6 +284,7 @@ describe("MagiRunManager notifications", () => {
       const state = await manager.startTriage({
         config: { github: { owner: "owner", repo: "repo" } },
         issue: 115,
+        parentSessionId: "parent-session",
         repository: sampleTriageRepository({
           clear: ["triage"],
           close: false,
@@ -292,7 +299,9 @@ describe("MagiRunManager notifications", () => {
       expect(state.phase).toBe(
         JSON.stringify({ category: "feature", disposition: "accepted" }),
       )
-      expect(runTriageMock).toHaveBeenCalledOnce()
+      expect(runTriageMock).toHaveBeenCalledWith(
+        expect.objectContaining({ parentSessionId: "parent-session" }),
+      )
     } finally {
       await rm(directory, { force: true, recursive: true })
     }

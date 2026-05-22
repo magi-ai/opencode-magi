@@ -62,6 +62,7 @@ export interface MergeRunInput {
   dryRun?: boolean
   exec: Exec
   onProgress?: (progress: MergeRunProgress) => void | Promise<void>
+  parentSessionId?: string
   pr: number
   repository: ResolvedRepository
   runId?: string
@@ -232,6 +233,7 @@ async function runEditor(
           }
         },
         options: editor.options,
+        parentSessionId: input.parentSessionId,
         parse: parseEditOutput,
         permission: editor.permission,
         prompt,
@@ -520,6 +522,7 @@ async function runRereview(
               }
             },
             options: reviewer.options,
+            parentSessionId: input.parentSessionId,
             parse: (text) =>
               parseRereviewOutputWithInlineTargets(text, inlineCommentTargets),
             permission: reviewer.permission,
@@ -626,6 +629,7 @@ async function runRereview(
                 }
               },
               options: reviewer.options,
+              parentSessionId: input.parentSessionId,
               parse: (text) => {
                 const output = parseRereviewCloseReconsiderationOutput(text)
 
@@ -1256,6 +1260,7 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
             exec,
             headSha: editedHeadSha,
             onProgress: (phase) => input.onProgress?.({ phase, type: "phase" }),
+            parentSessionId: input.parentSessionId,
             pr: input.pr,
             repairAttempts: input.config.output?.repairAttempts ?? 3,
             repository: input.repository,

@@ -67,6 +67,38 @@ describe("runModelWithRepair", () => {
     })
   })
 
+  test("passes parent session id when creating sessions", async () => {
+    let createInput: unknown
+    const client: ModelClient = {
+      session: {
+        create: async (input) => {
+          createInput = input
+
+          return { id: "session-1" }
+        },
+        prompt: async () => ({ info: { text: "{}" } }),
+      },
+    }
+
+    await runModelWithRepair({
+      client,
+      model: "openai/gpt",
+      parentSessionId: "parent-session",
+      parse: () => ({}),
+      prompt: "Review this PR",
+      repairAttempts: 0,
+      schemaName: "review",
+      title: "magi review repo#1 reviewer",
+    })
+
+    expect(createInput).toMatchObject({
+      body: {
+        parentID: "parent-session",
+        title: "magi review repo#1 reviewer",
+      },
+    })
+  })
+
   test("surfaces session create API errors", async () => {
     const client: ModelClient = {
       session: {

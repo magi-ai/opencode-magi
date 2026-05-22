@@ -81,6 +81,7 @@ export interface ReviewRunInput {
   enableReviewAutomation?: boolean
   exec: Exec
   onProgress?: (progress: ReviewRunProgress) => void | Promise<void>
+  parentSessionId?: string
   pr: number
   repository: ResolvedRepository
   runId?: string
@@ -636,6 +637,7 @@ async function runFindingValidation(input: {
                 }
               },
               options: reviewer.options,
+              parentSessionId: input.reviewInput.parentSessionId,
               parse: (text) => {
                 const output = parseFindingValidationOutput(text)
 
@@ -804,6 +806,7 @@ async function runCloseReconsideration(input: {
               }
             },
             options: reviewer.options,
+            parentSessionId: input.reviewInput.parentSessionId,
             parse: (text) => {
               const output = parseCloseReconsiderationOutput(text)
 
@@ -1047,6 +1050,7 @@ export async function runReview(
     },
     onProgress: (phase) => input.onProgress?.({ phase, type: "phase" }),
     outputDir,
+    parentSessionId: input.parentSessionId,
     pr: input.pr,
     repairAttempts: input.config.output?.repairAttempts ?? 3,
     repository: input.repository,
@@ -1179,6 +1183,7 @@ export async function runReview(
                   }
                 },
                 options: reviewer.options,
+                parentSessionId: input.parentSessionId,
                 parse: (text) =>
                   parseRereviewOutputWithInlineTargets(
                     text,
@@ -1262,6 +1267,7 @@ export async function runReview(
                 }
               },
               options: reviewer.options,
+              parentSessionId: input.parentSessionId,
               parse: (text) =>
                 parseReviewOutputWithInlineTargets(text, inlineCommentTargets),
               permission: reviewer.permission,

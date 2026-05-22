@@ -80,6 +80,7 @@ export interface TriageRunInput {
   exec: Exec
   issue: number
   onProgress?: (progress: TriageRunProgress) => void | Promise<void>
+  parentSessionId?: string
   repository: ResolvedRepository
   runId?: string
   signal?: AbortSignal
@@ -410,6 +411,7 @@ async function runVote<
           run: input.run,
         }),
       options: input.agent.options,
+      parentSessionId: input.run.parentSessionId,
       parse: input.parse,
       permission: input.agent.permission,
       prompt,
@@ -863,6 +865,7 @@ async function runActionPrompt(input: {
     client: input.input.client,
     model: agent.model,
     options: agent.options,
+    parentSessionId: input.input.parentSessionId,
     parse: parseTriageActionOutput,
     permission: agent.permission,
     prompt,
@@ -903,6 +906,7 @@ async function classifyMentionReplies(input: {
     client: input.input.client,
     model: agent.model,
     options: agent.options,
+    parentSessionId: input.input.parentSessionId,
     parse: parseTriageCommentClassificationOutput,
     permission: agent.permission,
     prompt,
@@ -1432,6 +1436,7 @@ async function createImplementationPr(input: {
           }
         },
         options: creator.options,
+        parentSessionId: input.input.parentSessionId,
         parse: parseTriageCreatePrOutput,
         permission: creator.permission,
         prompt,
