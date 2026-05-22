@@ -15,7 +15,6 @@ import {
   rereviewCloseReconsiderationOutputContract,
   rereviewOutputContract,
   reviewOutputContract,
-  triageActionOutputContract,
   triageCommentClassificationOutputContract,
   triageCreatePrOutputContract,
   triageDuplicateOutputContract,
@@ -571,17 +570,6 @@ async function composeTriageVotePrompt(input: {
   ]
     .filter(Boolean)
     .join("\n\n")
-}
-
-export async function composeTriageActionPrompt(
-  input: TriagePromptInput,
-): Promise<string> {
-  return composeTriageVotePrompt({
-    ...input,
-    builtin: "action",
-    customPath: input.repository.triage?.prompts.action,
-    outputContract: triageActionOutputContract,
-  })
 }
 
 export async function composeTriageCommentPrompt(

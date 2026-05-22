@@ -18,13 +18,16 @@ import {
   fetchUnresolvedThreads,
   closePullRequest,
   mergePullRequest,
+  ensurePullRequestCommits,
   postApproval,
   postChangesRequested,
   postCloseComment,
   postReply,
   type CheckWaitReport,
+  type PullRequestMeta,
   type PullRequestReview,
   type PullRequestCommit,
+  type PullRequestCommitRequirement,
   removeWorktree,
   resolveThread,
   shellQuote,
@@ -37,7 +40,7 @@ import {
   composeReviewPrompt,
 } from "../prompts/compose"
 import { prRunOutputDir } from "../config/output"
-import { worktreeBaseDir } from "../config/worktree"
+import { prRunWorktreeDir } from "../config/worktree"
 import {
   parseCloseReconsiderationOutput,
   parseFindingValidationOutput,
@@ -83,6 +86,7 @@ export interface ReviewRunInput {
   enableReviewAutomation?: boolean
   exec: Exec
   onProgress?: (progress: ReviewRunProgress) => void | Promise<void>
+  parentSessionId?: string
   pr: number
   repository: ResolvedRepository
   runId?: string
@@ -156,6 +160,7 @@ type ReviewerAssignment =
   | { review: PullRequestReview; type: "skip" }
 
 type ReviewEntry = {
+  inlineCommentTargets: InlineCommentTargets
   key: string
   previousHeadSha?: string
   raw: string
@@ -337,7 +342,7 @@ function reviewStateToVerdict(
   if (state === "APPROVED") return "MERGE"
   if (state === "CHANGES_REQUESTED") return "CHANGES_REQUESTED"
 
-  return "CLOSE"
+  throw new Error(`Unsupported GitHub review state: ${state}`)
 }
 
 function hasBlockingCiReports(reports: CheckWaitReport[]): boolean {
@@ -380,6 +385,52 @@ function parseRereviewOutputWithInlineTargets(
   validateInlineCommentTargets(output.newFindings, targets, "newFindings")
 
   return output
+}
+
+export async function inlineCommentTargetsForDiff(input: {
+  ensure?: {
+    fromSource: PullRequestCommitRequirement["source"]
+    meta: PullRequestMeta
+    repository: ResolvedRepository
+    toSource: PullRequestCommitRequirement["source"]
+  }
+  exec: Exec
+  fromSha: string
+  range?: "direct" | "merge-base"
+  toSha: string
+  worktreePath: string
+}): Promise<InlineCommentTargets> {
+  if (input.ensure) {
+    await ensurePullRequestCommits({
+      commits: [
+        {
+          label: "base",
+          sha: input.fromSha,
+          source: input.ensure.fromSource,
+        },
+        {
+          label: "head",
+          sha: input.toSha,
+          source: input.ensure.toSource,
+        },
+      ],
+      exec: input.exec,
+      meta: input.ensure.meta,
+      repository: input.ensure.repository,
+      worktreePath: input.worktreePath,
+    })
+  }
+
+  const diffRange =
+    input.range === "direct"
+      ? `${shellQuote(input.fromSha)} ${shellQuote(input.toSha)}`
+      : `${shellQuote(input.fromSha)}...${shellQuote(input.toSha)}`
+
+  return parseRightSideDiffTargets(
+    await input.exec(`git diff --no-ext-diff --unified=3 ${diffRange}`, {
+      cwd: input.worktreePath,
+    }),
+  )
 }
 
 function parsePostedFindingLocation(
@@ -439,11 +490,54 @@ function reviewFindingsFromBody(
   return { findings }
 }
 
+function parsePostedFindingComment(
+  body: string,
+): Pick<Finding, "fix" | "issue"> | undefined {
+  const match =
+    /^\*\*Issue:\*\*\s*([\s\S]*?)\s*\r?\n\r?\n\*\*Fix:\*\*\s*([\s\S]+?)\s*$/.exec(
+      body,
+    )
+
+  if (!match) return undefined
+
+  return {
+    fix: match[2]?.trim() || "Please address this before merging.",
+    issue: match[1]?.trim() || "Review finding.",
+  }
+}
+
+function reviewFindingsFromComments(
+  comments: PullRequestReview["comments"] | undefined,
+): Pick<ReviewOutput, "findings"> {
+  return {
+    findings: (comments ?? []).flatMap((comment) => {
+      if (comment.line == null) return []
+
+      const parsed = parsePostedFindingComment(comment.body)
+      if (!parsed) return []
+
+      return [
+        {
+          ...parsed,
+          line: comment.line,
+          path: comment.path,
+          startLine: comment.startLine ?? undefined,
+        },
+      ]
+    }),
+  }
+}
+
 export function reviewOutputFromState(review: PullRequestReview): ReviewOutput {
   const verdict = reviewStateToVerdict(review.state)
 
-  if (verdict === "CHANGES_REQUESTED")
+  if (verdict === "CHANGES_REQUESTED") {
+    const fromComments = reviewFindingsFromComments(review.comments)
+
+    if (fromComments.findings.length) return { ...fromComments, verdict }
+
     return { ...reviewFindingsFromBody(review.body), verdict }
+  }
 
   return verdict === "CLOSE"
     ? {
@@ -562,12 +656,10 @@ async function runFindingValidation(input: {
   outputs: Record<string, RereviewOutput | ReviewOutput>
   summary: FindingValidationSummary
 }> {
-  const reviewOutputs = Object.fromEntries(
-    input.entries.flatMap((entry) =>
-      isReviewOutput(entry.value) ? [[entry.key, entry.value]] : [],
-    ),
-  ) as Record<string, ReviewOutput>
-  const targets = reviewFindingTargets(reviewOutputs)
+  const outputs = Object.fromEntries(
+    input.entries.map((entry) => [entry.key, entry.value]),
+  )
+  const targets = reviewFindingTargets(outputs)
 
   if (!targets.length) {
     return {
@@ -639,6 +731,7 @@ async function runFindingValidation(input: {
                 }
               },
               options: reviewer.options,
+              parentSessionId: input.reviewInput.parentSessionId,
               parse: (text) => {
                 const output = parseFindingValidationOutput(text)
 
@@ -685,7 +778,7 @@ async function runFindingValidation(input: {
     ),
   )
   const filtered = applyFindingValidation({
-    outputs: reviewOutputs,
+    outputs,
     reviewerKeys: input.reviewInput.repository.agents.reviewers.map(
       (reviewer) => reviewer.key,
     ),
@@ -700,7 +793,7 @@ async function runFindingValidation(input: {
   await input.reviewInput.onProgress?.({
     discarded: filtered.summary.discarded.length,
     kept: filtered.summary.kept.length,
-    reviewersChangedToMerge: Object.entries(reviewOutputs)
+    reviewersChangedToMerge: Object.entries(outputs)
       .filter(([reviewer, output]) => {
         return (
           output.verdict === "CHANGES_REQUESTED" &&
@@ -724,7 +817,6 @@ async function runFindingValidation(input: {
 
 async function runCloseReconsideration(input: {
   entries: ReviewEntry[]
-  inlineCommentTargets: InlineCommentTargets
   meta: { baseRefOid: string; headRefOid: string }
   outputDir: string
   reviewContext: string
@@ -832,6 +924,7 @@ async function runCloseReconsideration(input: {
               }
             },
             options: reviewer.options,
+            parentSessionId: input.reviewInput.parentSessionId,
             parse: (text) => {
               const output = isReviewEntry
                 ? parseCloseReconsiderationOutput(text)
@@ -841,7 +934,7 @@ async function runCloseReconsideration(input: {
 
               validateInlineCommentTargets(
                 findings,
-                input.inlineCommentTargets,
+                entry.inlineCommentTargets,
                 "newFindings" in output ? "newFindings" : "findings",
               )
 
@@ -891,6 +984,7 @@ async function runCloseReconsideration(input: {
       input.sessionIds[reviewer.key] = result.sessionId
 
       return {
+        inlineCommentTargets: entry.inlineCommentTargets,
         key: entry.key,
         previousHeadSha: entry.previousHeadSha,
         raw: result.raw,
@@ -1020,14 +1114,13 @@ export async function runReview(
   if (mode.type === "already_reviewed" && !input.allowAlreadyReviewed)
     throw new Error("PR has already been reviewed by all configured accounts")
 
-  const outputDir = join(
-    prRunOutputDir({
-      config: input.config,
-      directory: input.directory,
-      pr: input.pr,
-    }),
-    ...(input.runId ? [input.runId] : []),
-  )
+  const runId = input.runId ?? `run-${Date.now().toString(36)}`
+  const outputDir = prRunOutputDir({
+    config: input.config,
+    directory: input.directory,
+    pr: input.pr,
+    runId,
+  })
 
   await mkdir(outputDir, { recursive: true })
 
@@ -1083,6 +1176,7 @@ export async function runReview(
     },
     onProgress: (phase) => input.onProgress?.({ phase, type: "phase" }),
     outputDir,
+    parentSessionId: input.parentSessionId,
     pr: input.pr,
     repairAttempts: input.config.output?.repairAttempts ?? 3,
     repository: input.repository,
@@ -1102,15 +1196,19 @@ export async function runReview(
     await input.onProgress?.({ report: checkResult.report, type: "ci_report" })
   }
 
-  const worktreeRoot = worktreeBaseDir(input.directory, input.config, "pr")
+  const worktreePath = prRunWorktreeDir({
+    config: input.config,
+    directory: input.directory,
+    pr: input.pr,
+    runId,
+  })
   await input.onProgress?.({ phase: "creating worktree", type: "phase" })
   const worktree = await createWorktree(
     exec,
     input.repository,
     input.pr,
-    worktreeRoot,
+    worktreePath,
   )
-  const worktreePath = worktree.path
   await input.onProgress?.({
     branch: worktree.branch,
     type: "worktree_created",
@@ -1129,12 +1227,18 @@ export async function runReview(
         return [{ assignment, reviewer }]
       },
     )
-    const inlineCommentTargets = parseRightSideDiffTargets(
-      await exec(
-        `git diff --no-ext-diff --unified=3 ${shellQuote(meta.baseRefOid)} ${shellQuote(meta.headRefOid)}`,
-        { cwd: worktreePath },
-      ),
-    )
+    const initialInlineCommentTargets = await inlineCommentTargetsForDiff({
+      ensure: {
+        fromSource: "base",
+        meta,
+        repository: input.repository,
+        toSource: "head",
+      },
+      exec,
+      fromSha: meta.baseRefOid,
+      toSha: meta.headRefOid,
+      worktreePath,
+    })
     for (const reviewer of input.repository.agents.reviewers) {
       const assignment = mode.assignments.get(reviewer.account)
       if (assignment?.type !== "skip") continue
@@ -1161,6 +1265,19 @@ export async function runReview(
             throw new Error(
               `Missing previous review commit for ${reviewer.account}`,
             )
+
+          const inlineCommentTargets = await inlineCommentTargetsForDiff({
+            ensure: {
+              fromSource: "head",
+              meta,
+              repository: input.repository,
+              toSource: "head",
+            },
+            exec,
+            fromSha: previous.commit.oid,
+            toSha: meta.headRefOid,
+            worktreePath,
+          })
 
           const unresolved =
             unresolvedThreadsByAccount.get(reviewer.account) ??
@@ -1215,6 +1332,7 @@ export async function runReview(
                   }
                 },
                 options: reviewer.options,
+                parentSessionId: input.parentSessionId,
                 parse: (text) =>
                   parseRereviewOutputWithInlineTargets(
                     text,
@@ -1249,6 +1367,7 @@ export async function runReview(
           })
 
           return {
+            inlineCommentTargets,
             key: reviewer.key,
             previousHeadSha: previous.commit.oid,
             raw: result.raw,
@@ -1299,8 +1418,12 @@ export async function runReview(
                 }
               },
               options: reviewer.options,
+              parentSessionId: input.parentSessionId,
               parse: (text) =>
-                parseReviewOutputWithInlineTargets(text, inlineCommentTargets),
+                parseReviewOutputWithInlineTargets(
+                  text,
+                  initialInlineCommentTargets,
+                ),
               permission: reviewer.permission,
               prompt,
               repairAttempts: input.config.output?.repairAttempts ?? 3,
@@ -1330,6 +1453,7 @@ export async function runReview(
         })
 
         return {
+          inlineCommentTargets: initialInlineCommentTargets,
           key: reviewer.key,
           raw: result.raw,
           sessionId: result.sessionId,
@@ -1375,6 +1499,7 @@ export async function runReview(
         return [
           {
             key: reviewer.key,
+            inlineCommentTargets: initialInlineCommentTargets,
             raw: assignment.review.body ?? "",
             sessionId: "",
             value: reviewOutputFromState(assignment.review),
@@ -1384,7 +1509,6 @@ export async function runReview(
     )
     entries = await runCloseReconsideration({
       entries: [...entries, ...skippedCloseEntries],
-      inlineCommentTargets,
       meta,
       outputDir,
       reviewContext,

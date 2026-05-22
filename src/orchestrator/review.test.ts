@@ -1,4 +1,4 @@
-import type { PullRequestReview } from "../github/commands"
+import type { PullRequestMeta, PullRequestReview } from "../github/commands"
 import type { Exec, MagiConfig, ResolvedRepository } from "../types"
 import type { ModelClient } from "./model"
 import { mkdtemp, rm } from "node:fs/promises"
@@ -7,6 +7,7 @@ import { join } from "node:path"
 import { describe, expect, test } from "vitest"
 import {
   hasPendingThreadReply,
+  inlineCommentTargetsForDiff,
   runReview,
   reviewOutputFromState,
   resolveReviewMode,
@@ -37,7 +38,7 @@ const repository: ResolvedRepository = {
   concurrency: { runs: 1, reviewers: 1 },
   github: {
     apiRetryAttempts: 3,
-    host: "github.com",
+    host: "github.example.com",
     owner: "owner",
     repo: "repo",
   },
@@ -51,6 +52,20 @@ const repository: ResolvedRepository = {
   },
   prompts: {},
   safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
+}
+
+const pullRequestMeta: PullRequestMeta = {
+  author: { login: "author" },
+  baseRefName: "main",
+  baseRefOid: "base-sha",
+  headRefName: "feature-branch",
+  headRefOid: "head-sha",
+  headRepository: { name: "repo" },
+  headRepositoryOwner: { login: "owner" },
+  isDraft: false,
+  number: 7,
+  title: "Fix diff targets",
+  url: "https://github.example.com/owner/repo/pull/7",
 }
 
 function review(account: string, commit: string, submittedAt: string) {
@@ -151,6 +166,7 @@ function fakeExec(commands: string[]): Exec {
     if (command.startsWith("git worktree add ")) return ""
     if (command.startsWith("gh pr checkout ")) return ""
     if (command === "git branch --show-current") return "feature"
+    if (command.startsWith("git cat-file -e ")) return ""
     if (command.startsWith("git diff ")) return ""
 
     throw new Error(`Unexpected command: ${command}`)
@@ -292,6 +308,124 @@ describe("review flow", () => {
     expect(mode.type).toBe("already_reviewed")
   })
 
+  test("builds inline targets from the prompted three-dot diff range", async () => {
+    const calls: { command: string; cwd?: string }[] = []
+    const targets = await inlineCommentTargetsForDiff({
+      exec: async (command, options) => {
+        calls.push({ command, cwd: options?.cwd })
+
+        return [
+          "diff --git a/src/app.ts b/src/app.ts",
+          "--- a/src/app.ts",
+          "+++ b/src/app.ts",
+          "@@ -1 +1,2 @@",
+          " existing",
+          "+added",
+        ].join("\n")
+      },
+      fromSha: "base-sha",
+      toSha: "head-sha",
+      worktreePath: "/tmp/worktree",
+    })
+
+    expect(calls).toEqual([
+      {
+        command: "git diff --no-ext-diff --unified=3 'base-sha'...'head-sha'",
+        cwd: "/tmp/worktree",
+      },
+    ])
+    expect(targets.get("src/app.ts")?.has(2)).toBe(true)
+  })
+
+  test("fetches missing pull request refs before building inline targets", async () => {
+    const calls: { command: string; cwd?: string }[] = []
+    const localCommits = new Set(["head-sha"])
+    const targets = await inlineCommentTargetsForDiff({
+      ensure: {
+        fromSource: "base",
+        meta: pullRequestMeta,
+        repository,
+        toSource: "head",
+      },
+      exec: async (command, options) => {
+        calls.push({ command, cwd: options?.cwd })
+
+        if (command.startsWith("git cat-file -e")) {
+          const sha = /'([^']+)\^\{commit\}'/.exec(command)?.[1]
+          if (sha && localCommits.has(sha)) return ""
+
+          throw new Error("missing commit")
+        }
+        if (command.startsWith("git fetch --no-tags")) {
+          localCommits.add("base-sha")
+
+          return ""
+        }
+
+        return [
+          "diff --git a/src/app.ts b/src/app.ts",
+          "--- a/src/app.ts",
+          "+++ b/src/app.ts",
+          "@@ -1 +1,2 @@",
+          " existing",
+          "+added",
+        ].join("\n")
+      },
+      fromSha: "base-sha",
+      toSha: "head-sha",
+      worktreePath: "/tmp/worktree",
+    })
+
+    expect(calls).toEqual([
+      {
+        command: "git cat-file -e 'base-sha^{commit}'",
+        cwd: "/tmp/worktree",
+      },
+      {
+        command: "git cat-file -e 'head-sha^{commit}'",
+        cwd: "/tmp/worktree",
+      },
+      {
+        command:
+          "git fetch --no-tags 'https://github.example.com/owner/repo.git' 'refs/heads/main'",
+        cwd: "/tmp/worktree",
+      },
+      {
+        command: "git cat-file -e 'base-sha^{commit}'",
+        cwd: "/tmp/worktree",
+      },
+      {
+        command: "git diff --no-ext-diff --unified=3 'base-sha'...'head-sha'",
+        cwd: "/tmp/worktree",
+      },
+    ])
+    expect(targets.get("src/app.ts")?.has(2)).toBe(true)
+  })
+
+  test("reports a clear error when a diff commit stays unavailable", async () => {
+    await expect(
+      inlineCommentTargetsForDiff({
+        ensure: {
+          fromSource: "base",
+          meta: pullRequestMeta,
+          repository,
+          toSource: "head",
+        },
+        exec: async (command) => {
+          if (command === "git cat-file -e 'head-sha^{commit}'") return ""
+          if (command.startsWith("git fetch --no-tags")) return ""
+
+          throw new Error("missing commit")
+        },
+        fromSha: "base-sha",
+        toSha: "head-sha",
+        worktreePath: "/tmp/worktree",
+      }),
+    ).rejects.toThrow(
+      "base commit base-sha is unavailable after fetching base ref main",
+    )
+  })
+
   test("restores legacy inline review findings from the posted review body", () => {
     expect(
       reviewOutputFromState({
@@ -318,6 +452,41 @@ describe("review flow", () => {
     })
   })
 
+  test("restores current inline review findings from review comments", () => {
+    expect(
+      reviewOutputFromState({
+        author: { login: "bot-a" },
+        body: "Changes requested: 1 inline comment.",
+        comments: [
+          {
+            body: [
+              "**Issue:** Reused reviews should keep inline findings.",
+              "",
+              "**Fix:** Restore findings from review comments.",
+            ].join("\n"),
+            line: 42,
+            path: "src/orchestrator/review.ts",
+            startLine: 40,
+          },
+        ],
+        commit: { oid: "head" },
+        state: "CHANGES_REQUESTED",
+        submittedAt: "2026-01-01T00:00:00Z",
+      }),
+    ).toEqual({
+      findings: [
+        {
+          fix: "Restore findings from review comments.",
+          issue: "Reused reviews should keep inline findings.",
+          line: 42,
+          path: "src/orchestrator/review.ts",
+          startLine: 40,
+        },
+      ],
+      verdict: "CHANGES_REQUESTED",
+    })
+  })
+
   test("ignores legacy body-only requirement findings without inline targets", () => {
     expect(
       reviewOutputFromState({
@@ -335,6 +504,18 @@ describe("review flow", () => {
       findings: [],
       verdict: "CHANGES_REQUESTED",
     })
+  })
+
+  test("rejects unsupported GitHub review states", () => {
+    expect(() =>
+      reviewOutputFromState({
+        author: { login: "bot-a" },
+        body: "Looks fine overall.",
+        commit: { oid: "head" },
+        state: "COMMENTED",
+        submittedAt: "2026-01-01T00:00:00Z",
+      }),
+    ).toThrow("Unsupported GitHub review state: COMMENTED")
   })
 
   test("detects replies after the reviewer latest thread comment", () => {
