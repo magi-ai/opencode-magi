@@ -1,5 +1,67 @@
 # opencode-magi
 
+## 0.6.0
+
+### Minor Changes
+
+- [#210](https://github.com/magi-ai/opencode-magi/pull/210) [`e0d38da`](https://github.com/magi-ai/opencode-magi/commit/e0d38da362d159698e81ae6976d12753aa1ccca4) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Nest Magi-created OpenCode model sessions under the invoking OpenCode session.
+
+- [#173](https://github.com/magi-ai/opencode-magi/pull/173) [`644e317`](https://github.com/magi-ai/opencode-magi/commit/644e317aaaffc6a32000a7f2ce1c917ab2e99fb9) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Revise triage comment ownership to use triage agent accounts and reporter-based final decision comments.
+
+- [#222](https://github.com/magi-ai/opencode-magi/pull/222) [`2a586c2`](https://github.com/magi-ai/opencode-magi/commit/2a586c2fed4e6769809069867fab243aadf1f6a5) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Generate default triage agent keys as voter-based identifiers.
+
+### Patch Changes
+
+- [#219](https://github.com/magi-ai/opencode-magi/pull/219) [`85d7acf`](https://github.com/magi-ai/opencode-magi/commit/85d7acf2420dde12814f5b63645921aaabc24301) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Abort active child model sessions when synchronous Magi runs time out or fail.
+
+- [#198](https://github.com/magi-ai/opencode-magi/pull/198) [`865fe49`](https://github.com/magi-ai/opencode-magi/commit/865fe49b24b26e925f3e25ac2590e31a1c275394) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Align review inline target validation with the prompted three-dot diff ranges.
+
+- [#233](https://github.com/magi-ai/opencode-magi/pull/233) [`d46a3ab`](https://github.com/magi-ai/opencode-magi/commit/d46a3abeabc83f861be2387fdb3e21d750ccaa93) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Prompt reviewers to request changes when scope-in CI failures are present.
+
+- [#208](https://github.com/magi-ai/opencode-magi/pull/208) [`a1ba8a2`](https://github.com/magi-ai/opencode-magi/commit/a1ba8a2eacb12479f8d45e93a1b48b639db9a79e) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Report every failed check returned by CI classifier runs in progress and run state.
+
+- [#206](https://github.com/magi-ai/opencode-magi/pull/206) [`c691db8`](https://github.com/magi-ai/opencode-magi/commit/c691db8f0d18453a4d2b6e7d81b39c100af8ba04) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Enforce configured triage run concurrency for background triage commands.
+
+- [#201](https://github.com/magi-ai/opencode-magi/pull/201) [`d9498a3`](https://github.com/magi-ai/opencode-magi/commit/d9498a308282db4930fde1b03c1c4b23d7b83719) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Use the dry-run edited head when composing merge close reconsideration prompts.
+
+- [#200](https://github.com/magi-ai/opencode-magi/pull/200) [`16529d2`](https://github.com/magi-ai/opencode-magi/commit/16529d2a553bda4f079e5fe19cd71a4cfb406a48) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Fail CI classification when any classifier agent fails instead of ignoring the failed vote.
+
+- [#231](https://github.com/magi-ai/opencode-magi/pull/231) [`441ff9e`](https://github.com/magi-ai/opencode-magi/commit/441ff9e90ecf0a2f04098c2f87942afb85dcb520) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Fetch missing pull request diff commits before building local review targets.
+
+- [#202](https://github.com/magi-ai/opencode-magi/pull/202) [`c87fcbf`](https://github.com/magi-ai/opencode-magi/commit/c87fcbfe4fd1240351f149ed3efc3d130e34bc2a) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Keep blocking merge review findings editable when no unresolved review threads exist.
+
+- [#190](https://github.com/magi-ai/opencode-magi/pull/190) [`09d54cf`](https://github.com/magi-ai/opencode-magi/commit/09d54cfc1d60f00c274cd7c5f4733bf84b95b037) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Use the documented merge.editor config key in missing editor errors.
+
+- [#193](https://github.com/magi-ai/opencode-magi/pull/193) [`897f865`](https://github.com/magi-ai/opencode-magi/commit/897f865198cc93fca9f08b15beb8a92089c0cd70) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Show merge-specific wording when asynchronous Magi merge runs start.
+
+- [#195](https://github.com/magi-ai/opencode-magi/pull/195) [`4b9f3ce`](https://github.com/magi-ai/opencode-magi/commit/4b9f3cedde524024205ffb9e999a70eba04abbdd) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Paginate pull request review, commit, and review thread GraphQL reads used by review orchestration.
+
+- [#197](https://github.com/magi-ai/opencode-magi/pull/197) [`aed7132`](https://github.com/magi-ai/opencode-magi/commit/aed71324521d48b02a3a9d7f9839603a1152ed39) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Preserve inline findings when reusing current changes-requested reviews.
+
+- [#230](https://github.com/magi-ai/opencode-magi/pull/230) [`58ae429`](https://github.com/magi-ai/opencode-magi/commit/58ae4295d4e9672389e1a97955d3e1a312d2eeed) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Enforce configured concurrency for background review and merge runs.
+
+- [#218](https://github.com/magi-ai/opencode-magi/pull/218) [`6eccff4`](https://github.com/magi-ai/opencode-magi/commit/6eccff489c3529dda2209d58aed17f85ff16cd50) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Only apply synchronous Magi start timeouts when users pass an explicit --timeout flag.
+
+- [#203](https://github.com/magi-ai/opencode-magi/pull/203) [`8f2dd2a`](https://github.com/magi-ai/opencode-magi/commit/8f2dd2aba667a5475993704d2a2227dcdfc3f9fa) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Reconsider minority CLOSE verdicts returned by rereview reviewers before posting.
+
+- [#194](https://github.com/magi-ai/opencode-magi/pull/194) [`875ce29`](https://github.com/magi-ai/opencode-magi/commit/875ce297caffb7e27c21f5c7cb4e9d1259bd557b) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Reject unsupported GitHub review states instead of treating them as close votes.
+
+- [#207](https://github.com/magi-ai/opencode-magi/pull/207) [`44e685d`](https://github.com/magi-ai/opencode-magi/commit/44e685da1cd5917a217545f66a5dfa756dc587ab) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Remove unused legacy check-wait helpers from GitHub command utilities.
+
+- [#158](https://github.com/magi-ai/opencode-magi/pull/158) [`c42b288`](https://github.com/magi-ai/opencode-magi/commit/c42b2883071660719e6f6f67c424ec7dc8eb1325) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Remove default and maximum wait timeouts from synchronous Magi runs and blocking status checks.
+
+- [#223](https://github.com/magi-ai/opencode-magi/pull/223) [`43ee0ce`](https://github.com/magi-ai/opencode-magi/commit/43ee0ce7a7192f201e7d2f401a801ff52b840fc3) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Remove the obsolete triage action model run from final triage decisions.
+
+- [#225](https://github.com/magi-ai/opencode-magi/pull/225) [`ceab514`](https://github.com/magi-ai/opencode-magi/commit/ceab5146a6b4de929facf3bd81bce7645d2728dc) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Rename triage vote output metadata from reviewer-oriented fields to voter-oriented fields.
+
+- [#220](https://github.com/magi-ai/opencode-magi/pull/220) [`c179203`](https://github.com/magi-ai/opencode-magi/commit/c1792036b3c58eaa5e6fc722929e885d6702742a) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Run triage comment classification as the configured reporter and persist its session for cleanup.
+
+- [#221](https://github.com/magi-ai/opencode-magi/pull/221) [`f2af027`](https://github.com/magi-ai/opencode-magi/commit/f2af0273b8f54c7c2eb37979f91b78d0fbeaf17b) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Use run-scoped Magi worktree paths to avoid collisions between repeated runs for the same issue or pull request.
+
+- [#199](https://github.com/magi-ai/opencode-magi/pull/199) [`c7727dc`](https://github.com/magi-ai/opencode-magi/commit/c7727dc0f340b0fb3e00f299f4aaf78d682b1c06) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Validate rereview new findings before posting request-changes comments.
+
+- [#209](https://github.com/magi-ai/opencode-magi/pull/209) [`140eb68`](https://github.com/magi-ai/opencode-magi/commit/140eb6869f22d2aa96b71795a3986ebf55579ee2) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Wait for non-queue auto-merge completion before reporting a pull request as merged.
+
 ## 0.5.0
 
 ### Minor Changes
