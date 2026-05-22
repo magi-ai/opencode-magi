@@ -91,6 +91,7 @@ Merge artifacts are written to the run output directory:
 | `{reviewer}.rereview.cycle-{cycle}.raw.txt`    | Raw re-review model output.                  |
 | `{reviewer}.rereview.cycle-{cycle}.json`       | Parsed re-review JSON.                       |
 | `rereview-majority.cycle-{cycle}.json`         | Re-review majority counts and result.        |
+| `report.md`                                    | Final human-readable merge run report.       |
 
 The merge flow also writes the review artifacts listed in [`/magi:review`](review.md).
 
