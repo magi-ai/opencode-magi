@@ -600,7 +600,7 @@ async function classifyChecks(input: {
           type: "classifier_failed",
         })
 
-        return { reviewer: reviewer.key, output: undefined }
+        throw error
       }
     },
     { signal: input.signal },
@@ -609,9 +609,8 @@ async function classifyChecks(input: {
 
   return {
     classified: input.checks.map((item) => {
-      const successfulVotes = votes.filter((vote) => vote.output)
-      const checkVotes = successfulVotes.map((vote) => {
-        const check = vote.output?.checks.find(
+      const checkVotes = votes.map((vote) => {
+        const check = vote.output.checks.find(
           (output) => output.name === item.check.name,
         )
 
@@ -622,7 +621,6 @@ async function classifyChecks(input: {
           reviewer: vote.reviewer,
         }
       })
-      const failures = votes.filter((vote) => !vote.output)
       const scopeIn = checkVotes.filter(
         (vote) => vote.classification === "SCOPE_IN",
       )
@@ -644,9 +642,6 @@ async function classifyChecks(input: {
       const reasons = checkVotes
         .filter((vote) => vote.classification === classification)
         .map((vote) => `${vote.reviewer}: ${vote.reason}`)
-      for (const failure of failures) {
-        reasons.push(`${failure.reviewer}: classifier failed; vote ignored`)
-      }
 
       return {
         check: item.check,
