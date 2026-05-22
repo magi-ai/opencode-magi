@@ -156,6 +156,41 @@ describe("review flow", () => {
     })
   })
 
+  test("restores current inline review findings from review comments", () => {
+    expect(
+      reviewOutputFromState({
+        author: { login: "bot-a" },
+        body: "Changes requested: 1 inline comment.",
+        comments: [
+          {
+            body: [
+              "**Issue:** Reused reviews should keep inline findings.",
+              "",
+              "**Fix:** Restore findings from review comments.",
+            ].join("\n"),
+            line: 42,
+            path: "src/orchestrator/review.ts",
+            startLine: 40,
+          },
+        ],
+        commit: { oid: "head" },
+        state: "CHANGES_REQUESTED",
+        submittedAt: "2026-01-01T00:00:00Z",
+      }),
+    ).toEqual({
+      findings: [
+        {
+          fix: "Restore findings from review comments.",
+          issue: "Reused reviews should keep inline findings.",
+          line: 42,
+          path: "src/orchestrator/review.ts",
+          startLine: 40,
+        },
+      ],
+      verdict: "CHANGES_REQUESTED",
+    })
+  })
+
   test("ignores legacy body-only requirement findings without inline targets", () => {
     expect(
       reviewOutputFromState({

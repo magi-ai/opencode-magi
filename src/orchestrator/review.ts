@@ -437,11 +437,54 @@ function reviewFindingsFromBody(
   return { findings }
 }
 
+function parsePostedFindingComment(
+  body: string,
+): Pick<Finding, "fix" | "issue"> | undefined {
+  const match =
+    /^\*\*Issue:\*\*\s*([\s\S]*?)\s*\r?\n\r?\n\*\*Fix:\*\*\s*([\s\S]+?)\s*$/.exec(
+      body,
+    )
+
+  if (!match) return undefined
+
+  return {
+    fix: match[2]?.trim() || "Please address this before merging.",
+    issue: match[1]?.trim() || "Review finding.",
+  }
+}
+
+function reviewFindingsFromComments(
+  comments: PullRequestReview["comments"] | undefined,
+): Pick<ReviewOutput, "findings"> {
+  return {
+    findings: (comments ?? []).flatMap((comment) => {
+      if (comment.line == null) return []
+
+      const parsed = parsePostedFindingComment(comment.body)
+      if (!parsed) return []
+
+      return [
+        {
+          ...parsed,
+          line: comment.line,
+          path: comment.path,
+          startLine: comment.startLine ?? undefined,
+        },
+      ]
+    }),
+  }
+}
+
 export function reviewOutputFromState(review: PullRequestReview): ReviewOutput {
   const verdict = reviewStateToVerdict(review.state)
 
-  if (verdict === "CHANGES_REQUESTED")
+  if (verdict === "CHANGES_REQUESTED") {
+    const fromComments = reviewFindingsFromComments(review.comments)
+
+    if (fromComments.findings.length) return { ...fromComments, verdict }
+
     return { ...reviewFindingsFromBody(review.body), verdict }
+  }
 
   return verdict === "CLOSE"
     ? {

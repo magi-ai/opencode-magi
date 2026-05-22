@@ -622,6 +622,61 @@ describe("GitHub command helpers", () => {
     expectBalancedBraces(extractGraphqlQuery(graphqlCommand))
   })
 
+  test("normalizes PR review comments from GraphQL review nodes", async () => {
+    const reviews = await fetchPullRequestReviews(
+      async () =>
+        JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                reviews: {
+                  nodes: [
+                    {
+                      author: { login: "bot-a" },
+                      body: "Changes requested: 1 inline comment.",
+                      comments: {
+                        nodes: [
+                          {
+                            body: "**Issue:** Keep finding.\n\n**Fix:** Restore it.",
+                            line: 20,
+                            path: "src/orchestrator/review.ts",
+                            startLine: 18,
+                          },
+                        ],
+                      },
+                      commit: { oid: "head" },
+                      state: "CHANGES_REQUESTED",
+                      submittedAt: "2026-01-01T00:00:00Z",
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        }),
+      repository,
+      7557,
+    )
+
+    expect(reviews).toEqual([
+      {
+        author: { login: "bot-a" },
+        body: "Changes requested: 1 inline comment.",
+        comments: [
+          {
+            body: "**Issue:** Keep finding.\n\n**Fix:** Restore it.",
+            line: 20,
+            path: "src/orchestrator/review.ts",
+            startLine: 18,
+          },
+        ],
+        commit: { oid: "head" },
+        state: "CHANGES_REQUESTED",
+        submittedAt: "2026-01-01T00:00:00Z",
+      },
+    ])
+  })
+
   test("passes configured GitHub host to GraphQL requests", async () => {
     let graphqlCommand = ""
     const enterprise = {
