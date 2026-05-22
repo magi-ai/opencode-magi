@@ -136,6 +136,13 @@ export type TriageRunProgress =
   | { sessionId: string; type: "triage_creator_completed" }
   | { error: string; type: "triage_creator_failed" }
   | { type: "pr_created"; url: string }
+  | {
+      agent: string
+      key: string
+      options?: ModelRunProgress["options"]
+      sessionId: string
+      type: "triage_session"
+    }
   | { branch: string; type: "worktree_created"; worktreePath: string }
 
 interface TriageMarker {
@@ -838,8 +845,7 @@ async function classifyMentionReplies(input: {
   outputDir: string
   replies: IssueComment[]
 }) {
-  const agent = input.input.repository.agents.triage?.[0]
-  if (!agent) throw new Error("triage.agents is required")
+  const agent = triageReporter(input.input.repository, input.input.issue)
   const prompt = await composeTriageCommentClassificationPrompt({
     context: JSON.stringify(
       { context: input.context, mentionReplies: input.replies },
@@ -854,6 +860,17 @@ async function classifyMentionReplies(input: {
   const result = await runModelWithRepair({
     client: input.input.client,
     model: agent.model,
+    onProgress: async (progress) => {
+      if (progress.type !== "session_created") return
+
+      await emitProgress(input.input, {
+        agent: agent.key,
+        key: `triage:comment-classification:${agent.key}:${progress.sessionId}`,
+        options: progress.options,
+        sessionId: progress.sessionId,
+        type: "triage_session",
+      })
+    },
     options: agent.options,
     parentSessionId: input.input.parentSessionId,
     parse: parseTriageCommentClassificationOutput,
@@ -862,7 +879,7 @@ async function classifyMentionReplies(input: {
     repairAttempts: 3,
     schemaName: "triage comment classification",
     signal: input.input.signal,
-    title: `Magi triage comment classification #${input.input.issue}`,
+    title: `Magi triage comment classification #${input.input.issue} (${agent.key})`,
   })
 
   await writeJson(

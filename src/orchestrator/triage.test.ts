@@ -973,12 +973,40 @@ describe("triage orchestration", () => {
         vote("NO"),
         vote("ASK"),
       ],
+      repository: {
+        ...repository,
+        agents: {
+          ...repository.agents,
+          triage: repository.agents.triage?.map((agent) =>
+            agent.key === "Balthasar"
+              ? { ...agent, persona: "Reporter persona" }
+              : agent,
+          ),
+        },
+        triage: {
+          ...repository.triage!,
+          reporter: "Balthasar",
+        },
+      },
     })
 
     expect(result.result.result).toEqual(decision("feature", "rejected"))
+    expect(result.prompts[0]).toContain("Reporter persona")
+    expect(result.progress).toEqual(
+      expect.arrayContaining([
+        {
+          agent: "Balthasar",
+          key: expect.stringContaining(
+            "triage:comment-classification:Balthasar:session-1",
+          ),
+          sessionId: "session-1",
+          type: "triage_session",
+        },
+      ]),
+    )
     expect(
       result.sessionTitles.some((title) =>
-        title.includes("triage comment classification"),
+        title.includes("triage comment classification #1 (Balthasar)"),
       ),
     ).toBe(true)
     expect(
