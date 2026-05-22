@@ -24,7 +24,7 @@ import type {
 import { mkdir, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { issueRunOutputDir } from "../config/output"
-import { worktreeBaseDir } from "../config/worktree"
+import { issueRunWorktreeDir } from "../config/worktree"
 import {
   assignIssue,
   closeIssue,
@@ -1135,6 +1135,7 @@ async function finishWithResult(input: {
   previousMarker?: TriageMarker
   relationship: RelationshipSummary
   result: FinalResult
+  runId: string
 }): Promise<TriageRunResult> {
   const triage = input.input.repository.triage
   if (!triage) throw new Error("triage configuration is required")
@@ -1242,6 +1243,7 @@ async function finishWithResult(input: {
         input: input.input,
         issue: input.issue,
         outputDir: input.outputDir,
+        runId: input.runId,
       })
       if (prUrl) {
         await writeJson(join(input.outputDir, "pr.json"), { url: prUrl })
@@ -1319,6 +1321,7 @@ async function createImplementationPr(input: {
   input: TriageRunInput
   issue: IssueMeta
   outputDir: string
+  runId: string
 }): Promise<string | undefined> {
   const creator = input.input.repository.agents.triageCreator
   if (!creator) return undefined
@@ -1334,10 +1337,12 @@ async function createImplementationPr(input: {
     )
 
     const branch = `magi/issue-${input.issue.number}-${Date.now().toString(36)}`
-    const worktreePath = join(
-      worktreeBaseDir(input.input.directory, input.input.config, "issue"),
-      `issue-${input.issue.number}`,
-    )
+    const worktreePath = issueRunWorktreeDir({
+      config: input.input.config,
+      directory: input.input.directory,
+      issue: input.issue.number,
+      runId: input.runId,
+    })
     await mkdir(dirname(worktreePath), { recursive: true })
     await input.input.exec(
       `git worktree add -b ${shellQuote(branch)} ${shellQuote(worktreePath)}`,
@@ -1514,6 +1519,7 @@ export async function runTriage(
           processed,
           relationship,
           result,
+          runId,
         })
       }
 
@@ -1646,6 +1652,7 @@ export async function runTriage(
           processed,
           relationship,
           result: relatedPrDecision,
+          runId,
         })
       }
       return finishWithResult({
@@ -1656,6 +1663,7 @@ export async function runTriage(
         processed,
         relationship,
         result: { category: null, disposition: "clear_only" },
+        runId,
       })
     }
   }
@@ -1768,5 +1776,6 @@ export async function runTriage(
       category: null,
       disposition: "ask",
     },
+    runId,
   })
 }

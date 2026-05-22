@@ -698,6 +698,9 @@ describe("triage orchestration", () => {
     expect(assignIndex).toBeGreaterThan(-1)
     expect(assignIndex).toBeLessThan(worktreeIndex)
     expect(assignIndex).toBeLessThan(prIndex)
+    expect(result.commands[worktreeIndex]).toContain(
+      "/.magi/worktrees/issue/1/run-test",
+    )
     expect(result.commands[prIndex]).toContain(
       "--title 'fix(triage): use creator PR metadata'",
     )
