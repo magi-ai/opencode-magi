@@ -22,7 +22,6 @@ import {
   repoSpecifier,
   searchDuplicateIssues,
   shellQuote,
-  waitForChecks,
   waitForMergeQueue,
 } from "./commands"
 
@@ -1034,57 +1033,5 @@ describe("createWorktree", () => {
     } finally {
       await removePath(root, { force: true, recursive: true })
     }
-  })
-})
-
-describe("waitForChecks", () => {
-  test("returns an empty report when checks pass", async () => {
-    const commands: string[] = []
-    const result = await waitForChecks(
-      async (command) => {
-        commands.push(command)
-        return ""
-      },
-      repository,
-      1,
-    )
-
-    expect(result).toEqual({
-      attempts: 0,
-      excluded: [],
-      failed: [],
-      rerun: [],
-      scopeInside: [],
-      scopeOutsideRecovered: [],
-      scopeOutsideUnresolved: [],
-    })
-    expect(commands).toHaveLength(1)
-    expect(commands[0]).toContain("gh pr checks 1")
-  })
-
-  test("returns failed checks without classifying or rerunning", async () => {
-    const failed = [
-      {
-        bucket: "fail",
-        link: "https://github.com/owner/repo/actions/runs/1/job/123",
-        name: "Test",
-        state: "FAILURE",
-        workflow: "CI",
-      },
-    ]
-
-    const result = await waitForChecks(
-      async (command) => {
-        if (command.includes("--watch")) throw new Error("checks failed")
-        if (command.includes("--json")) return JSON.stringify(failed)
-
-        return ""
-      },
-      repository,
-      1,
-    )
-
-    expect(result?.failed).toEqual(failed)
-    expect(result?.rerun).toEqual([])
   })
 })

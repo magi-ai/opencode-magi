@@ -980,37 +980,6 @@ export async function fetchPullRequestSafetyMeta(
   return { author, changedFiles, files, labels }
 }
 
-export async function waitForChecks(
-  exec: Exec,
-  repository: ResolvedRepository,
-  pr: number,
-  enabled = repository.checks.waitBeforeReview,
-): Promise<CheckWaitReport | undefined> {
-  if (!enabled) return undefined
-
-  const report: CheckWaitReport = {
-    attempts: 0,
-    excluded: [],
-    failed: [],
-    rerun: [],
-    scopeInside: [],
-    scopeOutsideRecovered: [],
-    scopeOutsideUnresolved: [],
-  }
-
-  try {
-    await watchChecks(exec, repository, pr)
-    return report
-  } catch {
-    report.failed = applyCheckExclusions({
-      checks: await fetchFailedChecks(exec, repository, pr),
-      excluded: report.excluded,
-      patterns: repository.checks.exclude,
-    })
-    return report
-  }
-}
-
 export async function watchChecks(
   exec: Exec,
   repository: ResolvedRepository,
@@ -1018,18 +987,6 @@ export async function watchChecks(
 ): Promise<void> {
   await exec(
     `gh pr checks ${pr} --repo ${shellQuote(repoSpecifier(repository))} --watch`,
-  )
-}
-
-export async function fetchFailedChecks(
-  exec: Exec,
-  repository: ResolvedRepository,
-  pr: number,
-): Promise<PullRequestCheck[]> {
-  const checks = await fetchPullRequestChecks(exec, repository, pr)
-
-  return checks.filter(
-    (check) => isFailedCheck(check) || isCancelledCheck(check),
   )
 }
 
