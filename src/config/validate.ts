@@ -170,7 +170,6 @@ const MERGE_PROMPT_KEYS = new Set([
   "editGuidelines",
 ])
 const TRIAGE_PROMPT_KEYS = new Set([
-  "action",
   "acceptance",
   "category",
   "comment",

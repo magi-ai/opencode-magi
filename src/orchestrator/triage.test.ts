@@ -369,10 +369,6 @@ function duplicateVote(vote: string, duplicateOf?: number): string {
   return JSON.stringify({ duplicateOf, reason: `${vote} reason`, vote })
 }
 
-function action(action: string): string {
-  return JSON.stringify({ action, reason: `${action} reason` })
-}
-
 function decision(category: string | null, disposition: string) {
   return { category, disposition }
 }
@@ -452,16 +448,16 @@ describe("triage orchestration", () => {
     test(`skips category classification when issue type is ${type}`, async () => {
       const result = await runScenario({
         issue: issue({ type }),
-        outputs: [
-          vote("YES"),
-          vote("YES"),
-          vote("YES"),
-          action("COMMENT"),
-          `${type} accepted comment`,
-        ],
+        outputs: [vote("YES"), vote("YES"), vote("YES")],
       })
 
       expect(result.result.result).toEqual(decision(category, "accepted"))
+      expect(
+        result.sessionTitles.some((title) => title.includes("triage action")),
+      ).toBe(false)
+      await expect(
+        readFile(join(result.result.outputDir, "action.json"), "utf8"),
+      ).rejects.toThrow()
       expect(
         result.sessionTitles.filter((title) =>
           title.includes("triage acceptance"),
@@ -483,8 +479,6 @@ describe("triage orchestration", () => {
         vote("YES"),
         vote("YES"),
         vote("YES"),
-        action("COMMENT"),
-        "Feature accepted comment",
       ],
     })
 
@@ -502,7 +496,7 @@ describe("triage orchestration", () => {
   test("asks without category details when category is unclear", async () => {
     const result = await runScenario({
       issue: issue({ type: undefined }),
-      outputs: [vote("ASK"), vote("ASK"), vote("bug"), action("ASK")],
+      outputs: [vote("ASK"), vote("ASK"), vote("bug")],
     })
     const comment = await readFile(
       join(result.result.outputDir, "Melchior.ask-comment.md"),
@@ -538,8 +532,6 @@ describe("triage orchestration", () => {
         duplicateVote("DUPLICATE", 10),
         duplicateVote("DUPLICATE", 10),
         duplicateVote("NOT_DUPLICATE"),
-        action("COMMENT"),
-        "Duplicate comment",
       ],
     })
 
@@ -560,7 +552,6 @@ describe("triage orchestration", () => {
         vote("RELATED_PR_HANDLES_ISSUE"),
         vote("RELATED_PR_HANDLES_ISSUE"),
         vote("RELATED_PR_DOES_NOT_HANDLE_ISSUE"),
-        action("CLEAR_ONLY"),
       ],
       relatedPullRequests: [
         {
@@ -592,8 +583,6 @@ describe("triage orchestration", () => {
         vote("RELATED_PR_HANDLES_ISSUE"),
         vote("RELATED_PR_HANDLES_ISSUE"),
         vote("RELATED_PR_DOES_NOT_HANDLE_ISSUE"),
-        action("CLOSE"),
-        "Merged PR comment",
       ],
       relatedPullRequests: [
         {
@@ -635,13 +624,7 @@ describe("triage orchestration", () => {
         body: "This bug report is intentionally wrong.",
         type: "Bug",
       }),
-      outputs: [
-        vote("NO"),
-        vote("NO"),
-        vote("ASK"),
-        action("CLOSE"),
-        "Rejected bug comment",
-      ],
+      outputs: [vote("NO"), vote("NO"), vote("ASK")],
       repository: repositoryWithTriage({
         automation: {
           close: true,
@@ -667,7 +650,6 @@ describe("triage orchestration", () => {
         vote("YES"),
         vote("YES"),
         vote("YES"),
-        action("PR"),
         JSON.stringify({
           commitMessage: "fix(orchestrator): address issue",
           commitSha: "abc123",
@@ -716,6 +698,9 @@ describe("triage orchestration", () => {
     expect(assignIndex).toBeGreaterThan(-1)
     expect(assignIndex).toBeLessThan(worktreeIndex)
     expect(assignIndex).toBeLessThan(prIndex)
+    expect(result.commands[worktreeIndex]).toContain(
+      "/.magi/worktrees/issue/1/run-test",
+    )
     expect(result.commands[prIndex]).toContain(
       "--title 'fix(triage): use creator PR metadata'",
     )
@@ -782,7 +767,6 @@ describe("triage orchestration", () => {
       dryRun: false,
       issue: issue({ type: "Feature" }),
       outputs: [
-        action("PR"),
         JSON.stringify({
           commitMessage: "fix: address issue #1",
           commitSha: "abcdef1234567890",
@@ -821,10 +805,7 @@ describe("triage orchestration", () => {
     expect(result.result.report).toContain(
       "Created PR: https://github.com/owner/repo/pull/30",
     )
-    expect(result.sessionTitles).toEqual([
-      "Magi triage action #1",
-      "Magi triage create PR #1",
-    ])
+    expect(result.sessionTitles).toEqual(["Magi triage create PR #1"])
     expect(
       result.commands.some((command) =>
         command.includes("--remove-label 'triage'"),
@@ -842,7 +823,7 @@ describe("triage orchestration", () => {
         }),
       ],
       dryRun: false,
-      outputs: [action("CLOSE")],
+      outputs: [],
       repository: repositoryWithTriage({
         automation: {
           close: true,
@@ -876,7 +857,7 @@ describe("triage orchestration", () => {
       ],
       dryRun: false,
       issue: issue({ type: "Feature" }),
-      outputs: [action("CLEAR_ONLY")],
+      outputs: [],
       repository: {
         ...repositoryWithTriage({
           automation: {
@@ -921,8 +902,6 @@ describe("triage orchestration", () => {
         vote("YES"),
         vote("YES"),
         vote("YES"),
-        action("PR"),
-        "Feature accepted comment",
         JSON.stringify({
           commitMessage: "fix: address issue #1",
           commitSha: "abcdef1234567890",
@@ -993,15 +972,41 @@ describe("triage orchestration", () => {
         vote("NO"),
         vote("NO"),
         vote("ASK"),
-        action("COMMENT"),
-        "Reconsidered comment",
       ],
+      repository: {
+        ...repository,
+        agents: {
+          ...repository.agents,
+          triage: repository.agents.triage?.map((agent) =>
+            agent.key === "Balthasar"
+              ? { ...agent, persona: "Reporter persona" }
+              : agent,
+          ),
+        },
+        triage: {
+          ...repository.triage!,
+          reporter: "Balthasar",
+        },
+      },
     })
 
     expect(result.result.result).toEqual(decision("feature", "rejected"))
+    expect(result.prompts[0]).toContain("Reporter persona")
+    expect(result.progress).toEqual(
+      expect.arrayContaining([
+        {
+          agent: "Balthasar",
+          key: expect.stringContaining(
+            "triage:comment-classification:Balthasar:session-1",
+          ),
+          sessionId: "session-1",
+          type: "triage_session",
+        },
+      ]),
+    )
     expect(
       result.sessionTitles.some((title) =>
-        title.includes("triage comment classification"),
+        title.includes("triage comment classification #1 (Balthasar)"),
       ),
     ).toBe(true)
     expect(

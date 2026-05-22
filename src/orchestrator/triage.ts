@@ -11,7 +11,6 @@ import type {
   ResolvedRepository,
   ResolvedTriageAgent,
   TriageAction,
-  TriageActionOutput,
   TriageAskReason,
   TriageBinaryVote,
   TriageCategoryVote,
@@ -25,7 +24,7 @@ import type {
 import { mkdir, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { issueRunOutputDir } from "../config/output"
-import { worktreeBaseDir } from "../config/worktree"
+import { issueRunWorktreeDir } from "../config/worktree"
 import {
   assignIssue,
   closeIssue,
@@ -45,7 +44,6 @@ import {
 } from "../github/commands"
 import {
   composeTriageAcceptancePrompt,
-  composeTriageActionPrompt,
   composeTriageCategoryPrompt,
   composeTriageCommentClassificationPrompt,
   composeTriageCreatePrPrompt,
@@ -54,7 +52,6 @@ import {
   composeTriageReconsiderPrompt,
 } from "../prompts/compose"
 import {
-  parseTriageActionOutput,
   parseTriageBinaryOutput,
   parseTriageCategoryOutput,
   parseTriageCommentClassificationOutput,
@@ -139,6 +136,13 @@ export type TriageRunProgress =
   | { sessionId: string; type: "triage_creator_completed" }
   | { error: string; type: "triage_creator_failed" }
   | { type: "pr_created"; url: string }
+  | {
+      agent: string
+      key: string
+      options?: ModelRunProgress["options"]
+      sessionId: string
+      type: "triage_session"
+    }
   | { branch: string; type: "worktree_created"; worktreePath: string }
 
 interface TriageMarker {
@@ -835,62 +839,13 @@ function previousAutomationPlan(input: {
   }
 }
 
-async function runActionPrompt(input: {
-  context: string
-  input: TriageRunInput
-  outputDir: string
-  plan: ActionPlan
-  result: FinalResult
-}): Promise<TriageActionOutput> {
-  const agent = input.input.repository.agents.triage?.[0]
-  if (!agent) throw new Error("triage.agents is required")
-  const context = JSON.stringify(
-    {
-      allowedActions: input.plan.allowedActions,
-      deterministicPlan: input.plan,
-      result: input.result,
-      triageContext: input.context,
-    },
-    null,
-    2,
-  )
-  const prompt = await composeTriageActionPrompt({
-    context,
-    directory: input.input.directory,
-    issue: input.input.issue,
-    repository: input.input.repository,
-    voter: agent,
-  })
-  const result = await runModelWithRepair<TriageActionOutput>({
-    client: input.input.client,
-    model: agent.model,
-    options: agent.options,
-    parentSessionId: input.input.parentSessionId,
-    parse: parseTriageActionOutput,
-    permission: agent.permission,
-    prompt,
-    repairAttempts: 3,
-    schemaName: "triage action",
-    signal: input.input.signal,
-    title: `Magi triage action #${input.input.issue}`,
-  })
-
-  await writeJson(join(input.outputDir, "action.json"), {
-    model: result.value,
-    plan: input.plan,
-  })
-
-  return result.value
-}
-
 async function classifyMentionReplies(input: {
   context: string
   input: TriageRunInput
   outputDir: string
   replies: IssueComment[]
 }) {
-  const agent = input.input.repository.agents.triage?.[0]
-  if (!agent) throw new Error("triage.agents is required")
+  const agent = triageReporter(input.input.repository, input.input.issue)
   const prompt = await composeTriageCommentClassificationPrompt({
     context: JSON.stringify(
       { context: input.context, mentionReplies: input.replies },
@@ -905,6 +860,17 @@ async function classifyMentionReplies(input: {
   const result = await runModelWithRepair({
     client: input.input.client,
     model: agent.model,
+    onProgress: async (progress) => {
+      if (progress.type !== "session_created") return
+
+      await emitProgress(input.input, {
+        agent: agent.key,
+        key: `triage:comment-classification:${agent.key}:${progress.sessionId}`,
+        options: progress.options,
+        sessionId: progress.sessionId,
+        type: "triage_session",
+      })
+    },
     options: agent.options,
     parentSessionId: input.input.parentSessionId,
     parse: parseTriageCommentClassificationOutput,
@@ -913,7 +879,7 @@ async function classifyMentionReplies(input: {
     repairAttempts: 3,
     schemaName: "triage comment classification",
     signal: input.input.signal,
-    title: `Magi triage comment classification #${input.input.issue}`,
+    title: `Magi triage comment classification #${input.input.issue} (${agent.key})`,
   })
 
   await writeJson(
@@ -1185,6 +1151,7 @@ async function finishWithResult(input: {
   previousMarker?: TriageMarker
   relationship: RelationshipSummary
   result: FinalResult
+  runId: string
 }): Promise<TriageRunResult> {
   const triage = input.input.repository.triage
   if (!triage) throw new Error("triage configuration is required")
@@ -1193,13 +1160,6 @@ async function finishWithResult(input: {
     action: plan.action,
     result: input.result,
     type: "decision",
-  })
-  await runActionPrompt({
-    context: input.context,
-    input: input.input,
-    outputDir: input.outputDir,
-    plan,
-    result: input.result,
   })
 
   let prUrl: string | undefined
@@ -1299,6 +1259,7 @@ async function finishWithResult(input: {
         input: input.input,
         issue: input.issue,
         outputDir: input.outputDir,
+        runId: input.runId,
       })
       if (prUrl) {
         await writeJson(join(input.outputDir, "pr.json"), { url: prUrl })
@@ -1376,6 +1337,7 @@ async function createImplementationPr(input: {
   input: TriageRunInput
   issue: IssueMeta
   outputDir: string
+  runId: string
 }): Promise<string | undefined> {
   const creator = input.input.repository.agents.triageCreator
   if (!creator) return undefined
@@ -1391,10 +1353,12 @@ async function createImplementationPr(input: {
     )
 
     const branch = `magi/issue-${input.issue.number}-${Date.now().toString(36)}`
-    const worktreePath = join(
-      worktreeBaseDir(input.input.directory, input.input.config, "issue"),
-      `issue-${input.issue.number}`,
-    )
+    const worktreePath = issueRunWorktreeDir({
+      config: input.input.config,
+      directory: input.input.directory,
+      issue: input.issue.number,
+      runId: input.runId,
+    })
     await mkdir(dirname(worktreePath), { recursive: true })
     await input.input.exec(
       `git worktree add -b ${shellQuote(branch)} ${shellQuote(worktreePath)}`,
@@ -1571,6 +1535,7 @@ export async function runTriage(
           processed,
           relationship,
           result,
+          runId,
         })
       }
 
@@ -1703,6 +1668,7 @@ export async function runTriage(
           processed,
           relationship,
           result: relatedPrDecision,
+          runId,
         })
       }
       return finishWithResult({
@@ -1713,6 +1679,7 @@ export async function runTriage(
         processed,
         relationship,
         result: { category: null, disposition: "clear_only" },
+        runId,
       })
     }
   }
@@ -1825,5 +1792,6 @@ export async function runTriage(
       category: null,
       disposition: "ask",
     },
+    runId,
   })
 }

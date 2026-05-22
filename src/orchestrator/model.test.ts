@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, test, vi } from "vitest"
 import {
   promptModelText,
   runModelWithRepair,
@@ -28,6 +28,40 @@ describe("promptModelText", () => {
         sessionId: "session-1",
       }),
     ).resolves.toBe("## claude\n\nVisible answer")
+  })
+
+  test("aborts the active session when the prompt signal is aborted", async () => {
+    const abortedSessions: string[] = []
+    let resolvePrompt: (value: unknown) => void = () => undefined
+    const client: ModelClient = {
+      session: {
+        abort: async (input) => {
+          abortedSessions.push(input.path.id)
+
+          return true
+        },
+        create: async () => ({ id: "session-1" }),
+        prompt: async () =>
+          new Promise((resolve) => {
+            resolvePrompt = resolve
+          }),
+      },
+    }
+    const controller = new AbortController()
+    const promise = promptModelText({
+      client,
+      model: "anthropic/claude",
+      prompt: "Question?",
+      sessionId: "session-1",
+      signal: controller.signal,
+    })
+
+    controller.abort()
+
+    await vi.waitFor(() => expect(abortedSessions).toEqual(["session-1"]))
+    resolvePrompt({ info: { text: "late answer" } })
+
+    await expect(promise).rejects.toThrow()
   })
 })
 

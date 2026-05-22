@@ -26,7 +26,6 @@ import {
   pushHead,
   removeWorktree,
   resolveThread,
-  shellQuote,
   type ReviewThread,
   waitForMergeQueue,
   type CheckWaitReport,
@@ -44,7 +43,6 @@ import {
 import { throwIfAborted, withAbortSignal } from "./abort"
 import { waitForChecksWithClassification } from "./ci"
 import {
-  parseRightSideDiffTargets,
   validateInlineCommentTargets,
   type InlineCommentTargets,
 } from "./inline-comments"
@@ -52,7 +50,11 @@ import { closeMinorityReviewers, mergeVerdictForPolicy } from "./majority"
 import { type ModelClient, runModelWithRepair } from "./model"
 import { mapPool } from "./pool"
 import { formatMergeReport } from "./report"
-import { runReview, type ReviewRunProgress } from "./review"
+import {
+  inlineCommentTargetsForDiff,
+  runReview,
+  type ReviewRunProgress,
+} from "./review"
 import { checkSafetyGate, hasSafetyGate } from "./safety"
 
 export interface MergeRunInput {
@@ -451,12 +453,21 @@ async function runRereview(
 
   const meta = await fetchPullRequest(input.exec, input.repository, input.pr)
   const headSha = options.dryRunHeadSha ?? meta.headRefOid
-  const inlineCommentTargets = parseRightSideDiffTargets(
-    await input.exec(
-      `git diff --no-ext-diff --unified=3 ${shellQuote(meta.baseRefOid)} ${shellQuote(headSha)}`,
-      { cwd: worktreePath },
-    ),
-  )
+  const inlineCommentTargets = await inlineCommentTargetsForDiff({
+    ensure: options.dryRunHeadSha
+      ? undefined
+      : {
+          fromSource: "base",
+          meta,
+          repository: input.repository,
+          toSource: "head",
+        },
+    exec: input.exec,
+    fromSha: meta.baseRefOid,
+    range: "direct",
+    toSha: headSha,
+    worktreePath,
+  })
   const artifactDir = outputDir(input)
   let entries = await mapPool(
     input.repository.agents.reviewers,
@@ -1163,7 +1174,7 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
         threads: unresolvedThreads,
       })
       const editorFindings = blockingReviewFindings(reportOutputs)
-      const editableFindings = editableThreads.length ? editorFindings : []
+      const editableFindings = editorFindings
       const findingAttemptsExhausted =
         input.repository.merge.maxThreadResolutionCycles !== 0 &&
         cycle > input.repository.merge.maxThreadResolutionCycles
