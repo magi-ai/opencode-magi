@@ -188,7 +188,7 @@ async function runEditor(
 ): Promise<EditOutput> {
   const editor = input.repository.agents.editor
 
-  if (!editor) throw new Error("agents.editor is required for magi_merge")
+  if (!editor) throw new Error("merge.editor is required for magi_merge")
 
   throwIfAborted(input.signal)
 
@@ -1016,7 +1016,7 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
   const abortableInput = { ...input, exec }
   const editor = input.repository.agents.editor
 
-  if (!editor) throw new Error("agents.editor is required for magi_merge")
+  if (!editor) throw new Error("merge.editor is required for magi_merge")
 
   throwIfAborted(input.signal)
 

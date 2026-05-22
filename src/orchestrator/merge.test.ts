@@ -166,6 +166,26 @@ beforeEach(() => {
 })
 
 describe("merge", () => {
+  test("reports the merge.editor config key when editor is missing", async () => {
+    const client: ModelClient = {
+      session: {
+        create: async () => ({ id: "session" }),
+        prompt: async () => ({}),
+      },
+    }
+
+    await expect(
+      runMerge({
+        client,
+        config: {},
+        directory: ".",
+        exec: async () => "",
+        pr: 7557,
+        repository,
+      }),
+    ).rejects.toThrow("merge.editor is required for magi_merge")
+  })
+
   test("uses dry-run edited head for rereview close reconsideration prompts", async () => {
     const directory = await mkdtemp(join(tmpdir(), "magi-merge-"))
     const reviewers = ["alpha", "bravo", "charlie"].map((key, index) => ({
