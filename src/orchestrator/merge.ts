@@ -27,6 +27,7 @@ import {
   removeWorktree,
   resolveThread,
   type ReviewThread,
+  waitForAutoMerge,
   waitForMergeQueue,
   type CheckWaitReport,
 } from "../github/commands"
@@ -783,7 +784,11 @@ async function mergeWithQueue(
 ): Promise<"dequeued" | "merged"> {
   await mergePullRequest(exec, input.repository, input.pr, editorAccount)
 
-  if (!input.repository.merge.mergeQueue) return "merged"
+  if (!input.repository.merge.mergeQueue) {
+    if (!input.repository.merge.auto) return "merged"
+
+    return waitForAutoMerge(exec, input.repository, input.pr)
+  }
 
   return waitForMergeQueue(exec, input.repository, input.pr)
 }
