@@ -100,7 +100,7 @@ export interface TriagePromptInput {
   directory: string
   issue: number
   repository: ResolvedRepository
-  reviewer: ResolvedTriageAgent
+  voter: ResolvedTriageAgent
 }
 
 export interface TriageCommentPromptInput {
@@ -552,7 +552,7 @@ async function composeTriageVotePrompt(input: {
   issue: number
   outputContract: string
   repository: ResolvedRepository
-  reviewer: ResolvedTriageAgent
+  voter: ResolvedTriageAgent
 }): Promise<string> {
   const values = triageValues(input)
   const task = await taskBlock({
@@ -565,7 +565,7 @@ async function composeTriageVotePrompt(input: {
   return [
     task,
     languageBlock(input.repository.language),
-    personaBlock(input.reviewer.persona),
+    personaBlock(input.voter.persona),
     input.outputContract,
   ]
     .filter(Boolean)
