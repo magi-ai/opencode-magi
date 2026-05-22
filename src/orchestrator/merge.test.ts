@@ -8,8 +8,10 @@ import {
   incrementReviewThreadAttempts,
   recordReviewThreads,
   reviewThreadNotification,
+  runMerge,
   type ThreadResolutionAttempt,
 } from "./merge"
+import type { ModelClient } from "./model"
 import type { ResolvedRepository } from "../types"
 
 const repository: ResolvedRepository = {
@@ -60,6 +62,26 @@ function thread(threadId: string): ReviewThread {
 }
 
 describe("merge", () => {
+  test("reports the merge.editor config key when editor is missing", async () => {
+    const client: ModelClient = {
+      session: {
+        create: async () => ({ id: "session" }),
+        prompt: async () => ({}),
+      },
+    }
+
+    await expect(
+      runMerge({
+        client,
+        config: {},
+        directory: ".",
+        exec: async () => "",
+        pr: 7557,
+        repository,
+      }),
+    ).rejects.toThrow("merge.editor is required for magi_merge")
+  })
+
   test("treats maxThreadResolutionCycles 0 as unlimited per thread", () => {
     const attempts: Record<string, ThreadResolutionAttempt> = {}
     const threads = [thread("thread-1")]
