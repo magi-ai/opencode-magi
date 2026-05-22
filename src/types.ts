@@ -157,7 +157,6 @@ export interface ReviewPromptConfig {
 }
 
 export interface TriagePromptConfig {
-  action?: string
   acceptance?: string
   category?: string
   comment?: string
@@ -425,11 +424,6 @@ export interface TriageCommentClassificationOutput {
     commentId: number
     reason: string
   }[]
-}
-
-export interface TriageActionOutput {
-  action: TriageAction
-  reason: string
 }
 
 export type EditResponseAction = "ASK" | "DISAGREE" | "FIXED"
