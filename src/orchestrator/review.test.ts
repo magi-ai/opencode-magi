@@ -2,6 +2,7 @@ import type { PullRequestReview } from "../github/commands"
 import { describe, expect, test } from "vitest"
 import {
   hasPendingThreadReply,
+  inlineCommentTargetsForDiff,
   reviewOutputFromState,
   resolveReviewMode,
   reviewFreshnessTarget,
@@ -128,6 +129,35 @@ describe("review flow", () => {
     )
 
     expect(mode.type).toBe("already_reviewed")
+  })
+
+  test("builds inline targets from the prompted three-dot diff range", async () => {
+    const calls: { command: string; cwd?: string }[] = []
+    const targets = await inlineCommentTargetsForDiff({
+      exec: async (command, options) => {
+        calls.push({ command, cwd: options?.cwd })
+
+        return [
+          "diff --git a/src/app.ts b/src/app.ts",
+          "--- a/src/app.ts",
+          "+++ b/src/app.ts",
+          "@@ -1 +1,2 @@",
+          " existing",
+          "+added",
+        ].join("\n")
+      },
+      fromSha: "base-sha",
+      toSha: "head-sha",
+      worktreePath: "/tmp/worktree",
+    })
+
+    expect(calls).toEqual([
+      {
+        command: "git diff --no-ext-diff --unified=3 'base-sha'...'head-sha'",
+        cwd: "/tmp/worktree",
+      },
+    ])
+    expect(targets.get("src/app.ts")?.has(2)).toBe(true)
   })
 
   test("restores legacy inline review findings from the posted review body", () => {
