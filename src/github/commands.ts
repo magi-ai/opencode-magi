@@ -171,12 +171,17 @@ export interface ClassifiedCheck {
   reason: string
 }
 
+export interface CiClassifierCheck {
+  classification: "SCOPE_IN" | "SCOPE_OUT"
+  name: string
+  reason: string
+}
+
 export interface CiClassifierRun {
-  classification?: "SCOPE_IN" | "SCOPE_OUT"
+  checks?: CiClassifierCheck[]
   error?: string
   promptPath?: string
   rawPath?: string
-  reason?: string
   repairAttempts: number
   reviewer: string
   sessionId?: string
@@ -999,27 +1004,40 @@ export async function fetchPullRequestReviews(
   repository: ResolvedRepository,
   pr: number,
 ): Promise<PullRequestReview[]> {
-  const query = `query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviews(first: 100) { nodes { author { login } submittedAt state body commit { oid } comments(first: 100) { nodes { body path line startLine } } } } } } }`
-  const raw = await exec(
-    `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F pr=${pr}`,
-  )
-  const data = JSON.parse(raw) as {
-    data: {
-      repository: {
-        pullRequest: {
-          reviews: {
-            nodes: Array<
-              Omit<PullRequestReview, "comments"> & {
-                comments?: { nodes?: PullRequestReviewComment[] }
-              }
-            >
+  const query = `query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviews(first: 100, after: $cursor) { nodes { author { login } submittedAt state body commit { oid } comments(first: 100) { nodes { body path line startLine } } } pageInfo { hasNextPage endCursor } } } } }`
+  const reviews: Array<
+    Omit<PullRequestReview, "comments"> & {
+      comments?: { nodes?: PullRequestReviewComment[] }
+    }
+  > = []
+  let cursor: string | undefined
+
+  for (;;) {
+    const cursorFlag = cursor ? ` -F cursor=${shellQuote(cursor)}` : ""
+    const raw = await exec(
+      `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F pr=${pr}${cursorFlag}`,
+    )
+    const data = JSON.parse(raw) as {
+      data: {
+        repository: {
+          pullRequest: {
+            reviews: {
+              nodes: typeof reviews
+              pageInfo?: { endCursor?: string; hasNextPage?: boolean }
+            }
           }
         }
       }
     }
+    const connection = data.data.repository.pullRequest.reviews
+
+    reviews.push(...connection.nodes)
+    if (!connection.pageInfo?.hasNextPage) break
+    cursor = connection.pageInfo.endCursor
+    if (!cursor) throw new Error("GitHub reviews page was truncated")
   }
 
-  return data.data.repository.pullRequest.reviews.nodes.map((review) => ({
+  return reviews.map((review) => ({
     ...review,
     comments: review.comments?.nodes ?? [],
   }))
@@ -1030,29 +1048,42 @@ export async function fetchPullRequestCommits(
   repository: ResolvedRepository,
   pr: number,
 ): Promise<PullRequestCommit[]> {
-  const query = `query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { commits(first: 100) { nodes { commit { oid committedDate parents { totalCount } } } } } } }`
-  const raw = await exec(
-    `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F pr=${pr}`,
-  )
-  const data = JSON.parse(raw) as {
-    data: {
-      repository: {
-        pullRequest: {
-          commits: {
-            nodes: {
-              commit: {
-                committedDate: string
-                oid: string
-                parents: { totalCount: number }
-              }
-            }[]
+  const query = `query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { commits(first: 100, after: $cursor) { nodes { commit { oid committedDate parents { totalCount } } } pageInfo { hasNextPage endCursor } } } } }`
+  const commits: Array<{
+    commit: {
+      committedDate: string
+      oid: string
+      parents: { totalCount: number }
+    }
+  }> = []
+  let cursor: string | undefined
+
+  for (;;) {
+    const cursorFlag = cursor ? ` -F cursor=${shellQuote(cursor)}` : ""
+    const raw = await exec(
+      `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F pr=${pr}${cursorFlag}`,
+    )
+    const data = JSON.parse(raw) as {
+      data: {
+        repository: {
+          pullRequest: {
+            commits: {
+              nodes: typeof commits
+              pageInfo?: { endCursor?: string; hasNextPage?: boolean }
+            }
           }
         }
       }
     }
+    const connection = data.data.repository.pullRequest.commits
+
+    commits.push(...connection.nodes)
+    if (!connection.pageInfo?.hasNextPage) break
+    cursor = connection.pageInfo.endCursor
+    if (!cursor) throw new Error("GitHub commits page was truncated")
   }
 
-  return data.data.repository.pullRequest.commits.nodes.map(({ commit }) => ({
+  return commits.map(({ commit }) => ({
     committedDate: commit.committedDate,
     oid: commit.oid,
     parentCount: commit.parents.totalCount,
@@ -1491,6 +1522,24 @@ export async function waitForMergeQueue(
   }
 }
 
+export async function waitForAutoMerge(
+  exec: Exec,
+  repository: ResolvedRepository,
+  pr: number,
+  intervalMs = 30_000,
+): Promise<"dequeued" | "merged"> {
+  for (;;) {
+    const status = await fetchPullRequestMergeStatus(exec, repository, pr)
+
+    if (status.state === "MERGED") return "merged"
+    if (status.state !== "OPEN" || status.autoMergeRequest == null) {
+      return "dequeued"
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+}
+
 export async function closePullRequest(
   exec: Exec,
   repository: ResolvedRepository,
@@ -1575,26 +1624,98 @@ export async function fetchUnresolvedThreads(
   pr: number,
   author?: string,
 ): Promise<ReviewThread[]> {
-  const query = `query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { id isResolved comments(first: 50) { nodes { databaseId author { login } path line body createdAt } } } } } } }`
-  const raw = await exec(
-    `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F pr=${pr}`,
-  )
-  const data = JSON.parse(raw)
-  const threads = data.data.repository.pullRequest.reviewThreads
-    .nodes as Array<{
+  type UnresolvedThreadComment = {
+    author: { login: string }
+    body: string
+    createdAt: string
+    databaseId: number
+    line: number
+    path: string
+  }
+  type UnresolvedThreadNode = {
     comments: {
-      nodes: Array<{
-        databaseId: number
-        author: { login: string }
-        path: string
-        line: number
-        body: string
-        createdAt: string
-      }>
+      nodes: UnresolvedThreadComment[]
+      pageInfo?: { endCursor?: string; hasNextPage?: boolean }
     }
     id: string
     isResolved: boolean
-  }>
+  }
+  const threadQuery = `query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviewThreads(first: 100, after: $cursor) { nodes { id isResolved comments(first: 100) { nodes { databaseId author { login } path line body createdAt } pageInfo { hasNextPage endCursor } } } pageInfo { hasNextPage endCursor } } } } }`
+  const commentQuery = `query($threadId: ID!, $cursor: String) { node(id: $threadId) { ... on PullRequestReviewThread { comments(first: 100, after: $cursor) { nodes { databaseId author { login } path line body createdAt } pageInfo { hasNextPage endCursor } } } } }`
+  const threads: UnresolvedThreadNode[] = []
+  let cursor: string | undefined
+
+  async function fetchRemainingComments(
+    threadId: string,
+    initialCursor: string,
+  ): Promise<UnresolvedThreadComment[]> {
+    const comments: UnresolvedThreadComment[] = []
+    let commentsCursor = initialCursor
+
+    for (;;) {
+      const raw = await exec(
+        `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(commentQuery)} -F threadId=${shellQuote(threadId)} -F cursor=${shellQuote(commentsCursor)}`,
+      )
+      const data = JSON.parse(raw) as {
+        data: {
+          node?: {
+            comments?: {
+              nodes: UnresolvedThreadComment[]
+              pageInfo?: { endCursor?: string; hasNextPage?: boolean }
+            }
+          }
+        }
+      }
+      const connection = data.data.node?.comments
+
+      if (!connection)
+        throw new Error("GitHub review thread comments were missing")
+      comments.push(...connection.nodes)
+      if (!connection.pageInfo?.hasNextPage) break
+      const nextCursor = connection.pageInfo.endCursor
+      if (!nextCursor)
+        throw new Error("GitHub review thread comments page was truncated")
+      commentsCursor = nextCursor
+    }
+
+    return comments
+  }
+
+  for (;;) {
+    const cursorFlag = cursor ? ` -F cursor=${shellQuote(cursor)}` : ""
+    const raw = await exec(
+      `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(threadQuery)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F pr=${pr}${cursorFlag}`,
+    )
+    const data = JSON.parse(raw) as {
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: UnresolvedThreadNode[]
+              pageInfo?: { endCursor?: string; hasNextPage?: boolean }
+            }
+          }
+        }
+      }
+    }
+    const connection = data.data.repository.pullRequest.reviewThreads
+
+    for (const thread of connection.nodes) {
+      const commentsCursor = thread.comments.pageInfo?.endCursor
+
+      if (thread.comments.pageInfo?.hasNextPage) {
+        if (!commentsCursor)
+          throw new Error("GitHub review thread comments page was truncated")
+        thread.comments.nodes.push(
+          ...(await fetchRemainingComments(thread.id, commentsCursor)),
+        )
+      }
+    }
+    threads.push(...connection.nodes)
+    if (!connection.pageInfo?.hasNextPage) break
+    cursor = connection.pageInfo.endCursor
+    if (!cursor) throw new Error("GitHub review threads page was truncated")
+  }
 
   return threads.flatMap<ReviewThread>((thread) => {
     if (thread.isResolved || !thread.comments.nodes.length) return []

@@ -1909,9 +1909,19 @@ describe("MagiRunManager notifications", () => {
         type: "ci_classifier_session",
       })
       await privateManager.applyReviewProgress("run", {
-        classification: "SCOPE_OUT",
+        checks: [
+          {
+            classification: "SCOPE_OUT",
+            name: "Browser Tests",
+            reason: "unrelated flaky check",
+          },
+          {
+            classification: "SCOPE_IN",
+            name: "Unit Tests",
+            reason: "changed package failure",
+          },
+        ],
         rawPath: "/tmp/classifier.raw.txt",
-        reason: "unrelated flaky check",
         reviewer: "security",
         sessionId: "ci-session",
         type: "ci_classifier_completed",
@@ -1937,7 +1947,7 @@ describe("MagiRunManager notifications", () => {
 
       expect(texts).toEqual([
         "**CI classifier security** started for [#7557](https://example.com/pull/7557).",
-        "**CI classifier security** completed for [#7557](https://example.com/pull/7557): SCOPE_OUT - unrelated flaky check",
+        "**CI classifier security** completed for [#7557](https://example.com/pull/7557): Browser Tests: SCOPE_OUT - unrelated flaky check; Unit Tests: SCOPE_IN - changed package failure",
         "CI report for [#7557](https://example.com/pull/7557): 0 failed, 0 scope-in, 0 rerun, 0 recovered, 0 unresolved.",
       ])
     })

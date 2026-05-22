@@ -17,3 +17,4 @@ Review findings must always include `path` and `line`, and `line` must target a 
 | `{jsonEncodedWorktreePath}` | JSON-encoded worktree path for shell snippets.                          |
 | `{ciFailureContext}`        | Scope-in CI failure context, when present.                              |
 | `{ciFailureContextBlock}`   | Full `<ci_failure_context>` block when context exists, otherwise empty. |
+| `{reviewContext}`           | Rendered PR, related issue, PR comment, and review discussion context.  |

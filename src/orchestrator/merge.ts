@@ -27,6 +27,7 @@ import {
   removeWorktree,
   resolveThread,
   type ReviewThread,
+  waitForAutoMerge,
   waitForMergeQueue,
   type CheckWaitReport,
 } from "../github/commands"
@@ -188,7 +189,7 @@ async function runEditor(
 ): Promise<EditOutput> {
   const editor = input.repository.agents.editor
 
-  if (!editor) throw new Error("agents.editor is required for magi_merge")
+  if (!editor) throw new Error("merge.editor is required for magi_merge")
 
   throwIfAborted(input.signal)
 
@@ -600,7 +601,7 @@ async function runRereview(
           baseSha: meta.baseRefOid,
           closeReason: entry.output.reason,
           directory: input.directory,
-          headSha: meta.headRefOid,
+          headSha,
           includeReviewGuidelines: !hasReviewerSession,
           includeSessionContext: !hasReviewerSession,
           pr: input.pr,
@@ -783,7 +784,11 @@ async function mergeWithQueue(
 ): Promise<"dequeued" | "merged"> {
   await mergePullRequest(exec, input.repository, input.pr, editorAccount)
 
-  if (!input.repository.merge.mergeQueue) return "merged"
+  if (!input.repository.merge.mergeQueue) {
+    if (!input.repository.merge.auto) return "merged"
+
+    return waitForAutoMerge(exec, input.repository, input.pr)
+  }
 
   return waitForMergeQueue(exec, input.repository, input.pr)
 }
@@ -1016,7 +1021,7 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
   const abortableInput = { ...input, exec }
   const editor = input.repository.agents.editor
 
-  if (!editor) throw new Error("agents.editor is required for magi_merge")
+  if (!editor) throw new Error("merge.editor is required for magi_merge")
 
   throwIfAborted(input.signal)
 

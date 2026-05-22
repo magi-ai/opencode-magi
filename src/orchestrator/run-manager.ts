@@ -24,6 +24,7 @@ import { worktreeBaseDirs } from "../config/worktree"
 import {
   removeBranch,
   removeWorktree,
+  type CiClassifierCheck,
   type CheckWaitReport,
 } from "../github/commands"
 import { withGitHubApiRetry } from "../github/retry"
@@ -87,9 +88,8 @@ export interface MagiRunState {
   ciClassifiers?: Record<
     string,
     MagiRunAgentState & {
-      classification?: string
+      checks?: CiClassifierCheck[]
       promptPath?: string
-      reason?: string
     }
   >
   completedAt?: string
@@ -340,6 +340,18 @@ function ciReportText(input: { pr: string; report: CheckWaitReport }): string {
   const scopeInside = input.report.scopeInside.length
 
   return `CI report for ${input.pr}: ${failed} failed, ${scopeInside} scope-in, ${rerun} rerun, ${recovered} recovered, ${unresolved} unresolved.`
+}
+
+function ciClassifierCompletedText(input: {
+  checks: CiClassifierCheck[]
+  pr: string
+  reviewer: string
+}): string {
+  const summary = input.checks
+    .map((check) => `${check.name}: ${check.classification} - ${check.reason}`)
+    .join("; ")
+
+  return `**CI classifier ${input.reviewer}** completed for ${input.pr}: ${summary}`
 }
 
 function closeReconsiderationText(input: {
@@ -2191,66 +2203,66 @@ export class MagiRunManager {
     }
 
     if (progress.type === "triage_agent_started") {
-      const reviewer = state.reviewers[progress.reviewer]
-      if (reviewer) reviewer.status = "running"
+      const voter = state.reviewers[progress.voter]
+      if (voter) voter.status = "running"
     }
 
     if (progress.type === "triage_agent_session") {
-      const reviewer = state.reviewers[progress.reviewer]
-      if (reviewer) {
+      const voter = state.reviewers[progress.voter]
+      if (voter) {
         if (progress.options)
           this.input.setSessionOptions?.(progress.sessionId, progress.options)
-        reviewer.sessionId = progress.sessionId
-        reviewer.status = "running"
-        reviewer.lastUpdate = now()
+        voter.sessionId = progress.sessionId
+        voter.status = "running"
+        voter.lastUpdate = now()
         this.sessionToRun.set(progress.sessionId, {
-          agent: progress.reviewer,
+          agent: progress.voter,
           runId,
         })
       }
     }
 
     if (progress.type === "triage_agent_repair") {
-      const reviewer = state.reviewers[progress.reviewer]
-      if (reviewer) {
-        reviewer.status = "repairing"
-        reviewer.repairAttempts += 1
-        reviewer.lastUpdate = now()
+      const voter = state.reviewers[progress.voter]
+      if (voter) {
+        voter.status = "repairing"
+        voter.repairAttempts += 1
+        voter.lastUpdate = now()
       }
     }
 
     if (progress.type === "triage_agent_response") {
-      const reviewer = state.reviewers[progress.reviewer]
-      if (reviewer) {
-        reviewer.sessionId = progress.sessionId
-        reviewer.lastUpdate = now()
+      const voter = state.reviewers[progress.voter]
+      if (voter) {
+        voter.sessionId = progress.sessionId
+        voter.lastUpdate = now()
       }
     }
 
     if (progress.type === "triage_agent_completed") {
-      const reviewer = state.reviewers[progress.reviewer]
-      if (reviewer) {
-        reviewer.sessionId = progress.sessionId
-        reviewer.status = "completed"
-        reviewer.verdict = progress.vote
-        reviewer.rawPath = join(
+      const voter = state.reviewers[progress.voter]
+      if (voter) {
+        voter.sessionId = progress.sessionId
+        voter.status = "completed"
+        voter.verdict = progress.vote
+        voter.rawPath = join(
           state.outputDir,
-          `${progress.reviewer}.${progress.phase}.raw.txt`,
+          `${progress.voter}.${progress.phase}.raw.txt`,
         )
-        reviewer.parsedPath = join(
+        voter.parsedPath = join(
           state.outputDir,
-          `${progress.reviewer}.${progress.phase}.json`,
+          `${progress.voter}.${progress.phase}.json`,
         )
-        reviewer.lastUpdate = now()
+        voter.lastUpdate = now()
       }
     }
 
     if (progress.type === "triage_agent_failed") {
-      const reviewer = state.reviewers[progress.reviewer]
-      if (reviewer) {
-        reviewer.status = "failed"
-        reviewer.error = redactSecrets(progress.error)
-        reviewer.lastUpdate = now()
+      const voter = state.reviewers[progress.voter]
+      if (voter) {
+        voter.status = "failed"
+        voter.error = redactSecrets(progress.error)
+        voter.lastUpdate = now()
       }
     }
 
@@ -2319,28 +2331,28 @@ export class MagiRunManager {
     if (progress.type === "triage_agent_started") {
       await this.notify(
         state,
-        `**Triage agent ${progress.reviewer}** started ${progress.phase} for ${issue}.`,
+        `**Triage agent ${progress.voter}** started ${progress.phase} for ${issue}.`,
       )
     }
 
     if (progress.type === "triage_agent_repair") {
       await this.notify(
         state,
-        `**Triage agent ${progress.reviewer}** started JSON regeneration for ${issue}.`,
+        `**Triage agent ${progress.voter}** started JSON regeneration for ${issue}.`,
       )
     }
 
     if (progress.type === "triage_agent_completed") {
       await this.notify(
         state,
-        `**Triage agent ${progress.reviewer}** completed ${progress.phase} for ${issue}: ${progress.vote}.`,
+        `**Triage agent ${progress.voter}** completed ${progress.phase} for ${issue}: ${progress.vote}.`,
       )
     }
 
     if (progress.type === "triage_agent_failed") {
       await this.notify(
         state,
-        `**Triage agent ${progress.reviewer}** failed ${progress.phase} for ${issue}: ${redactSecrets(progress.error)}`,
+        `**Triage agent ${progress.voter}** failed ${progress.phase} for ${issue}: ${redactSecrets(progress.error)}`,
       )
     }
 
@@ -2467,9 +2479,8 @@ export class MagiRunManager {
     if (progress.type === "ci_classifier_completed") {
       const classifier = state.ciClassifiers?.[progress.reviewer]
       if (classifier) {
-        classifier.classification = progress.classification
+        classifier.checks = progress.checks
         classifier.rawPath = progress.rawPath
-        classifier.reason = progress.reason
         classifier.sessionId = progress.sessionId
         classifier.status = "completed"
         classifier.lastUpdate = now()
@@ -2607,7 +2618,11 @@ export class MagiRunManager {
     if (progress.type === "ci_classifier_completed") {
       await this.notify(
         state,
-        `**CI classifier ${progress.reviewer}** completed for ${prMarkdownLink(state)}: ${progress.classification} - ${progress.reason}`,
+        ciClassifierCompletedText({
+          checks: progress.checks,
+          pr: prMarkdownLink(state),
+          reviewer: progress.reviewer,
+        }),
       )
     }
 

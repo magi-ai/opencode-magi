@@ -150,11 +150,13 @@ function reviewThreadsResponse(threads: ReviewThread[]): string {
                   line: thread.line,
                   path: thread.path,
                 })),
+                pageInfo: { endCursor: null, hasNextPage: false },
                 totalCount: thread.comments.length,
               },
               id: thread.threadId,
               isResolved: thread.isResolved ?? false,
             })),
+            pageInfo: { endCursor: null, hasNextPage: false },
             totalCount: threads.length,
           },
         },
@@ -308,7 +310,12 @@ function reviewsResponse(reviews: PullRequestReview[]): string {
   return JSON.stringify({
     data: {
       repository: {
-        pullRequest: { reviews: { nodes: reviews } },
+        pullRequest: {
+          reviews: {
+            nodes: reviews,
+            pageInfo: { endCursor: null, hasNextPage: false },
+          },
+        },
       },
     },
   })
@@ -340,6 +347,7 @@ function commitsResponse(): string {
                 },
               },
             ],
+            pageInfo: { endCursor: null, hasNextPage: false },
           },
         },
       },
@@ -361,11 +369,14 @@ function createExec(
 ): { commands: string[]; exec: Exec } {
   const commands: string[] = []
   let checksRead = 0
+  let merged = false
 
   const exec: Exec = async (command) => {
     commands.push(command)
 
-    if (command.startsWith("gh pr view 7")) return pullRequest()
+    if (command.startsWith("gh pr view 7")) {
+      return pullRequest({ state: merged ? "MERGED" : "OPEN" })
+    }
     if (command.startsWith("gh auth token")) return "token\n"
     if (command.startsWith("gh pr review 7")) return "review posted"
     if (
@@ -375,7 +386,11 @@ function createExec(
       return "https://github.com/owner/repo/pull/7#pullrequestreview-1"
     }
     if (command.startsWith("gh pr close 7")) return "closed"
-    if (command.startsWith("gh pr merge 7")) return "merged"
+    if (command.startsWith("gh pr merge 7")) {
+      merged = true
+
+      return "merged"
+    }
     if (command.startsWith("gh pr checks 7") && command.includes("--watch")) {
       return ""
     }
@@ -469,10 +484,12 @@ function createExec(
         },
       })
     }
-    if (command.includes("reviews(first: 100)")) {
+    if (command.includes("reviews(first: 100, after: $cursor)")) {
       return reviewsResponse(input.reviews ?? [])
     }
-    if (command.includes("commits(first: 100)")) return commitsResponse()
+    if (command.includes("commits(first: 100, after: $cursor)")) {
+      return commitsResponse()
+    }
     if (command.includes("pullRequest(number: $pr) { comments")) {
       return emptyCommentPage()
     }

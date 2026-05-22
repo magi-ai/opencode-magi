@@ -22,6 +22,7 @@ import {
   repoSpecifier,
   searchDuplicateIssues,
   shellQuote,
+  waitForAutoMerge,
   waitForMergeQueue,
 } from "./commands"
 
@@ -447,6 +448,51 @@ describe("GitHub command helpers", () => {
     expect(result).toBe("dequeued")
   })
 
+  test("waits for auto-merge completion", async () => {
+    const commands: string[] = []
+    const statuses = [
+      {
+        autoMergeRequest: { enabledAt: "2026-01-01T00:00:00Z" },
+        mergeStateStatus: "BLOCKED",
+        state: "OPEN",
+      },
+      { autoMergeRequest: null, mergeStateStatus: "UNKNOWN", state: "MERGED" },
+    ]
+
+    const result = await waitForAutoMerge(
+      async (command) => {
+        commands.push(command)
+
+        return JSON.stringify(statuses.shift())
+      },
+      repository,
+      7557,
+      0,
+    )
+
+    expect(result).toBe("merged")
+    expect(commands[0]).toContain(
+      "--json state,mergeStateStatus,autoMergeRequest",
+    )
+    expect(commands).toHaveLength(2)
+  })
+
+  test("returns dequeued when auto-merge is removed before merging", async () => {
+    const result = await waitForAutoMerge(
+      async () =>
+        JSON.stringify({
+          autoMergeRequest: null,
+          mergeStateStatus: "CLEAN",
+          state: "OPEN",
+        }),
+      repository,
+      7557,
+      0,
+    )
+
+    expect(result).toBe("dequeued")
+  })
+
   test("fetches PR head repository metadata", async () => {
     let command = ""
     const result = await fetchPullRequest(
@@ -615,7 +661,7 @@ describe("GitHub command helpers", () => {
     )
 
     expect(graphqlCommand).toContain(
-      "-f query='query($owner: String!, $repo: String!, $pr: Int!)",
+      "-f query='query($owner: String!, $repo: String!, $pr: Int!, $cursor: String)",
     )
     expect(graphqlCommand).toContain("-F owner='owner'")
     expect(graphqlCommand).toContain("-F repo='repo'")
@@ -705,6 +751,61 @@ describe("GitHub command helpers", () => {
     )
   })
 
+  test("paginates pull request reviews", async () => {
+    const commands: string[] = []
+    const reviews = await fetchPullRequestReviews(
+      async (command) => {
+        commands.push(command)
+
+        return JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                reviews: command.includes("-F cursor='reviews-cursor'")
+                  ? {
+                      nodes: [
+                        {
+                          author: { login: "reviewer-b" },
+                          body: "LGTM",
+                          commit: { oid: "commit-b" },
+                          state: "APPROVED",
+                          submittedAt: "2026-01-01T00:00:01Z",
+                        },
+                      ],
+                      pageInfo: { endCursor: undefined, hasNextPage: false },
+                    }
+                  : {
+                      nodes: [
+                        {
+                          author: { login: "reviewer-a" },
+                          body: "Please change this.",
+                          commit: { oid: "commit-a" },
+                          state: "CHANGES_REQUESTED",
+                          submittedAt: "2026-01-01T00:00:00Z",
+                        },
+                      ],
+                      pageInfo: {
+                        endCursor: "reviews-cursor",
+                        hasNextPage: true,
+                      },
+                    },
+              },
+            },
+          },
+        })
+      },
+      repository,
+      7557,
+    )
+
+    expect(reviews.map((review) => review.author.login)).toEqual([
+      "reviewer-a",
+      "reviewer-b",
+    ])
+    expect(commands).toHaveLength(2)
+    expect(commands[1]).toContain("-F cursor='reviews-cursor'")
+  })
+
   test("uses balanced GraphQL in PR commit query", async () => {
     let graphqlCommand = ""
 
@@ -725,6 +826,61 @@ describe("GitHub command helpers", () => {
     )
 
     expectBalancedBraces(extractGraphqlQuery(graphqlCommand))
+  })
+
+  test("paginates pull request commits", async () => {
+    const commands: string[] = []
+    const commits = await fetchPullRequestCommits(
+      async (command) => {
+        commands.push(command)
+
+        return JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                commits: command.includes("-F cursor='commits-cursor'")
+                  ? {
+                      nodes: [
+                        {
+                          commit: {
+                            committedDate: "2026-01-01T00:00:01Z",
+                            oid: "commit-b",
+                            parents: { totalCount: 1 },
+                          },
+                        },
+                      ],
+                      pageInfo: { endCursor: undefined, hasNextPage: false },
+                    }
+                  : {
+                      nodes: [
+                        {
+                          commit: {
+                            committedDate: "2026-01-01T00:00:00Z",
+                            oid: "commit-a",
+                            parents: { totalCount: 1 },
+                          },
+                        },
+                      ],
+                      pageInfo: {
+                        endCursor: "commits-cursor",
+                        hasNextPage: true,
+                      },
+                    },
+              },
+            },
+          },
+        })
+      },
+      repository,
+      7557,
+    )
+
+    expect(commits.map((commit) => commit.oid)).toEqual([
+      "commit-a",
+      "commit-b",
+    ])
+    expect(commands).toHaveLength(2)
+    expect(commands[1]).toContain("-F cursor='commits-cursor'")
   })
 
   test("fetches pull request comments through pullRequest GraphQL", async () => {
@@ -867,6 +1023,145 @@ describe("GitHub command helpers", () => {
         threadId: "thread-id",
       },
     ])
+  })
+
+  test("paginates unresolved review threads and comments", async () => {
+    const commands: string[] = []
+    const threads = await fetchUnresolvedThreads(
+      async (command) => {
+        commands.push(command)
+
+        if (command.includes("-F threadId='thread-a'")) {
+          return JSON.stringify({
+            data: {
+              node: {
+                comments: {
+                  nodes: [
+                    {
+                      author: { login: "author" },
+                      body: "Follow-up.",
+                      createdAt: "2026-01-01T00:00:01Z",
+                      databaseId: 124,
+                      line: 10,
+                      path: "src/app.ts",
+                    },
+                  ],
+                  pageInfo: { endCursor: undefined, hasNextPage: false },
+                },
+              },
+            },
+          })
+        }
+
+        return JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                reviewThreads: command.includes("-F cursor='threads-cursor'")
+                  ? {
+                      nodes: [
+                        {
+                          comments: {
+                            nodes: [
+                              {
+                                author: { login: "bot-b" },
+                                body: "Fix that.",
+                                createdAt: "2026-01-01T00:00:02Z",
+                                databaseId: 125,
+                                line: 20,
+                                path: "src/next.ts",
+                              },
+                            ],
+                            pageInfo: {
+                              endCursor: undefined,
+                              hasNextPage: false,
+                            },
+                          },
+                          id: "thread-b",
+                          isResolved: false,
+                        },
+                      ],
+                      pageInfo: { endCursor: undefined, hasNextPage: false },
+                    }
+                  : {
+                      nodes: [
+                        {
+                          comments: {
+                            nodes: [
+                              {
+                                author: { login: "bot-a" },
+                                body: "Fix this.",
+                                createdAt: "2026-01-01T00:00:00Z",
+                                databaseId: 123,
+                                line: 10,
+                                path: "src/app.ts",
+                              },
+                            ],
+                            pageInfo: {
+                              endCursor: "comments-cursor",
+                              hasNextPage: true,
+                            },
+                          },
+                          id: "thread-a",
+                          isResolved: false,
+                        },
+                      ],
+                      pageInfo: {
+                        endCursor: "threads-cursor",
+                        hasNextPage: true,
+                      },
+                    },
+              },
+            },
+          },
+        })
+      },
+      repository,
+      7557,
+    )
+
+    expect(threads).toEqual([
+      {
+        body: "Fix this.",
+        commentId: 123,
+        comments: [
+          {
+            author: "bot-a",
+            body: "Fix this.",
+            commentId: 123,
+            createdAt: "2026-01-01T00:00:00Z",
+          },
+          {
+            author: "author",
+            body: "Follow-up.",
+            commentId: 124,
+            createdAt: "2026-01-01T00:00:01Z",
+          },
+        ],
+        line: 10,
+        path: "src/app.ts",
+        threadId: "thread-a",
+      },
+      {
+        body: "Fix that.",
+        commentId: 125,
+        comments: [
+          {
+            author: "bot-b",
+            body: "Fix that.",
+            commentId: 125,
+            createdAt: "2026-01-01T00:00:02Z",
+          },
+        ],
+        line: 20,
+        path: "src/next.ts",
+        threadId: "thread-b",
+      },
+    ])
+    expect(commands).toHaveLength(3)
+    expect(commands[1]).toContain("-F threadId='thread-a'")
+    expect(commands[1]).toContain("-F cursor='comments-cursor'")
+    expect(commands[2]).toContain("-F cursor='threads-cursor'")
   })
 
   test("keeps full conversation when fetching reviewer unresolved threads", async () => {

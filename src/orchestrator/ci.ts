@@ -6,6 +6,7 @@ import {
   checkJobId,
   checkRunId,
   type CheckWaitReport,
+  type CiClassifierCheck,
   type ClassifiedCheck,
   type CiClassifierRun,
   fetchCheckFailureLog,
@@ -59,9 +60,8 @@ export type CiClassifierProgress =
     }
   | { reviewer: string; type: "classifier_repair" }
   | {
-      classification: "SCOPE_IN" | "SCOPE_OUT"
+      checks: CiClassifierCheck[]
       rawPath?: string
-      reason: string
       reviewer: string
       sessionId: string
       type: "classifier_completed"
@@ -575,18 +575,20 @@ async function classifyChecks(input: {
         const rawPath = input.outputDir
           ? join(input.outputDir, `${reviewer.key}.ci-classification.raw.txt`)
           : undefined
-        const check = result.value.checks[0]
+        const checks = result.value.checks.map((check) => ({
+          classification: check.classification,
+          name: check.name,
+          reason: check.reason,
+        }))
 
         if (rawPath) await writeFile(rawPath, result.raw)
-        run.classification = check?.classification
+        run.checks = checks
         run.rawPath = rawPath
-        run.reason = check?.reason
         run.sessionId = result.sessionId
         run.status = "completed"
         await input.onClassifierProgress?.({
-          classification: check?.classification ?? "SCOPE_IN",
+          checks,
           rawPath,
-          reason: check?.reason ?? "No classification reason was provided.",
           reviewer: reviewer.key,
           sessionId: result.sessionId,
           type: "classifier_completed",
