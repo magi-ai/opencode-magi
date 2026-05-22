@@ -3,7 +3,15 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import type { ReviewThread } from "../github/commands"
-import type { EditOutput, RereviewOutput } from "../types"
+import type {
+  EditOutput,
+  Exec,
+  MagiConfig,
+  ResolvedRepository,
+  RereviewOutput,
+} from "../types"
+import type { ModelClient } from "./model"
+import type { ReviewRunResult } from "./review"
 import {
   blockingReviewFindings,
   editableReviewThreads,
@@ -15,27 +23,32 @@ import {
   runMerge,
   type ThreadResolutionAttempt,
 } from "./merge"
-import type { ResolvedRepository } from "../types"
 
-const composeEditPromptMock = vi.hoisted(() => vi.fn())
+const runReviewMock = vi.hoisted(() => vi.fn())
+
+vi.mock("./review", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./review")>()
+
+  return { ...actual, runReview: runReviewMock }
+})
+
 const composeRereviewCloseReconsiderationPromptMock = vi.hoisted(() => vi.fn())
 const composeRereviewPromptMock = vi.hoisted(() => vi.fn())
 const runModelWithRepairMock = vi.hoisted(() => vi.fn())
-const runReviewMock = vi.hoisted(() => vi.fn())
 
-vi.mock("../prompts/compose", () => ({
-  composeEditPrompt: composeEditPromptMock,
-  composeRereviewCloseReconsiderationPrompt:
-    composeRereviewCloseReconsiderationPromptMock,
-  composeRereviewPrompt: composeRereviewPromptMock,
-}))
+vi.mock("../prompts/compose", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../prompts/compose")>()
+
+  return {
+    ...actual,
+    composeRereviewCloseReconsiderationPrompt:
+      composeRereviewCloseReconsiderationPromptMock,
+    composeRereviewPrompt: composeRereviewPromptMock,
+  }
+})
 
 vi.mock("./model", () => ({
   runModelWithRepair: runModelWithRepairMock,
-}))
-
-vi.mock("./review", () => ({
-  runReview: runReviewMock,
 }))
 
 const repository: ResolvedRepository = {
@@ -90,6 +103,38 @@ const editOutput = (): EditOutput => ({
   responses: [],
 })
 
+const editorRepository: ResolvedRepository = {
+  ...repository,
+  agents: {
+    editor: {
+      account: "editor-bot",
+      author: {
+        email: "editor@example.com",
+        name: "Editor Bot",
+      },
+      model: "opencode/test",
+      permission: {},
+    },
+    reviewers: [],
+  },
+}
+
+const emptyThreads = JSON.stringify({
+  data: {
+    repository: {
+      pullRequest: {
+        reviewThreads: {
+          nodes: [],
+        },
+      },
+    },
+  },
+})
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
 function thread(threadId: string): ReviewThread {
   return {
     body: `body ${threadId}`,
@@ -109,13 +154,11 @@ function thread(threadId: string): ReviewThread {
 }
 
 beforeEach(() => {
-  composeEditPromptMock.mockReset()
   composeRereviewCloseReconsiderationPromptMock.mockReset()
   composeRereviewPromptMock.mockReset()
   runModelWithRepairMock.mockReset()
   runReviewMock.mockReset()
 
-  composeEditPromptMock.mockResolvedValue("edit prompt")
   composeRereviewCloseReconsiderationPromptMock.mockResolvedValue(
     "rereview close reconsideration prompt",
   )
@@ -341,6 +384,76 @@ describe("merge", () => {
         type: "inline",
       },
     ])
+  })
+
+  test("passes blocking review findings to the editor without unresolved threads", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-merge-test-"))
+    const config: MagiConfig = { review: { output: join(directory, "runs") } }
+    const review: ReviewRunResult = {
+      baseSha: "base",
+      ciReports: [],
+      discardedFindings: [],
+      headSha: "head",
+      outputs: {
+        alpha: {
+          findings: [
+            {
+              fix: "Pass findings to the editor.",
+              issue: "Blocking findings were skipped.",
+              line: 1162,
+              path: "src/orchestrator/merge.ts",
+            },
+          ],
+          verdict: "CHANGES_REQUESTED",
+        },
+      },
+      posted: {},
+      pr: 162,
+      report: "review report",
+      sessionIds: {},
+      verdict: "CHANGES_REQUESTED",
+      worktreePath: directory,
+    }
+    const prompts: string[] = []
+    const exec: Exec = async (command) => {
+      if (command.startsWith("gh api")) return emptyThreads
+
+      return ""
+    }
+    const client: ModelClient = {
+      session: {
+        create: async () => ({ id: "editor-session" }),
+        prompt: async (input) => {
+          const parts = input.body.parts as Array<{
+            text?: string
+            type: string
+          }>
+
+          prompts.push(parts.map((part) => part.text ?? "").join("\n"))
+          throw new Error("stop after editor prompt")
+        },
+      },
+    }
+
+    runReviewMock.mockResolvedValueOnce(review)
+    runModelWithRepairMock.mockImplementationOnce(async (input) => {
+      prompts.push(input.prompt)
+      throw new Error("stop after editor prompt")
+    })
+
+    await expect(
+      runMerge({
+        client,
+        config,
+        directory,
+        exec,
+        pr: 162,
+        repository: editorRepository,
+      }),
+    ).rejects.toThrow("stop after editor prompt")
+
+    expect(prompts.join("\n")).toContain('"reviewer": "alpha"')
+    expect(prompts.join("\n")).toContain("Pass findings to the editor.")
   })
 
   test("treats scope-in CI failures as merge blocking", () => {
