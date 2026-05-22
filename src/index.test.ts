@@ -1,9 +1,10 @@
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import type { MagiConfig } from "./types"
+import type { MagiConfig, ResolvedRepository } from "./types"
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import {
   MagiPlugin,
+  formatRunStartMessage,
   parseIssueRunArguments,
   parseIssues,
   parsePrs,
@@ -208,6 +209,19 @@ describe("parseIssues", () => {
 })
 
 describe("tool descriptions", () => {
+  test("uses command-specific run start messages", () => {
+    const repository = {
+      github: { owner: "owner", repo: "repo" },
+    } as ResolvedRepository
+
+    expect(formatRunStartMessage("merge", repository, 123)).toBe(
+      "Started merge flow [#123](https://github.com/owner/repo/pull/123).",
+    )
+    expect(formatRunStartMessage("review", repository, 123)).toBe(
+      "Started reviewing [#123](https://github.com/owner/repo/pull/123).",
+    )
+  })
+
   test("marks follow-up tools as assistant-facing", async () => {
     const plugin = await MagiPlugin({
       client: { session: {} },
