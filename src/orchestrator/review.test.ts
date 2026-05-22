@@ -175,6 +175,18 @@ describe("review flow", () => {
     })
   })
 
+  test("rejects unsupported GitHub review states", () => {
+    expect(() =>
+      reviewOutputFromState({
+        author: { login: "bot-a" },
+        body: "Looks fine overall.",
+        commit: { oid: "head" },
+        state: "COMMENTED",
+        submittedAt: "2026-01-01T00:00:00Z",
+      }),
+    ).toThrow("Unsupported GitHub review state: COMMENTED")
+  })
+
   test("detects replies after the reviewer latest thread comment", () => {
     expect(
       hasPendingThreadReply(
