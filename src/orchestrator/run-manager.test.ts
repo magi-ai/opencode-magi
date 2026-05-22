@@ -298,6 +298,112 @@ describe("MagiRunManager notifications", () => {
     }
   })
 
+  test("limits background triage runs to configured concurrency", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-triage-queue-"))
+    const { manager } = managerWithPromptCapture(directory)
+    const repository = sampleTriageRepository({
+      clear: ["triage"],
+      close: false,
+      create: false,
+      merge: false,
+      review: false,
+    })
+    repository.triage!.concurrency.runs = 2
+    const resolvers: Array<(value: unknown) => void> = []
+    runTriageMock.mockImplementation((input) => {
+      return new Promise((resolve) => {
+        resolvers.push(() =>
+          resolve({
+            issue: input.issue,
+            outputDir: join(directory, `triage-${input.issue}`),
+            report: "Triage report",
+            result: { category: "bug", disposition: "accepted" },
+          }),
+        )
+      })
+    })
+
+    try {
+      for (const issue of [1, 2, 3]) {
+        await manager.startTriage({
+          config: { github: { owner: "owner", repo: "repo" } },
+          issue,
+          repository,
+        })
+      }
+
+      await vi.waitFor(() => expect(runTriageMock).toHaveBeenCalledTimes(2))
+      expect(runTriageMock.mock.calls.map(([input]) => input.issue)).toEqual([
+        1, 2,
+      ])
+
+      resolvers[0]?.({})
+
+      await vi.waitFor(() => expect(runTriageMock).toHaveBeenCalledTimes(3))
+      expect(runTriageMock.mock.calls.map(([input]) => input.issue)).toEqual([
+        1, 2, 3,
+      ])
+
+      resolvers[1]?.({})
+      resolvers[2]?.({})
+      await vi.waitFor(() => expect(resolvers).toHaveLength(3))
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test("skips cancelled queued background triage runs", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-triage-cancel-"))
+    const { manager } = managerWithPromptCapture(directory)
+    const repository = sampleTriageRepository({
+      clear: ["triage"],
+      close: false,
+      create: false,
+      merge: false,
+      review: false,
+    })
+    repository.triage!.concurrency.runs = 1
+    const resolvers: Array<(value: unknown) => void> = []
+    runTriageMock.mockImplementation((input) => {
+      return new Promise((resolve) => {
+        resolvers.push(() =>
+          resolve({
+            issue: input.issue,
+            outputDir: join(directory, `triage-${input.issue}`),
+            report: "Triage report",
+            result: { category: "bug", disposition: "accepted" },
+          }),
+        )
+      })
+    })
+
+    try {
+      const states = []
+      for (const issue of [1, 2, 3]) {
+        states.push(
+          await manager.startTriage({
+            config: { github: { owner: "owner", repo: "repo" } },
+            issue,
+            repository,
+          }),
+        )
+      }
+
+      await vi.waitFor(() => expect(runTriageMock).toHaveBeenCalledTimes(1))
+      await manager.cancel(states[1]!.runId)
+      resolvers[0]?.({})
+
+      await vi.waitFor(() => expect(runTriageMock).toHaveBeenCalledTimes(2))
+      expect(runTriageMock.mock.calls.map(([input]) => input.issue)).toEqual([
+        1, 3,
+      ])
+
+      resolvers[1]?.({})
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
   test("marks synchronous runs failed when execution fails", async () => {
     const directory = await mkdtemp(join(tmpdir(), "magi-sync-fail-"))
     const { manager } = managerWithPromptCapture(directory)

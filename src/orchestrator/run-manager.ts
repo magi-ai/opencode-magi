@@ -125,6 +125,12 @@ type NumberFilter = number | number[]
 
 export interface MagiClearOptions extends Required<ClearConfig> {}
 
+interface QueuedTriageRun {
+  execute: () => Promise<void>
+  repository: ResolvedRepository
+  runId: string
+}
+
 export interface MagiClearSummary {
   branchDeleted: number
   branchFailed: number
@@ -688,6 +694,7 @@ function extractQuestionRequest(
 
 export class MagiRunManager {
   private active = new Map<string, MagiRunState>()
+  private activeTriageRuns = 0
   private countedToolParts = new Map<string, Set<string>>()
   private controllers = new Map<string, AbortController>()
   private eventLastUpdates = new Map<string, number>()
@@ -695,6 +702,7 @@ export class MagiRunManager {
   private runPaths = new Map<string, string>()
   private outputDirs = new Set<string>()
   private sessionToRun = new Map<string, { agent: string; runId: string }>()
+  private triageQueue: QueuedTriageRun[] = []
 
   constructor(
     private readonly input: {
@@ -931,11 +939,38 @@ export class MagiRunManager {
     if (input.sync)
       return this.executeSync(state, controller, execute, input.timeoutMs)
 
-    void execute().catch(async (error) => {
-      await this.failRun(runId, error)
+    this.triageQueue.push({
+      execute,
+      repository: input.repository,
+      runId,
     })
+    this.drainTriageQueue()
 
     return state
+  }
+
+  private drainTriageQueue(): void {
+    while (this.triageQueue.length) {
+      const next = this.triageQueue[0]
+      if (!next) return
+      const limit = next.repository.triage?.concurrency.runs ?? 1
+      if (this.activeTriageRuns >= limit) return
+      this.triageQueue.shift()
+
+      const state = this.active.get(next.runId)
+      if (!state || state.status === "cancelled") continue
+
+      this.activeTriageRuns += 1
+      void next
+        .execute()
+        .catch(async (error) => {
+          await this.failRun(next.runId, error)
+        })
+        .finally(() => {
+          this.activeTriageRuns -= 1
+          this.drainTriageQueue()
+        })
+    }
   }
 
   async status(
