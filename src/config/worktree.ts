@@ -34,3 +34,29 @@ export function worktreeBaseDirs(
     worktreeBaseDir(directory, config, "issue"),
   ]
 }
+
+export function prRunWorktreeDir(input: {
+  config: MagiConfig
+  directory: string
+  pr: number
+  runId: string
+}): string {
+  return join(
+    worktreeBaseDir(input.directory, input.config, "pr"),
+    String(input.pr),
+    input.runId,
+  )
+}
+
+export function issueRunWorktreeDir(input: {
+  config: MagiConfig
+  directory: string
+  issue: number
+  runId: string
+}): string {
+  return join(
+    worktreeBaseDir(input.directory, input.config, "issue"),
+    String(input.issue),
+    input.runId,
+  )
+}

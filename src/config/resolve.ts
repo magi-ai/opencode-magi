@@ -46,7 +46,7 @@ export function reviewerKey(reviewer: { id?: string }, index: number): string {
 }
 
 export function triageAgentKey(agent: { id?: string }, index: number): string {
-  return agent.id ?? `triage-${index + 1}`
+  return agent.id ?? `voter-${index + 1}`
 }
 
 export function validateReviewerId(id: string): boolean {
@@ -173,7 +173,7 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
     triageCreator: creator
       ? {
           ...creator,
-          account: creator.account ?? config.triage?.account ?? "",
+          account: creator.account ?? "",
           permission: resolveTriageCreatorPermission(agents, creator),
         }
       : undefined,
@@ -251,7 +251,6 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
       requiredLabels: config.review?.safety?.requiredLabels ?? [],
     },
     triage: {
-      account: config.triage?.account,
       automation: {
         clear: config.triage?.automation?.clear ?? ["triage"],
         close: config.triage?.automation?.close ?? false,
@@ -265,6 +264,7 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
       },
       output: config.triage?.output,
       prompts: config.triage?.prompts ?? {},
+      reporter: config.triage?.reporter,
       safety: {
         allowAuthors: config.triage?.safety?.allowAuthors ?? [],
         allowMentionActors: config.triage?.safety?.allowMentionActors ?? [],

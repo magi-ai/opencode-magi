@@ -5,7 +5,6 @@ import {
   parseRereviewOutput,
   parseReviewOutput,
   parseTriageBinaryOutput,
-  parseTriageActionOutput,
   parseTriageCommentClassificationOutput,
   parseTriageCreatePrOutput,
   parseTriageDuplicateOutput,
@@ -354,11 +353,17 @@ describe("triage output parsing", () => {
       vote: "bug",
     })
     expect(
-      parseTriageBinaryOutput('{"vote":"ASK","reason":"missing"}'),
+      parseTriageBinaryOutput(
+        '{"vote":"ASK","reason":"missing","body":"Please clarify."}',
+      ),
     ).toEqual({
+      body: "Please clarify.",
       reason: "missing",
       vote: "ASK",
     })
+    expect(() =>
+      parseTriageBinaryOutput('{"vote":"ASK","reason":"missing"}'),
+    ).toThrow("ASK requires body")
   })
 
   test("requires duplicate target for duplicate vote", () => {
@@ -372,13 +377,7 @@ describe("triage output parsing", () => {
     ).toThrow("DUPLICATE requires duplicateOf")
   })
 
-  test("parses triage action and comment classification output", () => {
-    expect(
-      parseTriageActionOutput('{"action":"PR","reason":"accepted"}'),
-    ).toEqual({
-      action: "PR",
-      reason: "accepted",
-    })
+  test("parses triage comment classification output", () => {
     expect(
       parseTriageCommentClassificationOutput(
         '{"comments":[{"commentId":123,"classification":"NEW_EVIDENCE","reason":"log"}]}',
