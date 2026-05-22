@@ -11,7 +11,6 @@ import type {
   ResolvedRepository,
   ResolvedTriageAgent,
   TriageAction,
-  TriageActionOutput,
   TriageAskReason,
   TriageBinaryVote,
   TriageCategoryVote,
@@ -45,7 +44,6 @@ import {
 } from "../github/commands"
 import {
   composeTriageAcceptancePrompt,
-  composeTriageActionPrompt,
   composeTriageCategoryPrompt,
   composeTriageCommentClassificationPrompt,
   composeTriageCreatePrPrompt,
@@ -54,7 +52,6 @@ import {
   composeTriageReconsiderPrompt,
 } from "../prompts/compose"
 import {
-  parseTriageActionOutput,
   parseTriageBinaryOutput,
   parseTriageCategoryOutput,
   parseTriageCommentClassificationOutput,
@@ -835,54 +832,6 @@ function previousAutomationPlan(input: {
   }
 }
 
-async function runActionPrompt(input: {
-  context: string
-  input: TriageRunInput
-  outputDir: string
-  plan: ActionPlan
-  result: FinalResult
-}): Promise<TriageActionOutput> {
-  const agent = input.input.repository.agents.triage?.[0]
-  if (!agent) throw new Error("triage.agents is required")
-  const context = JSON.stringify(
-    {
-      allowedActions: input.plan.allowedActions,
-      deterministicPlan: input.plan,
-      result: input.result,
-      triageContext: input.context,
-    },
-    null,
-    2,
-  )
-  const prompt = await composeTriageActionPrompt({
-    context,
-    directory: input.input.directory,
-    issue: input.input.issue,
-    repository: input.input.repository,
-    reviewer: agent,
-  })
-  const result = await runModelWithRepair<TriageActionOutput>({
-    client: input.input.client,
-    model: agent.model,
-    options: agent.options,
-    parentSessionId: input.input.parentSessionId,
-    parse: parseTriageActionOutput,
-    permission: agent.permission,
-    prompt,
-    repairAttempts: 3,
-    schemaName: "triage action",
-    signal: input.input.signal,
-    title: `Magi triage action #${input.input.issue}`,
-  })
-
-  await writeJson(join(input.outputDir, "action.json"), {
-    model: result.value,
-    plan: input.plan,
-  })
-
-  return result.value
-}
-
 async function classifyMentionReplies(input: {
   context: string
   input: TriageRunInput
@@ -1194,13 +1143,6 @@ async function finishWithResult(input: {
     action: plan.action,
     result: input.result,
     type: "decision",
-  })
-  await runActionPrompt({
-    context: input.context,
-    input: input.input,
-    outputDir: input.outputDir,
-    plan,
-    result: input.result,
   })
 
   let prUrl: string | undefined
