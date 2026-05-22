@@ -66,16 +66,16 @@ During a single merge flow, Magi reuses reviewer OpenCode sessions from the init
 
 Merge outcomes:
 
-| Status               | Meaning                                                                                                                 |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `merged`             | The PR reached `MERGE` and `gh pr merge` completed successfully.                                                        |
-| `approved`           | The PR reached `MERGE`, but dry-run mode or `merge.automation.merge` disabled the merge step.                           |
-| `closed`             | A review or re-review majority was `CLOSE` and Magi ran `gh pr close`.                                                  |
-| `close_requested`    | A review or re-review decision was `CLOSE`, but dry-run mode or `merge.automation.close` disabled the close step.        |
-| `dequeued`           | With `review.merge.queue: true`, GitHub removed the PR from auto-merge or the merge queue.                              |
-| `safety_blocked`     | A merge safety gate blocked the PR before agent execution.                                                              |
-| `changes_unresolved` | Unresolved review threads reached the per-thread `merge.maxThreadResolutionCycles` limit without a `MERGE` majority.    |
-| `ci_unresolved`      | Review and approvals completed, but scope-outside CI remained unresolved so Magi did not merge.                         |
+| Status               | Meaning                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `merged`             | The PR reached `MERGE` and `gh pr merge` completed successfully.                                                     |
+| `approved`           | The PR reached `MERGE`, but dry-run mode or `merge.automation.merge` disabled the merge step.                        |
+| `closed`             | A review or re-review majority was `CLOSE` and Magi ran `gh pr close`.                                               |
+| `close_requested`    | A review or re-review decision was `CLOSE`, but dry-run mode or `merge.automation.close` disabled the close step.    |
+| `dequeued`           | With `review.merge.queue: true`, GitHub removed the PR from auto-merge or the merge queue.                           |
+| `safety_blocked`     | A merge safety gate blocked the PR before agent execution.                                                           |
+| `changes_unresolved` | Unresolved review threads reached the per-thread `merge.maxThreadResolutionCycles` limit without a `MERGE` majority. |
+| `ci_unresolved`      | Review and approvals completed, but scope-outside CI remained unresolved so Magi did not merge.                      |
 
 ## Outputs
 
