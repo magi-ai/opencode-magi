@@ -1,5 +1,12 @@
-import type { Finding, FindingValidationOutput, ReviewOutput } from "../types"
+import type {
+  Finding,
+  FindingValidationOutput,
+  RereviewOutput,
+  ReviewOutput,
+} from "../types"
 import { majorityThreshold } from "./majority"
+
+type ValidatedOutput = RereviewOutput | ReviewOutput
 
 export interface FindingValidationTarget {
   finding: Finding
@@ -12,13 +19,25 @@ export interface FindingValidationSummary {
   kept: FindingValidationTarget[]
 }
 
+function validationFindings(output: ValidatedOutput): Finding[] {
+  if ("findings" in output) return output.findings
+
+  return output.newFindings.map((finding) => ({
+    fix: "Please address this before merging.",
+    issue: finding.body,
+    line: finding.line,
+    path: finding.path,
+    startLine: finding.startLine,
+  }))
+}
+
 export function reviewFindingTargets(
-  outputs: Record<string, ReviewOutput>,
+  outputs: Record<string, ValidatedOutput>,
 ): FindingValidationTarget[] {
   return Object.entries(outputs).flatMap(([reviewer, output]) => {
     if (output.verdict !== "CHANGES_REQUESTED") return []
 
-    return output.findings.map((finding, findingIndex) => ({
+    return validationFindings(output).map((finding, findingIndex) => ({
       finding,
       findingIndex,
       reviewer,
@@ -66,11 +85,27 @@ export function applyFindingValidation(input: {
 }): {
   outputs: Record<string, ReviewOutput>
   summary: FindingValidationSummary
+}
+export function applyFindingValidation(input: {
+  outputs: Record<string, ValidatedOutput>
+  reviewerKeys: string[]
+  validations: Record<string, FindingValidationOutput>
+}): {
+  outputs: Record<string, ValidatedOutput>
+  summary: FindingValidationSummary
+}
+export function applyFindingValidation(input: {
+  outputs: Record<string, ValidatedOutput>
+  reviewerKeys: string[]
+  validations: Record<string, FindingValidationOutput>
+}): {
+  outputs: Record<string, ValidatedOutput>
+  summary: FindingValidationSummary
 } {
   const threshold = majorityThreshold(input.reviewerKeys.length)
   const kept: FindingValidationTarget[] = []
   const discarded: FindingValidationTarget[] = []
-  const next: Record<string, ReviewOutput> = {}
+  const next: Record<string, ValidatedOutput> = {}
 
   for (const [reviewer, output] of Object.entries(input.outputs)) {
     if (output.verdict !== "CHANGES_REQUESTED") {
@@ -78,7 +113,10 @@ export function applyFindingValidation(input: {
       continue
     }
 
-    const findings = output.findings.filter((finding, findingIndex) => {
+    const keptIndexes = new Set<number>()
+    const findings = validationFindings(output)
+
+    findings.forEach((finding, findingIndex) => {
       let agrees = 1
 
       for (const validator of input.reviewerKeys) {
@@ -96,16 +134,31 @@ export function applyFindingValidation(input: {
 
       if (agrees >= threshold) {
         kept.push(target)
-        return true
+        keptIndexes.add(findingIndex)
+        return
       }
 
       discarded.push(target)
-      return false
     })
 
-    next[reviewer] = findings.length
-      ? { ...output, findings }
-      : { findings: [], verdict: "MERGE" }
+    if ("findings" in output) {
+      const keptFindings = output.findings.filter((_finding, index) =>
+        keptIndexes.has(index),
+      )
+
+      next[reviewer] = keptFindings.length
+        ? { ...output, findings: keptFindings }
+        : { findings: [], verdict: "MERGE" }
+      continue
+    }
+
+    const newFindings = output.newFindings.filter((_finding, index) =>
+      keptIndexes.has(index),
+    )
+    next[reviewer] =
+      newFindings.length || output.followUps.length
+        ? { ...output, newFindings }
+        : { ...output, newFindings, verdict: "MERGE" }
   }
 
   return { outputs: next, summary: { discarded, kept } }

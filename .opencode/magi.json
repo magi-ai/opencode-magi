@@ -49,11 +49,10 @@
     }
   },
   "triage": {
-    "account": "hirotomoyamada",
     "agents": [
-      { "ref": "melchior" },
-      { "ref": "balthasar" },
-      { "ref": "caspar" }
+      { "ref": "melchior", "account": "melchior-magi" },
+      { "ref": "balthasar", "account": "balthasar-magi" },
+      { "ref": "caspar", "account": "caspar-magi" }
     ],
     "creator": { "ref": "hirotomoyamada" },
     "automation": { "create": true }

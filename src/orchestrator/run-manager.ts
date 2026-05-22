@@ -125,6 +125,18 @@ type NumberFilter = number | number[]
 
 export interface MagiClearOptions extends Required<ClearConfig> {}
 
+interface QueuedTriageRun {
+  execute: () => Promise<void>
+  repository: ResolvedRepository
+  runId: string
+}
+
+interface QueuedPrRun {
+  execute: () => Promise<void>
+  repository: ResolvedRepository
+  runId: string
+}
+
 export interface MagiClearSummary {
   branchDeleted: number
   branchFailed: number
@@ -688,6 +700,8 @@ function extractQuestionRequest(
 
 export class MagiRunManager {
   private active = new Map<string, MagiRunState>()
+  private activePrRuns = 0
+  private activeTriageRuns = 0
   private countedToolParts = new Map<string, Set<string>>()
   private controllers = new Map<string, AbortController>()
   private eventLastUpdates = new Map<string, number>()
@@ -695,6 +709,8 @@ export class MagiRunManager {
   private runPaths = new Map<string, string>()
   private outputDirs = new Set<string>()
   private sessionToRun = new Map<string, { agent: string; runId: string }>()
+  private prQueue: QueuedPrRun[] = []
+  private triageQueue: QueuedTriageRun[] = []
 
   constructor(
     private readonly input: {
@@ -771,9 +787,12 @@ export class MagiRunManager {
     if (input.sync)
       return this.executeSync(state, controller, execute, input.timeoutMs)
 
-    void execute().catch(async (error) => {
-      await this.failRun(runId, error)
+    this.prQueue.push({
+      execute,
+      repository: input.repository,
+      runId,
     })
+    this.drainPrQueue()
 
     return state
   }
@@ -850,9 +869,12 @@ export class MagiRunManager {
     if (input.sync)
       return this.executeSync(state, controller, execute, input.timeoutMs)
 
-    void execute().catch(async (error) => {
-      await this.failRun(runId, error)
+    this.prQueue.push({
+      execute,
+      repository: input.repository,
+      runId,
     })
+    this.drainPrQueue()
 
     return state
   }
@@ -931,11 +953,61 @@ export class MagiRunManager {
     if (input.sync)
       return this.executeSync(state, controller, execute, input.timeoutMs)
 
-    void execute().catch(async (error) => {
-      await this.failRun(runId, error)
+    this.triageQueue.push({
+      execute,
+      repository: input.repository,
+      runId,
     })
+    this.drainTriageQueue()
 
     return state
+  }
+
+  private drainPrQueue(): void {
+    while (this.prQueue.length) {
+      const next = this.prQueue[0]
+      if (!next) return
+      if (this.activePrRuns >= next.repository.concurrency.runs) return
+      this.prQueue.shift()
+
+      const state = this.active.get(next.runId)
+      if (!state || state.status === "cancelled") continue
+
+      this.activePrRuns += 1
+      void next
+        .execute()
+        .catch(async (error) => {
+          await this.failRun(next.runId, error)
+        })
+        .finally(() => {
+          this.activePrRuns -= 1
+          this.drainPrQueue()
+        })
+    }
+  }
+
+  private drainTriageQueue(): void {
+    while (this.triageQueue.length) {
+      const next = this.triageQueue[0]
+      if (!next) return
+      const limit = next.repository.triage?.concurrency.runs ?? 1
+      if (this.activeTriageRuns >= limit) return
+      this.triageQueue.shift()
+
+      const state = this.active.get(next.runId)
+      if (!state || state.status === "cancelled") continue
+
+      this.activeTriageRuns += 1
+      void next
+        .execute()
+        .catch(async (error) => {
+          await this.failRun(next.runId, error)
+        })
+        .finally(() => {
+          this.activeTriageRuns -= 1
+          this.drainTriageQueue()
+        })
+    }
   }
 
   async status(
@@ -1050,61 +1122,7 @@ export class MagiRunManager {
     state.status = "cancelled"
     state.phase = "cancelled"
     state.completedAt = now()
-    if (
-      state.editor?.status === "pending" ||
-      state.editor?.status === "running" ||
-      state.editor?.status === "repairing"
-    ) {
-      state.editor.status = "cancelled"
-    }
-    if (state.editor?.sessionId) {
-      await this.input.client.session
-        .abort?.({ path: { id: state.editor.sessionId } })
-        .catch(() => undefined)
-    }
-    if (
-      state.triageCreator?.status === "pending" ||
-      state.triageCreator?.status === "running" ||
-      state.triageCreator?.status === "repairing" ||
-      state.triageCreator?.status === "blocked"
-    ) {
-      state.triageCreator.status = "cancelled"
-    }
-    if (state.triageCreator?.sessionId) {
-      await this.input.client.session
-        .abort?.({ path: { id: state.triageCreator.sessionId } })
-        .catch(() => undefined)
-    }
-    for (const reviewer of Object.values(state.reviewers)) {
-      if (
-        reviewer.status === "pending" ||
-        reviewer.status === "running" ||
-        reviewer.status === "repairing" ||
-        reviewer.status === "blocked"
-      ) {
-        reviewer.status = "cancelled"
-      }
-      if (reviewer.sessionId) {
-        await this.input.client.session
-          .abort?.({ path: { id: reviewer.sessionId } })
-          .catch(() => undefined)
-      }
-    }
-    for (const classifier of Object.values(state.ciClassifiers ?? {})) {
-      if (
-        classifier.status === "pending" ||
-        classifier.status === "running" ||
-        classifier.status === "repairing" ||
-        classifier.status === "blocked"
-      ) {
-        classifier.status = "cancelled"
-      }
-      if (classifier.sessionId) {
-        await this.input.client.session
-          .abort?.({ path: { id: classifier.sessionId } })
-          .catch(() => undefined)
-      }
-    }
+    await this.finishActiveAgents(state, "cancelled")
     if (state.worktreePath) {
       await removeWorktree(this.input.exec, state.worktreePath).catch(
         () => undefined,
@@ -1773,6 +1791,33 @@ export class MagiRunManager {
     ]
   }
 
+  private isActiveAgent(agent: MagiRunAgentState): boolean {
+    return (
+      agent.status === "pending" ||
+      agent.status === "running" ||
+      agent.status === "repairing" ||
+      agent.status === "blocked"
+    )
+  }
+
+  private async finishActiveAgents(
+    state: MagiRunState,
+    status: "cancelled" | "failed",
+    error?: string,
+  ): Promise<void> {
+    for (const [, agent] of this.agentEntries(state)) {
+      if (this.isActiveAgent(agent)) {
+        agent.status = status
+        if (error != null) agent.error = error
+      }
+      if (agent.sessionId) {
+        await this.input.client.session
+          .abort?.({ path: { id: agent.sessionId } })
+          .catch(() => undefined)
+      }
+    }
+  }
+
   private selectPendingAgent(
     state: MagiRunState,
     kind: "permission" | "question",
@@ -1877,6 +1922,7 @@ export class MagiRunManager {
         input.config.github?.apiRetryAttempts ?? 3,
       ),
       onProgress: (progress) => this.applyReviewProgress(input.runId, progress),
+      parentSessionId: input.parentSessionId,
       pr: input.pr,
       repository: input.repository,
       runId: input.runId,
@@ -1955,6 +2001,7 @@ export class MagiRunManager {
         input.config.github?.apiRetryAttempts ?? 3,
       ),
       onProgress: (progress) => this.applyMergeProgress(input.runId, progress),
+      parentSessionId: input.parentSessionId,
       pr: input.pr,
       repository: input.repository,
       runId: input.runId,
@@ -2015,6 +2062,7 @@ export class MagiRunManager {
       ),
       issue: input.issue,
       onProgress: (progress) => this.applyTriageProgress(input.runId, progress),
+      parentSessionId: input.parentSessionId,
       repository: input.repository,
       runId: input.runId,
       signal: input.signal,
@@ -2127,6 +2175,19 @@ export class MagiRunManager {
     if (progress.type === "worktree_created") {
       state.worktreePath = progress.worktreePath
       state.worktreeBranch = progress.branch
+    }
+
+    if (progress.type === "triage_session") {
+      if (progress.options)
+        this.input.setSessionOptions?.(progress.sessionId, progress.options)
+      state.sessionIds = {
+        ...state.sessionIds,
+        [progress.key]: progress.sessionId,
+      }
+      this.sessionToRun.set(progress.sessionId, {
+        agent: progress.agent,
+        runId,
+      })
     }
 
     if (progress.type === "triage_agent_started") {
@@ -2807,52 +2868,7 @@ export class MagiRunManager {
     state.phase = "failed"
     state.completedAt = now()
     state.error = errorMessage(error)
-    if (
-      state.editor?.status === "pending" ||
-      state.editor?.status === "running" ||
-      state.editor?.status === "repairing" ||
-      state.editor?.status === "blocked"
-    ) {
-      state.editor.status = "failed"
-      state.editor.error = state.error
-    }
-    if (state.editor?.sessionId) {
-      await this.input.client.session
-        .abort?.({ path: { id: state.editor.sessionId } })
-        .catch(() => undefined)
-    }
-    for (const reviewer of Object.values(state.reviewers)) {
-      if (
-        reviewer.status === "pending" ||
-        reviewer.status === "running" ||
-        reviewer.status === "repairing" ||
-        reviewer.status === "blocked"
-      ) {
-        reviewer.status = "failed"
-        reviewer.error = state.error
-      }
-      if (reviewer.sessionId) {
-        await this.input.client.session
-          .abort?.({ path: { id: reviewer.sessionId } })
-          .catch(() => undefined)
-      }
-    }
-    for (const classifier of Object.values(state.ciClassifiers ?? {})) {
-      if (
-        classifier.status === "pending" ||
-        classifier.status === "running" ||
-        classifier.status === "repairing" ||
-        classifier.status === "blocked"
-      ) {
-        classifier.status = "failed"
-        classifier.error = state.error
-      }
-      if (classifier.sessionId) {
-        await this.input.client.session
-          .abort?.({ path: { id: classifier.sessionId } })
-          .catch(() => undefined)
-      }
-    }
+    await this.finishActiveAgents(state, "failed", state.error)
     await this.persist(state)
     await this.notify(
       state,
