@@ -24,6 +24,7 @@ const repository: ResolvedRepository = {
     reviewers: [],
     triage: [
       {
+        account: "melchior-bot",
         id: "Melchior",
         index: 0,
         key: "Melchior",
@@ -31,6 +32,7 @@ const repository: ResolvedRepository = {
         permission: "deny",
       },
       {
+        account: "balthasar-bot",
         id: "Balthasar",
         index: 1,
         key: "Balthasar",
@@ -38,6 +40,7 @@ const repository: ResolvedRepository = {
         permission: "deny",
       },
       {
+        account: "caspar-bot",
         id: "Caspar",
         index: 2,
         key: "Caspar",
@@ -72,7 +75,6 @@ const repository: ResolvedRepository = {
   prompts: {},
   safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
   triage: {
-    account: "magi-bot",
     automation: {
       clear: ["triage"],
       close: false,
@@ -356,7 +358,11 @@ async function runScenario(input: {
 }
 
 function vote(vote: string): string {
-  return JSON.stringify({ reason: `${vote} reason`, vote })
+  return JSON.stringify({
+    body: vote === "ASK" ? `${vote} body` : undefined,
+    reason: `${vote} reason`,
+    vote,
+  })
 }
 
 function duplicateVote(vote: string, duplicateOf?: number): string {
@@ -499,7 +505,7 @@ describe("triage orchestration", () => {
       outputs: [vote("ASK"), vote("ASK"), vote("bug"), action("ASK")],
     })
     const comment = await readFile(
-      join(result.result.outputDir, "comment.md"),
+      join(result.result.outputDir, "Melchior.ask-comment.md"),
       "utf8",
     )
     const visibleComment = comment.split("<!-- opencode-magi:triage")[0]
@@ -509,9 +515,7 @@ describe("triage orchestration", () => {
       category: null,
       disposition: "ask",
     })
-    expect(visibleComment).toContain(
-      "@author I can't determine what should be done",
-    )
+    expect(visibleComment).toContain("ASK body")
     expect(visibleComment).not.toContain("bug")
     expect(visibleComment).not.toContain("feature")
   })
@@ -655,7 +659,7 @@ describe("triage orchestration", () => {
     ).toBe(true)
   })
 
-  test("assigns the issue to the triage account before creating an implementation PR", async () => {
+  test("assigns the issue to the triage creator account before creating an implementation PR", async () => {
     const result = await runScenario({
       dryRun: false,
       issue: issue({ type: "Feature" }),
@@ -664,7 +668,6 @@ describe("triage orchestration", () => {
         vote("YES"),
         vote("YES"),
         action("PR"),
-        "Feature accepted comment",
         JSON.stringify({
           commitMessage: "fix(orchestrator): address issue",
           commitSha: "abc123",
@@ -700,7 +703,7 @@ describe("triage orchestration", () => {
     })
 
     const assignIndex = result.commands.findIndex((command) =>
-      command.includes("--add-assignee 'magi-bot'"),
+      command.includes("--add-assignee 'creator-bot'"),
     )
     const worktreeIndex = result.commands.findIndex((command) =>
       command.startsWith("git worktree add"),
@@ -754,7 +757,7 @@ describe("triage orchestration", () => {
     const result = await runScenario({
       comments: [
         comment({
-          author: "magi-bot",
+          author: "melchior-bot",
           body: "Previous comment\n\n<!-- opencode-magi:triage v=1 issue=1 result=BUG_ACCEPTED action=COMMENT checkpoint=10 pr=none processed= -->",
           id: 10,
         }),
@@ -771,7 +774,7 @@ describe("triage orchestration", () => {
     const result = await runScenario({
       comments: [
         comment({
-          author: "magi-bot",
+          author: "melchior-bot",
           body: "Previous comment\n\n<!-- opencode-magi:triage v=1 issue=1 result=FEATURE_ACCEPTED action=PR checkpoint=10 pr=none processed= -->",
           id: 10,
         }),
@@ -833,7 +836,7 @@ describe("triage orchestration", () => {
     const result = await runScenario({
       comments: [
         comment({
-          author: "magi-bot",
+          author: "melchior-bot",
           body: "Previous comment\n\n<!-- opencode-magi:triage v=1 issue=1 result=BUG_REJECTED action=CLOSE checkpoint=10 pr=none processed= -->",
           id: 10,
         }),
@@ -866,7 +869,7 @@ describe("triage orchestration", () => {
     const result = await runScenario({
       comments: [
         comment({
-          author: "magi-bot",
+          author: "melchior-bot",
           body: "Previous comment\n\n<!-- opencode-magi:triage v=1 issue=1 result=FEATURE_ACCEPTED action=COMMENT checkpoint=10 pr=none processed= -->",
           id: 10,
         }),
@@ -970,14 +973,14 @@ describe("triage orchestration", () => {
     const result = await runScenario({
       comments: [
         comment({
-          author: "magi-bot",
+          author: "melchior-bot",
           body: "Previous comment\n\n<!-- opencode-magi:triage v=1 issue=1 result=FEATURE_ACCEPTED action=COMMENT checkpoint=10 pr=none processed= -->",
           id: 10,
         }),
         comment({
           author: "maintainer",
           authorAssociation: "MEMBER",
-          body: "@magi-bot this should be reconsidered",
+          body: "@melchior-bot this should be reconsidered",
           id: 11,
         }),
       ],

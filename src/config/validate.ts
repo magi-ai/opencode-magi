@@ -74,6 +74,7 @@ const EDITOR_KEYS = new Set([
   "persona",
 ])
 const TRIAGE_AGENT_KEYS = new Set([
+  "account",
   "id",
   "model",
   "options",
@@ -109,7 +110,6 @@ const MERGE_KEYS = new Set([
   "prompts",
 ])
 const TRIAGE_KEYS = new Set([
-  "account",
   "agents",
   "automation",
   "categories",
@@ -117,6 +117,7 @@ const TRIAGE_KEYS = new Set([
   "creator",
   "output",
   "prompts",
+  "reporter",
   "safety",
   "worktree",
 ])
@@ -498,6 +499,8 @@ function validateTriageAgentList(
     if (!agent.model) errors.push(`${path}[${index}].model is required`)
     validateString(agent.model, `${path}[${index}].model`, errors)
     validateModel(agent.model, `${path}[${index}].model`, errors, catalog)
+    if (!agent.account) errors.push(`${path}[${index}].account is required`)
+    validateString(agent.account, `${path}[${index}].account`, errors)
     validateString(agent.persona, `${path}[${index}].persona`, errors)
     if (agent.options != null && !isPlainObject(agent.options))
       errors.push(`${path}[${index}].options must be an object`)
@@ -539,17 +542,22 @@ function validateResolvedReviewers(
   }
 }
 
-function validateResolvedAgentKeys(
-  agents: { key: string }[],
+function validateResolvedTriageAgents(
+  agents: { account: string; key: string }[],
   path: string,
   errors: string[],
 ): void {
   const keys = new Set<string>()
+  const accounts = new Set<string>()
 
   for (const agent of agents) {
     if (keys.has(agent.key))
       errors.push(`${path} has duplicate agent key: ${agent.key}`)
     keys.add(agent.key)
+
+    if (accounts.has(agent.account))
+      errors.push(`${path} has duplicate agent account: ${agent.account}`)
+    accounts.add(agent.account)
   }
 }
 
@@ -928,10 +936,11 @@ function validateTriage(
   validateKnownKeys(triage, "triage", TRIAGE_KEYS, errors)
   const automation = triage.automation as TriageAutomationConfig | undefined
   const concurrency = triage.concurrency as TriageConcurrencyConfig | undefined
+  const creator = triage.creator as TriageCreatorConfig | undefined
+  const reporter =
+    typeof triage.reporter === "string" ? triage.reporter : undefined
   const safety = triage.safety as TriageSafetyConfig | undefined
 
-  if (!triage.account) errors.push("triage.account is required")
-  validateString(triage.account, "triage.account", errors)
   if (!triage.agents) errors.push("triage.agents is required")
   validateTriageAgentList(
     triage.agents as TriageAgentConfig[] | undefined,
@@ -940,21 +949,28 @@ function validateTriage(
     options.modelCatalog,
   )
   if (Array.isArray(triage.agents)) {
-    validateResolvedAgentKeys(
-      resolveAgents(config).triage ?? [],
+    const resolvedTriageAgents = resolveAgents(config).triage ?? []
+    validateResolvedTriageAgents(
+      resolvedTriageAgents,
       "triage.resolvedAgents",
       errors,
     )
+    if (
+      reporter != null &&
+      !resolvedTriageAgents.some((agent) => agent.key === reporter)
+    ) {
+      errors.push(`triage.reporter must match a triage agent key: ${reporter}`)
+    }
   }
-  validateTriageCreator(
-    triage.creator as TriageCreatorConfig | undefined,
-    "triage.creator",
-    errors,
-    options.modelCatalog,
-  )
-  if (automation?.create && !triage.creator)
+  validateString(triage.reporter, "triage.reporter", errors)
+  validateTriageCreator(creator, "triage.creator", errors, options.modelCatalog)
+  if (automation?.create && !creator)
     errors.push(
       "triage.creator is required when triage.automation.create is true",
+    )
+  if (automation?.create && creator && !creator.account)
+    errors.push(
+      "triage.creator.account is required when triage.automation.create is true",
     )
 
   if (automation != null && !isPlainObject(automation)) {
@@ -1090,8 +1106,8 @@ async function validateAuth(
   const agents = resolveAgents(config)
 
   for (const reviewer of agents.reviewers) accounts.add(reviewer.account)
+  for (const agent of agents.triage ?? []) accounts.add(agent.account)
   if (agents.editor) accounts.add(agents.editor.account)
-  if (config.triage?.account) accounts.add(config.triage.account)
   if (agents.triageCreator?.account) accounts.add(agents.triageCreator.account)
 
   await Promise.all(
@@ -1192,30 +1208,25 @@ async function validateRepositoryPermissions(
     }),
   )
 
-  if (config.triage?.account) {
-    try {
-      const permissions = await fetchPermissions(
-        config,
-        exec,
-        config.triage.account,
-      )
+  await Promise.all(
+    (agents.triage ?? []).map(async (agent) => {
+      try {
+        const permissions = await fetchPermissions(config, exec, agent.account)
 
-      if (!permissions.pull) {
-        errors.push(
-          `GitHub account cannot read repository for issue triage: ${config.triage.account}`,
+        if (!permissions.pull) {
+          errors.push(
+            `GitHub account cannot read repository for issue triage: ${agent.account}`,
+          )
+        }
+      } catch (error) {
+        warnings.push(
+          `Could not validate repository permissions for GitHub account: ${agent.account} (${(error as Error).message})`,
         )
       }
-    } catch (error) {
-      warnings.push(
-        `Could not validate repository permissions for GitHub account: ${config.triage.account} (${(error as Error).message})`,
-      )
-    }
-  }
+    }),
+  )
 
-  if (
-    agents.triageCreator?.account &&
-    agents.triageCreator.account !== config.triage?.account
-  ) {
+  if (agents.triageCreator?.account) {
     try {
       const permissions = await fetchPermissions(
         config,

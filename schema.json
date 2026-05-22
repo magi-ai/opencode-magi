@@ -116,12 +116,13 @@
     "triageAgent": {
       "type": "object",
       "if": { "not": { "required": ["ref"] } },
-      "then": { "required": ["model"] },
+      "then": { "required": ["model", "account"] },
       "additionalProperties": false,
       "properties": {
         "ref": { "type": "string", "minLength": 1 },
         "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
         "model": { "type": "string", "minLength": 1 },
+        "account": { "type": "string", "minLength": 1 },
         "options": { "type": "object", "additionalProperties": true },
         "permissions": { "$ref": "#/$defs/permissions" },
         "persona": { "type": "string" }
@@ -334,7 +335,6 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "account": { "type": "string", "minLength": 1 },
         "agents": {
           "type": "array",
           "minItems": 3,
@@ -349,6 +349,7 @@
         "safety": { "$ref": "#/$defs/triageSafety" },
         "concurrency": { "$ref": "#/$defs/triageConcurrency" },
         "prompts": { "$ref": "#/$defs/triagePrompts" },
+        "reporter": { "type": "string", "minLength": 1 },
         "output": { "type": "string" },
         "worktree": { "type": "string" }
       }
