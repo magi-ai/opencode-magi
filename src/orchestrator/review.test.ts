@@ -102,7 +102,7 @@ function fakeExec(commands: string[]): Exec {
       })
     }
 
-    if (command.includes("reviews(first: 100)")) {
+    if (command.includes("reviews(first: 100")) {
       return graphqlResponse({
         reviews: {
           nodes: [
@@ -114,11 +114,12 @@ function fakeExec(commands: string[]): Exec {
               submittedAt: "2026-01-01T00:00:00Z",
             },
           ],
+          pageInfo: { hasNextPage: false },
         },
       })
     }
 
-    if (command.includes("commits(first: 100)")) {
+    if (command.includes("commits(first: 100")) {
       return graphqlResponse({
         commits: {
           nodes: [
@@ -130,6 +131,7 @@ function fakeExec(commands: string[]): Exec {
               },
             },
           ],
+          pageInfo: { hasNextPage: false },
         },
       })
     }
