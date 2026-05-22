@@ -65,9 +65,9 @@ Merge outcomes:
 | Status               | Meaning                                                                                                                 |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `merged`             | The PR reached `MERGE` and `gh pr merge` completed successfully.                                                        |
-| `approved`           | The PR reached `MERGE`, approvals were posted, and `merge.automation.merge` disabled the merge step.                    |
+| `approved`           | The PR reached `MERGE`, but dry-run mode or `merge.automation.merge` disabled the merge step.                           |
 | `closed`             | A review or re-review majority was `CLOSE` and Magi ran `gh pr close`.                                                  |
-| `close_requested`    | A review or re-review decision was `CLOSE`, comments were posted, and `merge.automation.close` disabled the close step. |
+| `close_requested`    | A review or re-review decision was `CLOSE`, but dry-run mode or `merge.automation.close` disabled the close step.        |
 | `dequeued`           | With `review.merge.queue: true`, GitHub removed the PR from auto-merge or the merge queue.                              |
 | `changes_unresolved` | Unresolved review threads reached the per-thread `merge.maxThreadResolutionCycles` limit without a `MERGE` majority.    |
 | `ci_unresolved`      | Review and approvals completed, but scope-outside CI remained unresolved so Magi did not merge.                         |
@@ -124,9 +124,13 @@ See [Config](/docs/config.md) for the complete configuration reference.
 
 Magi posts approvals and stops with `approved`. It does not run `gh pr merge`.
 
+Dry runs also stop with `approved` after a `MERGE` decision and skip merge mutations.
+
 ### What happens when `merge.automation.close` is false?
 
 Magi posts close comments and stops with `close_requested`. It leaves the PR open.
+
+Dry runs also stop with `close_requested` after a `CLOSE` decision and skip close mutations.
 
 ### How does merge queue support work?
 
