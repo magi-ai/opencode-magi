@@ -603,12 +603,10 @@ async function runFindingValidation(input: {
   outputs: Record<string, RereviewOutput | ReviewOutput>
   summary: FindingValidationSummary
 }> {
-  const reviewOutputs = Object.fromEntries(
-    input.entries.flatMap((entry) =>
-      isReviewOutput(entry.value) ? [[entry.key, entry.value]] : [],
-    ),
-  ) as Record<string, ReviewOutput>
-  const targets = reviewFindingTargets(reviewOutputs)
+  const outputs = Object.fromEntries(
+    input.entries.map((entry) => [entry.key, entry.value]),
+  )
+  const targets = reviewFindingTargets(outputs)
 
   if (!targets.length) {
     return {
@@ -727,7 +725,7 @@ async function runFindingValidation(input: {
     ),
   )
   const filtered = applyFindingValidation({
-    outputs: reviewOutputs,
+    outputs,
     reviewerKeys: input.reviewInput.repository.agents.reviewers.map(
       (reviewer) => reviewer.key,
     ),
@@ -742,7 +740,7 @@ async function runFindingValidation(input: {
   await input.reviewInput.onProgress?.({
     discarded: filtered.summary.discarded.length,
     kept: filtered.summary.kept.length,
-    reviewersChangedToMerge: Object.entries(reviewOutputs)
+    reviewersChangedToMerge: Object.entries(outputs)
       .filter(([reviewer, output]) => {
         return (
           output.verdict === "CHANGES_REQUESTED" &&
