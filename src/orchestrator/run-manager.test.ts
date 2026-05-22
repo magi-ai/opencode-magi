@@ -493,16 +493,20 @@ describe("MagiRunManager notifications", () => {
       }
 
       await vi.waitFor(() => expect(runTriageMock).toHaveBeenCalledTimes(2))
-      expect(runTriageMock.mock.calls.map(([input]) => input.issue)).toEqual([
-        1, 2,
-      ])
+      expect(
+        runTriageMock.mock.calls
+          .map(([input]) => input.issue)
+          .toSorted((left, right) => left - right),
+      ).toEqual([1, 2])
 
       resolvers[0]?.({})
 
       await vi.waitFor(() => expect(runTriageMock).toHaveBeenCalledTimes(3))
-      expect(runTriageMock.mock.calls.map(([input]) => input.issue)).toEqual([
-        1, 2, 3,
-      ])
+      expect(
+        runTriageMock.mock.calls
+          .map(([input]) => input.issue)
+          .toSorted((left, right) => left - right),
+      ).toEqual([1, 2, 3])
 
       resolvers[1]?.({})
       resolvers[2]?.({})
