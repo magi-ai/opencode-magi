@@ -13,7 +13,7 @@ export interface MajorityResult {
 }
 
 export interface StringVote<T extends string> {
-  reviewer: string
+  voter: string
   vote: T
 }
 
@@ -50,7 +50,7 @@ export function aggregateStringMajority<T extends string>(
 
   for (const result of results) {
     counts[result.vote] += 1
-    voters[result.vote].push(result.reviewer)
+    voters[result.vote].push(result.voter)
   }
 
   const threshold = majorityThreshold(results.length)

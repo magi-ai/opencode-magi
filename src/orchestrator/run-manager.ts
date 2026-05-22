@@ -2168,66 +2168,66 @@ export class MagiRunManager {
     }
 
     if (progress.type === "triage_agent_started") {
-      const reviewer = state.reviewers[progress.reviewer]
-      if (reviewer) reviewer.status = "running"
+      const agentState = state.reviewers[progress.voter]
+      if (agentState) agentState.status = "running"
     }
 
     if (progress.type === "triage_agent_session") {
-      const reviewer = state.reviewers[progress.reviewer]
-      if (reviewer) {
+      const agentState = state.reviewers[progress.voter]
+      if (agentState) {
         if (progress.options)
           this.input.setSessionOptions?.(progress.sessionId, progress.options)
-        reviewer.sessionId = progress.sessionId
-        reviewer.status = "running"
-        reviewer.lastUpdate = now()
+        agentState.sessionId = progress.sessionId
+        agentState.status = "running"
+        agentState.lastUpdate = now()
         this.sessionToRun.set(progress.sessionId, {
-          agent: progress.reviewer,
+          agent: progress.voter,
           runId,
         })
       }
     }
 
     if (progress.type === "triage_agent_repair") {
-      const reviewer = state.reviewers[progress.reviewer]
-      if (reviewer) {
-        reviewer.status = "repairing"
-        reviewer.repairAttempts += 1
-        reviewer.lastUpdate = now()
+      const agentState = state.reviewers[progress.voter]
+      if (agentState) {
+        agentState.status = "repairing"
+        agentState.repairAttempts += 1
+        agentState.lastUpdate = now()
       }
     }
 
     if (progress.type === "triage_agent_response") {
-      const reviewer = state.reviewers[progress.reviewer]
-      if (reviewer) {
-        reviewer.sessionId = progress.sessionId
-        reviewer.lastUpdate = now()
+      const agentState = state.reviewers[progress.voter]
+      if (agentState) {
+        agentState.sessionId = progress.sessionId
+        agentState.lastUpdate = now()
       }
     }
 
     if (progress.type === "triage_agent_completed") {
-      const reviewer = state.reviewers[progress.reviewer]
-      if (reviewer) {
-        reviewer.sessionId = progress.sessionId
-        reviewer.status = "completed"
-        reviewer.verdict = progress.vote
-        reviewer.rawPath = join(
+      const agentState = state.reviewers[progress.voter]
+      if (agentState) {
+        agentState.sessionId = progress.sessionId
+        agentState.status = "completed"
+        agentState.verdict = progress.vote
+        agentState.rawPath = join(
           state.outputDir,
-          `${progress.reviewer}.${progress.phase}.raw.txt`,
+          `${progress.voter}.${progress.phase}.raw.txt`,
         )
-        reviewer.parsedPath = join(
+        agentState.parsedPath = join(
           state.outputDir,
-          `${progress.reviewer}.${progress.phase}.json`,
+          `${progress.voter}.${progress.phase}.json`,
         )
-        reviewer.lastUpdate = now()
+        agentState.lastUpdate = now()
       }
     }
 
     if (progress.type === "triage_agent_failed") {
-      const reviewer = state.reviewers[progress.reviewer]
-      if (reviewer) {
-        reviewer.status = "failed"
-        reviewer.error = redactSecrets(progress.error)
-        reviewer.lastUpdate = now()
+      const agentState = state.reviewers[progress.voter]
+      if (agentState) {
+        agentState.status = "failed"
+        agentState.error = redactSecrets(progress.error)
+        agentState.lastUpdate = now()
       }
     }
 
@@ -2296,28 +2296,28 @@ export class MagiRunManager {
     if (progress.type === "triage_agent_started") {
       await this.notify(
         state,
-        `**Triage agent ${progress.reviewer}** started ${progress.phase} for ${issue}.`,
+        `**Triage agent ${progress.voter}** started ${progress.phase} for ${issue}.`,
       )
     }
 
     if (progress.type === "triage_agent_repair") {
       await this.notify(
         state,
-        `**Triage agent ${progress.reviewer}** started JSON regeneration for ${issue}.`,
+        `**Triage agent ${progress.voter}** started JSON regeneration for ${issue}.`,
       )
     }
 
     if (progress.type === "triage_agent_completed") {
       await this.notify(
         state,
-        `**Triage agent ${progress.reviewer}** completed ${progress.phase} for ${issue}: ${progress.vote}.`,
+        `**Triage agent ${progress.voter}** completed ${progress.phase} for ${issue}: ${progress.vote}.`,
       )
     }
 
     if (progress.type === "triage_agent_failed") {
       await this.notify(
         state,
-        `**Triage agent ${progress.reviewer}** failed ${progress.phase} for ${issue}: ${redactSecrets(progress.error)}`,
+        `**Triage agent ${progress.voter}** failed ${progress.phase} for ${issue}: ${redactSecrets(progress.error)}`,
       )
     }
 

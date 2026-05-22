@@ -97,33 +97,33 @@ export interface TriageRunResult {
 export type TriageRunProgress =
   | { phase: string; type: "phase" }
   | { action: TriageAction; result: FinalResult; type: "decision" }
-  | { phase: string; reviewer: string; type: "triage_agent_started" }
+  | { phase: string; type: "triage_agent_started"; voter: string }
   | {
       options?: ModelRunProgress["options"]
       phase: string
-      reviewer: string
       sessionId: string
       type: "triage_agent_session"
+      voter: string
     }
   | {
       phase: string
-      reviewer: string
       sessionId: string
       type: "triage_agent_response"
+      voter: string
     }
-  | { phase: string; reviewer: string; type: "triage_agent_repair" }
+  | { phase: string; type: "triage_agent_repair"; voter: string }
   | {
       phase: string
-      reviewer: string
       sessionId: string
       type: "triage_agent_completed"
+      voter: string
       vote: string
     }
   | {
       error: string
       phase: string
-      reviewer: string
       type: "triage_agent_failed"
+      voter: string
     }
   | { type: "comment_posting" }
   | { type: "comment_posted"; url: string }
@@ -167,8 +167,8 @@ interface RelationshipSummary {
 type VoteRunOutput<T extends string> = TriageVoteOutput<T> & {
   promptText: string
   raw: string
-  reviewer: string
   sessionId: string
+  voter: string
 }
 
 interface PhaseVoteResult<T extends string> {
@@ -190,7 +190,7 @@ type TriagePromptComposer = (input: {
   directory: string
   issue: number
   repository: ResolvedRepository
-  reviewer: ResolvedTriageAgent
+  voter: ResolvedTriageAgent
 }) => Promise<string>
 
 const MARKER_PREFIX = "opencode-magi:triage"
@@ -339,30 +339,30 @@ async function emitTriageModelProgress(input: {
   progress: ModelRunProgress
   phase: string
   run: TriageRunInput
-  reviewer: string
+  voter: string
 }): Promise<void> {
   if (input.progress.type === "session_created") {
     await emitProgress(input.run, {
       options: input.progress.options,
       phase: input.phase,
-      reviewer: input.reviewer,
       sessionId: input.progress.sessionId,
       type: "triage_agent_session",
+      voter: input.voter,
     })
   }
   if (input.progress.type === "repair") {
     await emitProgress(input.run, {
       phase: input.phase,
-      reviewer: input.reviewer,
       type: "triage_agent_repair",
+      voter: input.voter,
     })
   }
   if (input.progress.type === "response") {
     await emitProgress(input.run, {
       phase: input.phase,
-      reviewer: input.reviewer,
       sessionId: input.progress.sessionId,
       type: "triage_agent_response",
+      voter: input.voter,
     })
   }
 }
@@ -384,19 +384,19 @@ async function runVote<
   schemaName: string
   signal?: AbortSignal
 }): Promise<
-  O & { promptText: string; raw: string; reviewer: string; sessionId: string }
+  O & { promptText: string; raw: string; sessionId: string; voter: string }
 > {
   const prompt = await input.prompt({
     context: input.context,
     directory: input.directory,
     issue: input.issue,
     repository: input.repository,
-    reviewer: input.agent,
+    voter: input.agent,
   })
   await emitProgress(input.run, {
     phase: input.phase,
-    reviewer: input.agent.key,
     type: "triage_agent_started",
+    voter: input.agent.key,
   })
   let result: ModelRunResult<O>
   try {
@@ -407,8 +407,8 @@ async function runVote<
         emitTriageModelProgress({
           phase: input.phase,
           progress,
-          reviewer: input.agent.key,
           run: input.run,
+          voter: input.agent.key,
         }),
       options: input.agent.options,
       parentSessionId: input.run.parentSessionId,
@@ -424,17 +424,17 @@ async function runVote<
     await emitProgress(input.run, {
       error: error instanceof Error ? error.message : String(error),
       phase: input.phase,
-      reviewer: input.agent.key,
       type: "triage_agent_failed",
+      voter: input.agent.key,
     })
     throw error
   }
 
   await emitProgress(input.run, {
     phase: input.phase,
-    reviewer: input.agent.key,
     sessionId: result.sessionId,
     type: "triage_agent_completed",
+    voter: input.agent.key,
     vote: result.value.vote,
   })
 
@@ -442,8 +442,8 @@ async function runVote<
     ...result.value,
     promptText: prompt,
     raw: result.raw,
-    reviewer: input.agent.key,
     sessionId: result.sessionId,
+    voter: input.agent.key,
   }
 }
 
@@ -451,9 +451,9 @@ async function writeVoteArtifacts(input: {
   output: TriageVoteOutput & { promptText: string; raw: string }
   outputDir: string
   phase: string
-  reviewer: string
+  voter: string
 }): Promise<void> {
-  const base = join(input.outputDir, `${input.reviewer}.${input.phase}`)
+  const base = join(input.outputDir, `${input.voter}.${input.phase}`)
 
   await writeFile(`${base}.prompt.txt`, `${input.output.promptText}\n`)
   await writeFile(`${base}.raw.txt`, `${input.output.raw}\n`)
@@ -523,7 +523,7 @@ async function runDuplicateVote(input: {
   )
   const majority = aggregateStringMajority(
     outputs.map((output, index) => ({
-      reviewer: agents[index].key,
+      voter: agents[index].key,
       vote: output.vote,
     })),
     DUPLICATE_VOTES,
@@ -535,7 +535,7 @@ async function runDuplicateVote(input: {
         output,
         outputDir: input.outputDir,
         phase: "duplicate",
-        reviewer: agents[index].key,
+        voter: agents[index].key,
       }),
     ),
   )
@@ -593,7 +593,7 @@ async function runPhaseVote<T extends string>(input: {
   )
   const majority = aggregateStringMajority(
     outputs.map((output, index) => ({
-      reviewer: agents[index].key,
+      voter: agents[index].key,
       vote: output.vote,
     })),
     input.votes,
@@ -605,7 +605,7 @@ async function runPhaseVote<T extends string>(input: {
         output,
         outputDir: input.outputDir,
         phase: input.phase,
-        reviewer: agents[index].key,
+        voter: agents[index].key,
       }),
     ),
   )
@@ -859,7 +859,7 @@ async function runActionPrompt(input: {
     directory: input.input.directory,
     issue: input.input.issue,
     repository: input.input.repository,
-    reviewer: agent,
+    voter: agent,
   })
   const result = await runModelWithRepair<TriageActionOutput>({
     client: input.input.client,
@@ -900,7 +900,7 @@ async function classifyMentionReplies(input: {
     directory: input.input.directory,
     issue: input.input.issue,
     repository: input.input.repository,
-    reviewer: agent,
+    voter: agent,
   })
   const result = await runModelWithRepair({
     client: input.input.client,
@@ -994,13 +994,12 @@ function chooseDecisionReason(input: {
   return (
     input.outputs?.find(
       (output) =>
-        output.reviewer === input.reporter.key &&
+        output.voter === input.reporter.key &&
         output.vote === input.vote &&
         output.reason,
     )?.reason ??
     input.outputs?.find((output) => output.vote === input.vote)?.reason ??
-    input.outputs?.find((output) => output.reviewer === input.reporter.key)
-      ?.reason
+    input.outputs?.find((output) => output.voter === input.reporter.key)?.reason
   )
 }
 
@@ -1125,7 +1124,7 @@ async function postAskComments(input: {
   const urls: string[] = []
 
   for (const output of askOutputs(input.outputs)) {
-    const agent = agentForKey(input.repository, output.reviewer)
+    const agent = agentForKey(input.repository, output.voter)
     const body = input.mark
       ? `${output.body}\n\n${marker({
           action: input.action,
