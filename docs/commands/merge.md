@@ -78,15 +78,18 @@ Magi may post reviews, comments, editor replies, approvals, close comments, and 
 
 Merge artifacts are written to the run output directory:
 
-| File                                           | Contents                                     |
-| ---------------------------------------------- | -------------------------------------------- |
-| `editor.cycle-{cycle}.prompt.txt`              | Final prompt sent to the editor model.       |
-| `editor.cycle-{cycle}.raw.txt`                 | Raw editor model output.                     |
-| `editor.cycle-{cycle}.json`                    | Parsed editor JSON.                          |
-| `{reviewer}.rereview.cycle-{cycle}.prompt.txt` | Final re-review prompt sent to the reviewer. |
-| `{reviewer}.rereview.cycle-{cycle}.raw.txt`    | Raw re-review model output.                  |
-| `{reviewer}.rereview.cycle-{cycle}.json`       | Parsed re-review JSON.                       |
-| `rereview-majority.cycle-{cycle}.json`         | Re-review majority counts and result.        |
+| File                                                           | Contents                                                |
+| -------------------------------------------------------------- | ------------------------------------------------------- |
+| `editor.cycle-{cycle}.prompt.txt`                              | Final prompt sent to the editor model.                  |
+| `editor.cycle-{cycle}.raw.txt`                                 | Raw editor model output.                                |
+| `editor.cycle-{cycle}.json`                                    | Parsed editor JSON.                                     |
+| `{reviewer}.close-reconsideration.cycle-{cycle}.prompt.txt`    | Final close reconsideration prompt sent to the reviewer. |
+| `{reviewer}.close-reconsideration.cycle-{cycle}.raw.txt`       | Raw close reconsideration model output.                 |
+| `{reviewer}.close-reconsideration.cycle-{cycle}.json`          | Parsed close reconsideration JSON.                      |
+| `{reviewer}.rereview.cycle-{cycle}.prompt.txt`                 | Final re-review prompt sent to the reviewer.            |
+| `{reviewer}.rereview.cycle-{cycle}.raw.txt`                    | Raw re-review model output.                             |
+| `{reviewer}.rereview.cycle-{cycle}.json`                       | Parsed re-review JSON.                                  |
+| `rereview-majority.cycle-{cycle}.json`                         | Re-review majority counts and result.                   |
 
 The merge flow also writes the review artifacts listed in [`/magi:review`](review.md).
 
