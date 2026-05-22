@@ -131,6 +131,12 @@ interface QueuedTriageRun {
   runId: string
 }
 
+interface QueuedPrRun {
+  execute: () => Promise<void>
+  repository: ResolvedRepository
+  runId: string
+}
+
 export interface MagiClearSummary {
   branchDeleted: number
   branchFailed: number
@@ -694,6 +700,7 @@ function extractQuestionRequest(
 
 export class MagiRunManager {
   private active = new Map<string, MagiRunState>()
+  private activePrRuns = 0
   private activeTriageRuns = 0
   private countedToolParts = new Map<string, Set<string>>()
   private controllers = new Map<string, AbortController>()
@@ -702,6 +709,7 @@ export class MagiRunManager {
   private runPaths = new Map<string, string>()
   private outputDirs = new Set<string>()
   private sessionToRun = new Map<string, { agent: string; runId: string }>()
+  private prQueue: QueuedPrRun[] = []
   private triageQueue: QueuedTriageRun[] = []
 
   constructor(
@@ -779,9 +787,12 @@ export class MagiRunManager {
     if (input.sync)
       return this.executeSync(state, controller, execute, input.timeoutMs)
 
-    void execute().catch(async (error) => {
-      await this.failRun(runId, error)
+    this.prQueue.push({
+      execute,
+      repository: input.repository,
+      runId,
     })
+    this.drainPrQueue()
 
     return state
   }
@@ -858,9 +869,12 @@ export class MagiRunManager {
     if (input.sync)
       return this.executeSync(state, controller, execute, input.timeoutMs)
 
-    void execute().catch(async (error) => {
-      await this.failRun(runId, error)
+    this.prQueue.push({
+      execute,
+      repository: input.repository,
+      runId,
     })
+    this.drainPrQueue()
 
     return state
   }
@@ -947,6 +961,29 @@ export class MagiRunManager {
     this.drainTriageQueue()
 
     return state
+  }
+
+  private drainPrQueue(): void {
+    while (this.prQueue.length) {
+      const next = this.prQueue[0]
+      if (!next) return
+      if (this.activePrRuns >= next.repository.concurrency.runs) return
+      this.prQueue.shift()
+
+      const state = this.active.get(next.runId)
+      if (!state || state.status === "cancelled") continue
+
+      this.activePrRuns += 1
+      void next
+        .execute()
+        .catch(async (error) => {
+          await this.failRun(next.runId, error)
+        })
+        .finally(() => {
+          this.activePrRuns -= 1
+          this.drainPrQueue()
+        })
+    }
   }
 
   private drainTriageQueue(): void {
