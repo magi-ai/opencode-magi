@@ -68,9 +68,17 @@ export interface ReviewThreadComment {
 export interface PullRequestReview {
   author: { login: string }
   body?: string
+  comments?: PullRequestReviewComment[]
   commit?: { oid: string }
   state: string
   submittedAt: string
+}
+
+export interface PullRequestReviewComment {
+  body: string
+  line?: number | null
+  path: string
+  startLine?: number | null
 }
 
 export interface PullRequestCommit {
@@ -884,19 +892,30 @@ export async function fetchPullRequestReviews(
   repository: ResolvedRepository,
   pr: number,
 ): Promise<PullRequestReview[]> {
-  const query = `query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviews(first: 100) { nodes { author { login } submittedAt state body commit { oid } } } } } }`
+  const query = `query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviews(first: 100) { nodes { author { login } submittedAt state body commit { oid } comments(first: 100) { nodes { body path line startLine } } } } } } }`
   const raw = await exec(
     `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F pr=${pr}`,
   )
   const data = JSON.parse(raw) as {
     data: {
       repository: {
-        pullRequest: { reviews: { nodes: PullRequestReview[] } }
+        pullRequest: {
+          reviews: {
+            nodes: Array<
+              Omit<PullRequestReview, "comments"> & {
+                comments?: { nodes?: PullRequestReviewComment[] }
+              }
+            >
+          }
+        }
       }
     }
   }
 
-  return data.data.repository.pullRequest.reviews.nodes
+  return data.data.repository.pullRequest.reviews.nodes.map((review) => ({
+    ...review,
+    comments: review.comments?.nodes ?? [],
+  }))
 }
 
 export async function fetchPullRequestCommits(
