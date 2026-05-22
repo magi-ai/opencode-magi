@@ -1006,6 +1006,38 @@ describe("MagiRunManager notifications", () => {
     ])
   })
 
+  test("records triage sessions for clearing", async () => {
+    const { manager } = managerWithPromptCapture()
+    const directory = await mkdtemp(join(tmpdir(), "magi-run-"))
+    const state = sampleTriageState(directory)
+    const privateManager = manager as unknown as {
+      active: Map<string, MagiRunState>
+      applyTriageProgress(runId: string, progress: unknown): Promise<void>
+      sessionToRun: Map<string, { agent: string; runId: string }>
+    }
+
+    privateManager.active.set("triage-run", state)
+    try {
+      await privateManager.applyTriageProgress("triage-run", {
+        agent: "Balthasar",
+        key: "triage:comment-classification:Balthasar:classifier-session",
+        sessionId: "classifier-session",
+        type: "triage_session",
+      })
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+
+    expect(state.sessionIds).toEqual({
+      "triage:comment-classification:Balthasar:classifier-session":
+        "classifier-session",
+    })
+    expect(privateManager.sessionToRun.get("classifier-session")).toEqual({
+      agent: "Balthasar",
+      runId: "triage-run",
+    })
+  })
+
   test("notifies triage creator failures", async () => {
     const { manager, prompts } = managerWithPromptCapture()
     const directory = await mkdtemp(join(tmpdir(), "magi-run-"))
@@ -1788,6 +1820,7 @@ describe("MagiRunManager notifications", () => {
 
     state.status = "completed"
     state.phase = "completed"
+    state.sessionIds = { classifier: "classifier-session" }
     state.worktreeBranch = "pr-7557"
     state.worktreePath = worktreePath
     await mkdir(outputDir, { recursive: true })
@@ -1803,6 +1836,10 @@ describe("MagiRunManager notifications", () => {
       expect(actions).toMatchObject([
         {
           input: { path: { id: "child-session" } },
+          type: "session.delete",
+        },
+        {
+          input: { path: { id: "classifier-session" } },
           type: "session.delete",
         },
       ])

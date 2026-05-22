@@ -2167,6 +2167,19 @@ export class MagiRunManager {
       state.worktreeBranch = progress.branch
     }
 
+    if (progress.type === "triage_session") {
+      if (progress.options)
+        this.input.setSessionOptions?.(progress.sessionId, progress.options)
+      state.sessionIds = {
+        ...state.sessionIds,
+        [progress.key]: progress.sessionId,
+      }
+      this.sessionToRun.set(progress.sessionId, {
+        agent: progress.agent,
+        runId,
+      })
+    }
+
     if (progress.type === "triage_agent_started") {
       const reviewer = state.reviewers[progress.reviewer]
       if (reviewer) reviewer.status = "running"
