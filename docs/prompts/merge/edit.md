@@ -10,6 +10,6 @@ Built-in template: [`merge/edit.md`](/src/prompts/templates/merge/edit.md)
 | --------------------- | --------------------------------------- |
 | `{pr}`                | Pull request number.                    |
 | `{owner}` / `{repo}`  | GitHub repository owner and name.       |
-| `{reviewFindings}`    | Blocking review findings to address.   |
+| `{reviewFindings}`    | Blocking review findings to address.    |
 | `{worktreePath}`      | Temporary PR worktree path.             |
 | `{unresolvedThreads}` | JSON list of unresolved review threads. |
