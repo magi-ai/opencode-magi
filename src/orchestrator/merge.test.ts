@@ -3,7 +3,13 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import type { ReviewThread } from "../github/commands"
-import type { Exec, MagiConfig, ResolvedRepository } from "../types"
+import type {
+  EditOutput,
+  Exec,
+  MagiConfig,
+  ResolvedRepository,
+  RereviewOutput,
+} from "../types"
 import type { ModelClient } from "./model"
 import type { ReviewRunResult } from "./review"
 import {
@@ -25,6 +31,25 @@ vi.mock("./review", async (importOriginal) => {
 
   return { ...actual, runReview: runReviewMock }
 })
+
+const composeRereviewCloseReconsiderationPromptMock = vi.hoisted(() => vi.fn())
+const composeRereviewPromptMock = vi.hoisted(() => vi.fn())
+const runModelWithRepairMock = vi.hoisted(() => vi.fn())
+
+vi.mock("../prompts/compose", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../prompts/compose")>()
+
+  return {
+    ...actual,
+    composeRereviewCloseReconsiderationPrompt:
+      composeRereviewCloseReconsiderationPromptMock,
+    composeRereviewPrompt: composeRereviewPromptMock,
+  }
+})
+
+vi.mock("./model", () => ({
+  runModelWithRepair: runModelWithRepairMock,
+}))
 
 const repository: ResolvedRepository = {
   agents: { reviewers: [] },
@@ -54,6 +79,29 @@ const repository: ResolvedRepository = {
   prompts: {},
   safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
 }
+
+const mergeOutput = (): RereviewOutput => ({
+  followUps: [],
+  newFindings: [],
+  resolve: [],
+  verdict: "MERGE",
+})
+
+const closeOutput = (): RereviewOutput => ({
+  followUps: [],
+  newFindings: [],
+  reason: "Out of scope.",
+  resolve: [],
+  verdict: "CLOSE",
+})
+
+const editOutput = (): EditOutput => ({
+  commitMessage: "fix(merge): use dry-run head",
+  commitSha: "dry-run-edited-head",
+  filesTouched: ["src/orchestrator/merge.ts"],
+  mode: "EDITED",
+  responses: [],
+})
 
 const editorRepository: ResolvedRepository = {
   ...repository,
@@ -105,6 +153,18 @@ function thread(threadId: string): ReviewThread {
   }
 }
 
+beforeEach(() => {
+  composeRereviewCloseReconsiderationPromptMock.mockReset()
+  composeRereviewPromptMock.mockReset()
+  runModelWithRepairMock.mockReset()
+  runReviewMock.mockReset()
+
+  composeRereviewCloseReconsiderationPromptMock.mockResolvedValue(
+    "rereview close reconsideration prompt",
+  )
+  composeRereviewPromptMock.mockResolvedValue("rereview prompt")
+})
+
 describe("merge", () => {
   test("reports the merge.editor config key when editor is missing", async () => {
     const client: ModelClient = {
@@ -124,6 +184,112 @@ describe("merge", () => {
         repository,
       }),
     ).rejects.toThrow("merge.editor is required for magi_merge")
+  })
+
+  test("uses dry-run edited head for rereview close reconsideration prompts", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-merge-"))
+    const reviewers = ["alpha", "bravo", "charlie"].map((key, index) => ({
+      account: `${key}-bot`,
+      index,
+      key,
+      model: "test/model",
+      permission: "allow" as const,
+    }))
+    const mergeRepository: ResolvedRepository = {
+      ...repository,
+      agents: {
+        editor: {
+          account: "editor-bot",
+          author: {
+            email: "editor@example.com",
+            name: "Editor Bot",
+          },
+          model: "test/editor",
+          permission: "allow",
+        },
+        reviewers,
+      },
+    }
+    const exec = vi.fn(async (command: string) => {
+      if (command.startsWith("gh pr view")) {
+        return JSON.stringify({
+          baseRefName: "main",
+          baseRefOid: "base-sha",
+          headRefName: "feature",
+          headRefOid: "original-head-sha",
+          isDraft: false,
+          number: 123,
+          title: "Test PR",
+          url: "https://github.example.com/owner/repo/pull/123",
+        })
+      }
+
+      return ""
+    })
+
+    runReviewMock.mockResolvedValue({
+      baseSha: "base-sha",
+      ciReports: [],
+      discardedFindings: [],
+      headSha: "original-head-sha",
+      outputs: {
+        alpha: {
+          findings: [
+            {
+              fix: "Fix the bug.",
+              issue: "Bug remains.",
+              line: 1,
+              path: "file.ts",
+            },
+          ],
+          verdict: "CHANGES_REQUESTED",
+        },
+        bravo: { findings: [], verdict: "MERGE" },
+        charlie: { findings: [], verdict: "MERGE" },
+      },
+      posted: {},
+      pr: 123,
+      report: "",
+      sessionIds: {},
+      verdict: "CHANGES_REQUESTED",
+      worktreePath: "/tmp/magi-review-worktree",
+    })
+    runModelWithRepairMock.mockImplementation(async (input) => {
+      if (input.schemaName === "edit") {
+        return { raw: "{}", sessionId: "editor-session", value: editOutput() }
+      }
+      if (input.schemaName === "rereview close reconsideration") {
+        return {
+          raw: "{}",
+          sessionId: "charlie-session-2",
+          value: mergeOutput(),
+        }
+      }
+
+      return {
+        raw: "{}",
+        sessionId: `${input.title.includes("charlie") ? "charlie" : "reviewer"}-session`,
+        value: input.title.includes("charlie") ? closeOutput() : mergeOutput(),
+      }
+    })
+
+    await runMerge({
+      client: { session: { create: vi.fn(), prompt: vi.fn() } },
+      config: {},
+      directory,
+      dryRun: true,
+      exec,
+      pr: 123,
+      repository: mergeRepository,
+    })
+
+    expect(composeRereviewCloseReconsiderationPromptMock).toHaveBeenCalledOnce()
+    expect(
+      composeRereviewCloseReconsiderationPromptMock.mock.calls[0]?.[0],
+    ).toMatchObject({
+      headSha: "dry-run-edited-head",
+      previousHeadSha: "original-head-sha",
+    })
   })
 
   test("treats maxThreadResolutionCycles 0 as unlimited per thread", () => {
@@ -290,6 +456,10 @@ describe("merge", () => {
     }
 
     runReviewMock.mockResolvedValueOnce(review)
+    runModelWithRepairMock.mockImplementationOnce(async (input) => {
+      prompts.push(input.prompt)
+      throw new Error("stop after editor prompt")
+    })
 
     await expect(
       runMerge({

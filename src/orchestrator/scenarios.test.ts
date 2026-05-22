@@ -150,11 +150,13 @@ function reviewThreadsResponse(threads: ReviewThread[]): string {
                   line: thread.line,
                   path: thread.path,
                 })),
+                pageInfo: { endCursor: null, hasNextPage: false },
                 totalCount: thread.comments.length,
               },
               id: thread.threadId,
               isResolved: thread.isResolved ?? false,
             })),
+            pageInfo: { endCursor: null, hasNextPage: false },
             totalCount: threads.length,
           },
         },
@@ -308,7 +310,12 @@ function reviewsResponse(reviews: PullRequestReview[]): string {
   return JSON.stringify({
     data: {
       repository: {
-        pullRequest: { reviews: { nodes: reviews } },
+        pullRequest: {
+          reviews: {
+            nodes: reviews,
+            pageInfo: { endCursor: null, hasNextPage: false },
+          },
+        },
       },
     },
   })
@@ -340,6 +347,7 @@ function commitsResponse(): string {
                 },
               },
             ],
+            pageInfo: { endCursor: null, hasNextPage: false },
           },
         },
       },
@@ -469,10 +477,12 @@ function createExec(
         },
       })
     }
-    if (command.includes("reviews(first: 100)")) {
+    if (command.includes("reviews(first: 100, after: $cursor)")) {
       return reviewsResponse(input.reviews ?? [])
     }
-    if (command.includes("commits(first: 100)")) return commitsResponse()
+    if (command.includes("commits(first: 100, after: $cursor)")) {
+      return commitsResponse()
+    }
     if (command.includes("pullRequest(number: $pr) { comments")) {
       return emptyCommentPage()
     }

@@ -600,7 +600,7 @@ async function runRereview(
           baseSha: meta.baseRefOid,
           closeReason: entry.output.reason,
           directory: input.directory,
-          headSha: meta.headRefOid,
+          headSha,
           includeReviewGuidelines: !hasReviewerSession,
           includeSessionContext: !hasReviewerSession,
           pr: input.pr,
