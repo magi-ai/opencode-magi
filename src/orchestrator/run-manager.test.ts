@@ -64,6 +64,11 @@ describe("MagiRunManager notifications", () => {
         },
       },
       session: {
+        abort: async (input) => {
+          actions.push({ input, type: "session.abort" })
+
+          return true
+        },
         create: async () => ({ id: "session" }),
         delete: async (input) => {
           actions.push({ input, type: "session.delete" })
@@ -223,6 +228,7 @@ describe("MagiRunManager notifications", () => {
     try {
       const state = await manager.startReview({
         config: { github: { owner: "owner", repo: "repo" } },
+        parentSessionId: "parent-session",
         pr: 7557,
         repository: sampleRepository(),
         sync: true,
@@ -230,7 +236,9 @@ describe("MagiRunManager notifications", () => {
 
       expect(state.status).toBe("completed")
       expect(state.phase).toBe("completed")
-      expect(runReviewMock).toHaveBeenCalledOnce()
+      expect(runReviewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ parentSessionId: "parent-session" }),
+      )
     } finally {
       await rm(directory, { force: true, recursive: true })
     }
@@ -250,6 +258,7 @@ describe("MagiRunManager notifications", () => {
     try {
       const state = await manager.startMerge({
         config: { github: { owner: "owner", repo: "repo" } },
+        parentSessionId: "parent-session",
         pr: 7557,
         repository: sampleRepository(),
         sync: true,
@@ -257,7 +266,9 @@ describe("MagiRunManager notifications", () => {
 
       expect(state.status).toBe("completed")
       expect(state.phase).toBe("approved")
-      expect(runMergeMock).toHaveBeenCalledOnce()
+      expect(runMergeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ parentSessionId: "parent-session" }),
+      )
     } finally {
       await rm(directory, { force: true, recursive: true })
     }
@@ -278,6 +289,7 @@ describe("MagiRunManager notifications", () => {
       const state = await manager.startTriage({
         config: { github: { owner: "owner", repo: "repo" } },
         issue: 115,
+        parentSessionId: "parent-session",
         repository: sampleTriageRepository({
           clear: ["triage"],
           close: false,
@@ -292,7 +304,261 @@ describe("MagiRunManager notifications", () => {
       expect(state.phase).toBe(
         JSON.stringify({ category: "feature", disposition: "accepted" }),
       )
-      expect(runTriageMock).toHaveBeenCalledOnce()
+      expect(runTriageMock).toHaveBeenCalledWith(
+        expect.objectContaining({ parentSessionId: "parent-session" }),
+      )
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test("limits background review runs to configured concurrency", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-review-queue-"))
+    const { manager } = managerWithPromptCapture(directory)
+    const repository = sampleRepository()
+    repository.concurrency.runs = 2
+    const resolvers: Array<(value: unknown) => void> = []
+    runReviewMock.mockImplementation((input) => {
+      return new Promise((resolve) => {
+        resolvers.push(() =>
+          resolve({
+            outputs: {
+              security: { findings: [], verdict: "MERGE" },
+            },
+            posted: {},
+            report: `Review report ${input.pr}`,
+            sessionIds: {},
+            verdict: "MERGE",
+          }),
+        )
+      })
+    })
+
+    try {
+      for (const pr of [1, 2, 3]) {
+        await manager.startReview({
+          config: { github: { owner: "owner", repo: "repo" } },
+          pr,
+          repository,
+        })
+      }
+
+      await vi.waitFor(() => expect(runReviewMock).toHaveBeenCalledTimes(2))
+      expect(runReviewMock.mock.calls.map(([input]) => input.pr)).toEqual([
+        1, 2,
+      ])
+
+      resolvers[0]?.({})
+
+      await vi.waitFor(() => expect(runReviewMock).toHaveBeenCalledTimes(3))
+      expect(runReviewMock.mock.calls.map(([input]) => input.pr)).toEqual([
+        1, 2, 3,
+      ])
+
+      resolvers[1]?.({})
+      resolvers[2]?.({})
+      await vi.waitFor(() => expect(resolvers).toHaveLength(3))
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test("limits background merge runs to configured concurrency", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-merge-queue-"))
+    const { manager } = managerWithPromptCapture(directory)
+    const repository = sampleRepository()
+    repository.concurrency.runs = 2
+    const resolvers: Array<(value: unknown) => void> = []
+    runMergeMock.mockImplementation((input) => {
+      return new Promise((resolve) => {
+        resolvers.push(() =>
+          resolve({
+            cycles: 0,
+            pr: input.pr,
+            report: `Merge report ${input.pr}`,
+            status: "approved",
+          }),
+        )
+      })
+    })
+
+    try {
+      for (const pr of [1, 2, 3]) {
+        await manager.startMerge({
+          config: { github: { owner: "owner", repo: "repo" } },
+          pr,
+          repository,
+        })
+      }
+
+      await vi.waitFor(() => expect(runMergeMock).toHaveBeenCalledTimes(2))
+      expect(runMergeMock.mock.calls.map(([input]) => input.pr)).toEqual([1, 2])
+
+      resolvers[0]?.({})
+
+      await vi.waitFor(() => expect(runMergeMock).toHaveBeenCalledTimes(3))
+      expect(runMergeMock.mock.calls.map(([input]) => input.pr)).toEqual([
+        1, 2, 3,
+      ])
+
+      resolvers[1]?.({})
+      resolvers[2]?.({})
+      await vi.waitFor(() => expect(resolvers).toHaveLength(3))
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test("skips cancelled queued background review runs", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-review-cancel-"))
+    const { manager } = managerWithPromptCapture(directory)
+    const repository = sampleRepository()
+    repository.concurrency.runs = 1
+    const resolvers: Array<(value: unknown) => void> = []
+    runReviewMock.mockImplementation((input) => {
+      return new Promise((resolve) => {
+        resolvers.push(() =>
+          resolve({
+            outputs: {
+              security: { findings: [], verdict: "MERGE" },
+            },
+            posted: {},
+            report: `Review report ${input.pr}`,
+            sessionIds: {},
+            verdict: "MERGE",
+          }),
+        )
+      })
+    })
+
+    try {
+      const states = []
+      for (const pr of [1, 2, 3]) {
+        states.push(
+          await manager.startReview({
+            config: { github: { owner: "owner", repo: "repo" } },
+            pr,
+            repository,
+          }),
+        )
+      }
+
+      await vi.waitFor(() => expect(runReviewMock).toHaveBeenCalledTimes(1))
+      await manager.cancel(states[1]!.runId)
+      resolvers[0]?.({})
+
+      await vi.waitFor(() => expect(runReviewMock).toHaveBeenCalledTimes(2))
+      expect(runReviewMock.mock.calls.map(([input]) => input.pr)).toEqual([
+        1, 3,
+      ])
+
+      resolvers[1]?.({})
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test("limits background triage runs to configured concurrency", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-triage-queue-"))
+    const { manager } = managerWithPromptCapture(directory)
+    const repository = sampleTriageRepository({
+      clear: ["triage"],
+      close: false,
+      create: false,
+      merge: false,
+      review: false,
+    })
+    repository.triage!.concurrency.runs = 2
+    const resolvers: Array<(value: unknown) => void> = []
+    runTriageMock.mockImplementation((input) => {
+      return new Promise((resolve) => {
+        resolvers.push(() =>
+          resolve({
+            issue: input.issue,
+            outputDir: join(directory, `triage-${input.issue}`),
+            report: "Triage report",
+            result: { category: "bug", disposition: "accepted" },
+          }),
+        )
+      })
+    })
+
+    try {
+      for (const issue of [1, 2, 3]) {
+        await manager.startTriage({
+          config: { github: { owner: "owner", repo: "repo" } },
+          issue,
+          repository,
+        })
+      }
+
+      await vi.waitFor(() => expect(runTriageMock).toHaveBeenCalledTimes(2))
+      expect(runTriageMock.mock.calls.map(([input]) => input.issue)).toEqual([
+        1, 2,
+      ])
+
+      resolvers[0]?.({})
+
+      await vi.waitFor(() => expect(runTriageMock).toHaveBeenCalledTimes(3))
+      expect(runTriageMock.mock.calls.map(([input]) => input.issue)).toEqual([
+        1, 2, 3,
+      ])
+
+      resolvers[1]?.({})
+      resolvers[2]?.({})
+      await vi.waitFor(() => expect(resolvers).toHaveLength(3))
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test("skips cancelled queued background triage runs", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-triage-cancel-"))
+    const { manager } = managerWithPromptCapture(directory)
+    const repository = sampleTriageRepository({
+      clear: ["triage"],
+      close: false,
+      create: false,
+      merge: false,
+      review: false,
+    })
+    repository.triage!.concurrency.runs = 1
+    const resolvers: Array<(value: unknown) => void> = []
+    runTriageMock.mockImplementation((input) => {
+      return new Promise((resolve) => {
+        resolvers.push(() =>
+          resolve({
+            issue: input.issue,
+            outputDir: join(directory, `triage-${input.issue}`),
+            report: "Triage report",
+            result: { category: "bug", disposition: "accepted" },
+          }),
+        )
+      })
+    })
+
+    try {
+      const states = []
+      for (const issue of [1, 2, 3]) {
+        states.push(
+          await manager.startTriage({
+            config: { github: { owner: "owner", repo: "repo" } },
+            issue,
+            repository,
+          }),
+        )
+      }
+
+      await vi.waitFor(() => expect(runTriageMock).toHaveBeenCalledTimes(1))
+      await manager.cancel(states[1]!.runId)
+      resolvers[0]?.({})
+
+      await vi.waitFor(() => expect(runTriageMock).toHaveBeenCalledTimes(2))
+      expect(runTriageMock.mock.calls.map(([input]) => input.issue)).toEqual([
+        1, 3,
+      ])
+
+      resolvers[1]?.({})
     } finally {
       await rm(directory, { force: true, recursive: true })
     }
@@ -391,6 +657,99 @@ describe("MagiRunManager notifications", () => {
 
       expect(state.status).toBe("failed")
       expect(state.error).toBe("Magi sync run timed out after 0.001 seconds.")
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test("fails and aborts active review child sessions on synchronous timeout", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-sync-review-timeout-"))
+    const { actions, manager } = managerWithPromptCapture(directory)
+    const privateManager = manager as unknown as {
+      active: Map<string, MagiRunState>
+    }
+
+    runReviewMock.mockImplementationOnce((input) => {
+      const state = privateManager.active.get(input.runId)
+      state!.reviewers.security!.sessionId = "review-session"
+      state!.reviewers.security!.status = "running"
+
+      return new Promise(() => undefined)
+    })
+
+    try {
+      const statePromise = manager.startReview({
+        config: { github: { owner: "owner", repo: "repo" } },
+        pr: 7557,
+        repository: sampleRepository(),
+        sync: true,
+        timeoutMs: 1000,
+      })
+      await vi.waitFor(() => expect(runReviewMock).toHaveBeenCalledTimes(1))
+      const state = await statePromise
+
+      expect(state.status).toBe("failed")
+      expect(state.reviewers.security).toMatchObject({
+        error: "Magi sync run timed out after 1 seconds.",
+        status: "failed",
+      })
+      expect(actions).toContainEqual({
+        input: { path: { id: "review-session" } },
+        type: "session.abort",
+      })
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test("fails and aborts active triage creator sessions on synchronous timeout", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-sync-triage-timeout-"))
+    const { actions, manager } = managerWithPromptCapture(directory)
+    const repository = sampleTriageRepository({
+      clear: ["triage"],
+      close: false,
+      create: true,
+      merge: false,
+      review: false,
+    })
+    repository.agents.triageCreator = {
+      account: "creator-bot",
+      author: { email: "creator@example.com", name: "Creator Bot" },
+      model: "mock/model",
+      permission: "deny",
+    }
+    const privateManager = manager as unknown as {
+      active: Map<string, MagiRunState>
+    }
+
+    runTriageMock.mockImplementationOnce((input) => {
+      const state = privateManager.active.get(input.runId)
+      state!.triageCreator!.sessionId = "creator-session"
+      state!.triageCreator!.status = "running"
+
+      return new Promise(() => undefined)
+    })
+
+    try {
+      const statePromise = manager.startTriage({
+        config: { github: { owner: "owner", repo: "repo" } },
+        issue: 115,
+        repository,
+        sync: true,
+        timeoutMs: 1000,
+      })
+      await vi.waitFor(() => expect(runTriageMock).toHaveBeenCalledTimes(1))
+      const state = await statePromise
+
+      expect(state.status).toBe("failed")
+      expect(state.triageCreator).toMatchObject({
+        error: "Magi sync run timed out after 1 seconds.",
+        status: "failed",
+      })
+      expect(actions).toContainEqual({
+        input: { path: { id: "creator-session" } },
+        type: "session.abort",
+      })
     } finally {
       await rm(directory, { force: true, recursive: true })
     }
@@ -889,6 +1248,38 @@ describe("MagiRunManager notifications", () => {
       "**Triage creator** completed implementation changes for [#105](https://example.com/issues/105).",
       "Created implementation PR for [#105](https://example.com/issues/105): https://example.com/pull/106",
     ])
+  })
+
+  test("records triage sessions for clearing", async () => {
+    const { manager } = managerWithPromptCapture()
+    const directory = await mkdtemp(join(tmpdir(), "magi-run-"))
+    const state = sampleTriageState(directory)
+    const privateManager = manager as unknown as {
+      active: Map<string, MagiRunState>
+      applyTriageProgress(runId: string, progress: unknown): Promise<void>
+      sessionToRun: Map<string, { agent: string; runId: string }>
+    }
+
+    privateManager.active.set("triage-run", state)
+    try {
+      await privateManager.applyTriageProgress("triage-run", {
+        agent: "Balthasar",
+        key: "triage:comment-classification:Balthasar:classifier-session",
+        sessionId: "classifier-session",
+        type: "triage_session",
+      })
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+
+    expect(state.sessionIds).toEqual({
+      "triage:comment-classification:Balthasar:classifier-session":
+        "classifier-session",
+    })
+    expect(privateManager.sessionToRun.get("classifier-session")).toEqual({
+      agent: "Balthasar",
+      runId: "triage-run",
+    })
   })
 
   test("notifies triage creator failures", async () => {
@@ -1673,6 +2064,7 @@ describe("MagiRunManager notifications", () => {
 
     state.status = "completed"
     state.phase = "completed"
+    state.sessionIds = { classifier: "classifier-session" }
     state.worktreeBranch = "pr-7557"
     state.worktreePath = worktreePath
     await mkdir(outputDir, { recursive: true })
@@ -1688,6 +2080,10 @@ describe("MagiRunManager notifications", () => {
       expect(actions).toMatchObject([
         {
           input: { path: { id: "child-session" } },
+          type: "session.delete",
+        },
+        {
+          input: { path: { id: "classifier-session" } },
           type: "session.delete",
         },
       ])

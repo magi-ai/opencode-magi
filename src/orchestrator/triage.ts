@@ -11,7 +11,6 @@ import type {
   ResolvedRepository,
   ResolvedTriageAgent,
   TriageAction,
-  TriageActionOutput,
   TriageAskReason,
   TriageBinaryVote,
   TriageCategoryVote,
@@ -25,7 +24,7 @@ import type {
 import { mkdir, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { issueRunOutputDir } from "../config/output"
-import { worktreeBaseDir } from "../config/worktree"
+import { issueRunWorktreeDir } from "../config/worktree"
 import {
   assignIssue,
   closeIssue,
@@ -45,18 +44,14 @@ import {
 } from "../github/commands"
 import {
   composeTriageAcceptancePrompt,
-  composeTriageActionPrompt,
   composeTriageCategoryPrompt,
   composeTriageCommentClassificationPrompt,
-  composeTriageCommentPrompt,
   composeTriageCreatePrPrompt,
   composeTriageDuplicatePrompt,
   composeTriageExistingPrPrompt,
-  composeTriageQuestionPrompt,
   composeTriageReconsiderPrompt,
 } from "../prompts/compose"
 import {
-  parseTriageActionOutput,
   parseTriageBinaryOutput,
   parseTriageCategoryOutput,
   parseTriageCommentClassificationOutput,
@@ -66,7 +61,6 @@ import {
 } from "../prompts/output"
 import { aggregateStringMajority, majorityThreshold } from "./majority"
 import {
-  runModelText,
   runModelWithRepair,
   type ModelClient,
   type ModelRunResult,
@@ -83,6 +77,7 @@ export interface TriageRunInput {
   exec: Exec
   issue: number
   onProgress?: (progress: TriageRunProgress) => void | Promise<void>
+  parentSessionId?: string
   repository: ResolvedRepository
   runId?: string
   signal?: AbortSignal
@@ -141,9 +136,17 @@ export type TriageRunProgress =
   | { sessionId: string; type: "triage_creator_completed" }
   | { error: string; type: "triage_creator_failed" }
   | { type: "pr_created"; url: string }
+  | {
+      agent: string
+      key: string
+      options?: ModelRunProgress["options"]
+      sessionId: string
+      type: "triage_session"
+    }
   | { branch: string; type: "worktree_created"; worktreePath: string }
 
 interface TriageMarker {
+  account?: string
   action?: string
   checkpoint?: number
   commentId?: number
@@ -163,6 +166,18 @@ interface RelationshipSummary {
   mentionReplies: IssueComment[]
   previousMarker?: TriageMarker
   relatedPullRequests: RelatedPullRequest[]
+}
+
+type VoteRunOutput<T extends string> = TriageVoteOutput<T> & {
+  promptText: string
+  raw: string
+  reviewer: string
+  sessionId: string
+}
+
+interface PhaseVoteResult<T extends string> {
+  outputs: VoteRunOutput<T>[]
+  vote?: T
 }
 
 interface ActionPlan {
@@ -372,7 +387,9 @@ async function runVote<
   run: TriageRunInput
   schemaName: string
   signal?: AbortSignal
-}): Promise<O & { promptText: string; raw: string; sessionId: string }> {
+}): Promise<
+  O & { promptText: string; raw: string; reviewer: string; sessionId: string }
+> {
   const prompt = await input.prompt({
     context: input.context,
     directory: input.directory,
@@ -398,6 +415,7 @@ async function runVote<
           run: input.run,
         }),
       options: input.agent.options,
+      parentSessionId: input.run.parentSessionId,
       parse: input.parse,
       permission: input.agent.permission,
       prompt,
@@ -428,6 +446,7 @@ async function runVote<
     ...result.value,
     promptText: prompt,
     raw: result.raw,
+    reviewer: input.agent.key,
     sessionId: result.sessionId,
   }
 }
@@ -443,6 +462,7 @@ async function writeVoteArtifacts(input: {
   await writeFile(`${base}.prompt.txt`, `${input.output.promptText}\n`)
   await writeFile(`${base}.raw.txt`, `${input.output.raw}\n`)
   await writeJson(`${base}.json`, {
+    body: input.output.body,
     reason: input.output.reason,
     vote: input.output.vote,
   })
@@ -552,7 +572,7 @@ async function runPhaseVote<T extends string>(input: {
   prompt: TriagePromptComposer
   schemaName: string
   votes: readonly T[]
-}): Promise<T | undefined> {
+}): Promise<PhaseVoteResult<T>> {
   const agents = input.input.repository.agents.triage
   if (!agents?.length) throw new Error("triage.agents is required")
   await emitProgress(input.input, { phase: input.phase, type: "phase" })
@@ -599,7 +619,7 @@ async function runPhaseVote<T extends string>(input: {
     majority,
   )
 
-  return majority.vote
+  return { outputs, vote: majority.vote }
 }
 
 async function relationshipScan(input: TriageRunInput, issue: IssueMeta) {
@@ -609,17 +629,22 @@ async function relationshipScan(input: TriageRunInput, issue: IssueMeta) {
       fetchRelatedPullRequests(input.exec, input.repository, input.issue),
       searchDuplicateIssues(input.exec, input.repository, issue),
     ])
+  const triageAccounts = new Set(
+    (input.repository.agents.triage ?? []).map((agent) => agent.account),
+  )
   const markers = comments
-    .filter((comment) => comment.author === input.repository.triage?.account)
+    .filter((comment) => triageAccounts.has(comment.author))
     .map((comment) => {
       const parsed = parseTriageMarker(comment.body)
-      return parsed ? { ...parsed, commentId: comment.id } : undefined
+      return parsed
+        ? { ...parsed, account: comment.author, commentId: comment.id }
+        : undefined
     })
     .filter(Boolean) as TriageMarker[]
   const previousMarker = markers.at(-1)
   const mentionReplies = previousMarker
     ? eligibleMentionReplies({
-        account: input.repository.triage?.account ?? "",
+        account: previousMarker.account ?? "",
         comments,
         marker: previousMarker,
         processed: previousMarker.processed,
@@ -814,61 +839,13 @@ function previousAutomationPlan(input: {
   }
 }
 
-async function runActionPrompt(input: {
-  context: string
-  input: TriageRunInput
-  outputDir: string
-  plan: ActionPlan
-  result: FinalResult
-}): Promise<TriageActionOutput> {
-  const agent = input.input.repository.agents.triage?.[0]
-  if (!agent) throw new Error("triage.agents is required")
-  const context = JSON.stringify(
-    {
-      allowedActions: input.plan.allowedActions,
-      deterministicPlan: input.plan,
-      result: input.result,
-      triageContext: input.context,
-    },
-    null,
-    2,
-  )
-  const prompt = await composeTriageActionPrompt({
-    context,
-    directory: input.input.directory,
-    issue: input.input.issue,
-    repository: input.input.repository,
-    reviewer: agent,
-  })
-  const result = await runModelWithRepair<TriageActionOutput>({
-    client: input.input.client,
-    model: agent.model,
-    options: agent.options,
-    parse: parseTriageActionOutput,
-    permission: agent.permission,
-    prompt,
-    repairAttempts: 3,
-    schemaName: "triage action",
-    signal: input.input.signal,
-    title: `Magi triage action #${input.input.issue}`,
-  })
-
-  await writeJson(join(input.outputDir, "action.json"), {
-    model: result.value,
-    plan: input.plan,
-  })
-
-  return result.value
-}
-
 async function classifyMentionReplies(input: {
   context: string
   input: TriageRunInput
   outputDir: string
   replies: IssueComment[]
 }) {
-  const agent = input.input.repository.agents.triage?.[0]
-  if (!agent) throw new Error("triage.agents is required")
+  const agent = triageReporter(input.input.repository, input.input.issue)
   const prompt = await composeTriageCommentClassificationPrompt({
     context: JSON.stringify(
       { context: input.context, mentionReplies: input.replies },
@@ -883,14 +860,26 @@ async function classifyMentionReplies(input: {
   const result = await runModelWithRepair({
     client: input.input.client,
     model: agent.model,
+    onProgress: async (progress) => {
+      if (progress.type !== "session_created") return
+
+      await emitProgress(input.input, {
+        agent: agent.key,
+        key: `triage:comment-classification:${agent.key}:${progress.sessionId}`,
+        options: progress.options,
+        sessionId: progress.sessionId,
+        type: "triage_session",
+      })
+    },
     options: agent.options,
+    parentSessionId: input.input.parentSessionId,
     parse: parseTriageCommentClassificationOutput,
     permission: agent.permission,
     prompt,
     repairAttempts: 3,
     schemaName: "triage comment classification",
     signal: input.input.signal,
-    title: `Magi triage comment classification #${input.input.issue}`,
+    title: `Magi triage comment classification #${input.input.issue} (${agent.key})`,
   })
 
   await writeJson(
@@ -905,7 +894,7 @@ async function runReconsiderationVote(input: {
   context: string
   input: TriageRunInput
   outputDir: string
-}): Promise<TriageBinaryVote | undefined> {
+}): Promise<PhaseVoteResult<TriageBinaryVote>> {
   return runPhaseVote<TriageBinaryVote>({
     context: input.context,
     input: input.input,
@@ -918,72 +907,67 @@ async function runReconsiderationVote(input: {
   })
 }
 
-async function composeResultComment(input: {
+function triageReporter(
+  repository: ResolvedRepository,
+  issue: number,
+): ResolvedTriageAgent {
+  const agents = repository.agents.triage ?? []
+  if (!agents.length) throw new Error("triage.agents is required")
+  const configured = repository.triage?.reporter
+  const reporter = configured
+    ? agents.find((agent) => agent.key === configured)
+    : agents[Math.abs(issue) % agents.length]
+
+  if (!reporter) throw new Error(`Unknown triage reporter: ${configured}`)
+
+  return reporter
+}
+
+function decisionCommentBody(input: {
   action: string
-  context: string
-  input: TriageRunInput
-  issue: IssueMeta
-  outputDir: string
-  processed?: number[]
+  reason?: string
   result: FinalResult
-}): Promise<string> {
-  const agents = input.input.repository.agents.triage
-  if (!agents?.length) throw new Error("triage.agents is required")
-  if (
-    input.result.disposition === "ask" &&
-    input.result.askReason === "category_unclear"
-  ) {
-    const language = input.input.repository.language?.toLowerCase() ?? ""
-    const body =
-      language.includes("ja") || language.includes("japanese")
-        ? `@${input.issue.author} 現在の説明だけでは、何をすべきか判断できません。\n\n期待する動作、実際の動作、必要な理由、関連する例・ログ・スクリーンショットなどを追記してください。`
-        : `@${input.issue.author} I can't determine what should be done from the current description.\n\nPlease add more detail, such as the expected behavior, the actual behavior, the reason this is needed, or any relevant examples, logs, or screenshots.`
-    const comment = `${body}\n\n${marker({
-      action: input.action,
-      checkpoint: "pending",
-      decision: input.result,
-      issue: input.issue.number,
-      processed: input.processed,
-    })}`
+}): string {
+  const reason = input.reason?.trim()
+  const result = JSON.stringify(input.result)
 
-    await writeFile(join(input.outputDir, "comment.md"), `${comment}\n`)
-    return comment
-  }
-  const prompt = await (
-    input.result.disposition === "ask"
-      ? composeTriageQuestionPrompt
-      : composeTriageCommentPrompt
-  )({
-    author: input.issue.author,
-    context: input.context,
-    directory: input.input.directory,
-    issue: input.issue.number,
-    repository: input.input.repository,
-  })
-  const comment =
-    (
-      await runModelText({
-        allowEmpty: false,
-        client: input.input.client,
-        model: agents[0].model,
-        options: agents[0].options,
-        permission: agents[0].permission,
-        prompt,
-        signal: input.input.signal,
-        title: `Magi triage comment #${input.issue.number}`,
-      })
-    ).raw +
-    `\n\n${marker({
-      action: input.action,
-      checkpoint: "pending",
-      decision: input.result,
-      issue: input.issue.number,
-      processed: input.processed,
-    })}`
+  return reason
+    ? `Magi triage decision: ${result}\n\nReason: ${reason}`
+    : `Magi triage decision: ${result}\n\nAction: ${input.action}`
+}
 
-  await writeFile(join(input.outputDir, "comment.md"), `${comment}\n`)
+function agentForKey(
+  repository: ResolvedRepository,
+  key: string,
+): ResolvedTriageAgent {
+  const agent = repository.agents.triage?.find((item) => item.key === key)
+  if (!agent) throw new Error(`Unknown triage agent: ${key}`)
 
-  return comment
+  return agent
+}
+
+function askOutputs<T extends string>(
+  outputs: VoteRunOutput<T>[] | undefined,
+): VoteRunOutput<T>[] {
+  return (outputs ?? []).filter((output) => output.vote === "ASK")
+}
+
+function chooseDecisionReason(input: {
+  outputs?: VoteRunOutput<string>[]
+  reporter: ResolvedTriageAgent
+  vote: string
+}): string | undefined {
+  return (
+    input.outputs?.find(
+      (output) =>
+        output.reviewer === input.reporter.key &&
+        output.vote === input.vote &&
+        output.reason,
+    )?.reason ??
+    input.outputs?.find((output) => output.vote === input.vote)?.reason ??
+    input.outputs?.find((output) => output.reviewer === input.reporter.key)
+      ?.reason
+  )
 }
 
 async function postMarkedIssueComment(input: {
@@ -1016,9 +1000,35 @@ async function postMarkedIssueComment(input: {
           body,
         )
 
-  await writeJson(join(input.outputDir, "posted.json"), updated)
+  await writeJson(join(input.outputDir, `posted-${updated.id}.json`), {
+    account: input.account,
+    ...updated,
+  })
 
   return updated
+}
+
+async function postPlainIssueComment(input: {
+  account: string
+  body: string
+  exec: Exec
+  issue: number
+  outputDir: string
+  repository: ResolvedRepository
+}): Promise<{ id: number; url: string }> {
+  const posted = await postIssueComment(
+    input.exec,
+    input.repository,
+    input.issue,
+    input.account,
+    input.body,
+  )
+  await writeJson(join(input.outputDir, `posted-${posted.id}.json`), {
+    account: input.account,
+    ...posted,
+  })
+
+  return posted
 }
 
 async function persistProcessedMarker(input: {
@@ -1065,16 +1075,84 @@ async function persistProcessedMarker(input: {
   })
 }
 
+async function postAskComments(input: {
+  action: string
+  dryRun?: boolean
+  exec: Exec
+  issue: IssueMeta
+  mark: boolean
+  outputs: VoteRunOutput<string>[]
+  outputDir: string
+  processed?: number[]
+  repository: ResolvedRepository
+  result: FinalResult
+  run: TriageRunInput
+}): Promise<string[]> {
+  const urls: string[] = []
+
+  for (const output of askOutputs(input.outputs)) {
+    const agent = agentForKey(input.repository, output.reviewer)
+    const body = input.mark
+      ? `${output.body}\n\n${marker({
+          action: input.action,
+          checkpoint: "pending",
+          decision: input.result,
+          issue: input.issue.number,
+          processed: input.processed,
+        })}`
+      : output.body
+
+    if (!body?.trim()) continue
+
+    await writeFile(
+      join(input.outputDir, `${agent.key}.ask-comment.md`),
+      `${body}\n`,
+    )
+
+    if (input.dryRun) {
+      urls.push(`dry-run:would-comment:${agent.key}`)
+      continue
+    }
+
+    await emitProgress(input.run, { type: "comment_posting" })
+    const posted = input.mark
+      ? await postMarkedIssueComment({
+          account: agent.account,
+          body,
+          exec: input.exec,
+          issue: input.issue.number,
+          outputDir: input.outputDir,
+          repository: input.repository,
+        })
+      : await postPlainIssueComment({
+          account: agent.account,
+          body,
+          exec: input.exec,
+          issue: input.issue.number,
+          outputDir: input.outputDir,
+          repository: input.repository,
+        })
+    urls.push(posted.url)
+    await emitProgress(input.run, { type: "comment_posted", url: posted.url })
+  }
+
+  return urls
+}
+
 async function finishWithResult(input: {
+  askOutputs?: VoteRunOutput<string>[]
+  commentReason?: string
   context: string
   input: TriageRunInput
   issue: IssueMeta
+  markAskComments?: boolean
   outputDir: string
   plan?: ActionPlan
   processed?: number[]
   previousMarker?: TriageMarker
   relationship: RelationshipSummary
   result: FinalResult
+  runId: string
 }): Promise<TriageRunResult> {
   const triage = input.input.repository.triage
   if (!triage) throw new Error("triage configuration is required")
@@ -1084,32 +1162,49 @@ async function finishWithResult(input: {
     result: input.result,
     type: "decision",
   })
-  await runActionPrompt({
-    context: input.context,
-    input: input.input,
-    outputDir: input.outputDir,
-    plan,
-    result: input.result,
-  })
 
   let prUrl: string | undefined
-  const comment = plan.postComment
-    ? await composeResultComment({
-        action: plan.action,
-        context: `Result: ${decisionText(input.result)}\nAction: ${plan.action}\n\n${input.context}`,
-        input: input.input,
-        issue: input.issue,
-        outputDir: input.outputDir,
-        processed: input.processed,
-        result: input.result,
-      })
-    : undefined
+  const reporter = triageReporter(input.input.repository, input.issue.number)
+  const comment =
+    plan.postComment && input.result.disposition !== "ask"
+      ? `${decisionCommentBody({
+          action: plan.action,
+          reason: input.commentReason,
+          result: input.result,
+        })}\n\n${marker({
+          action: plan.action,
+          checkpoint: "pending",
+          decision: input.result,
+          issue: input.issue.number,
+          processed: input.processed,
+        })}`
+      : undefined
+
+  if (comment) {
+    await writeFile(join(input.outputDir, "comment.md"), `${comment}\n`)
+  }
+
+  if (input.result.disposition === "ask" && input.askOutputs) {
+    await postAskComments({
+      action: plan.action,
+      dryRun: input.input.dryRun,
+      exec: input.input.exec,
+      issue: input.issue,
+      mark: input.markAskComments ?? false,
+      outputs: input.askOutputs,
+      outputDir: input.outputDir,
+      processed: input.processed,
+      repository: input.input.repository,
+      result: input.result,
+      run: input.input,
+    })
+  }
 
   if (!input.input.dryRun) {
     if (comment) {
       await emitProgress(input.input, { type: "comment_posting" })
       const posted = await postMarkedIssueComment({
-        account: triage.account ?? "",
+        account: reporter.account,
         body: comment,
         exec: input.input.exec,
         issue: input.issue.number,
@@ -1133,7 +1228,7 @@ async function finishWithResult(input: {
           input.input.repository,
           input.issue.number,
           clearLabels,
-          triage.account ?? "",
+          reporter.account,
         )
       }
     }
@@ -1146,7 +1241,7 @@ async function finishWithResult(input: {
           input.input.exec,
           input.input.repository,
           pr.number,
-          triage.account ?? "",
+          reporter.account,
         )
         closedPrs.push(pr.number)
       }
@@ -1156,7 +1251,7 @@ async function finishWithResult(input: {
         input.input.exec,
         input.input.repository,
         input.issue.number,
-        triage.account ?? "",
+        reporter.account,
       )
     }
     if (plan.createPr) {
@@ -1165,6 +1260,7 @@ async function finishWithResult(input: {
         input: input.input,
         issue: input.issue,
         outputDir: input.outputDir,
+        runId: input.runId,
       })
       if (prUrl) {
         await writeJson(join(input.outputDir, "pr.json"), { url: prUrl })
@@ -1173,7 +1269,7 @@ async function finishWithResult(input: {
     }
     if (input.previousMarker && prUrl) {
       await persistProcessedMarker({
-        account: triage.account ?? "",
+        account: input.previousMarker.account ?? reporter.account,
         comments: input.relationship.comments,
         exec: input.input.exec,
         issue: input.issue,
@@ -1242,11 +1338,10 @@ async function createImplementationPr(input: {
   input: TriageRunInput
   issue: IssueMeta
   outputDir: string
+  runId: string
 }): Promise<string | undefined> {
   const creator = input.input.repository.agents.triageCreator
   if (!creator) return undefined
-  const triage = input.input.repository.triage
-  if (!triage?.account) throw new Error("triage.account is required")
   await emitProgress(input.input, { type: "pr_creation_started" })
   await emitProgress(input.input, { type: "triage_creator_started" })
 
@@ -1255,14 +1350,16 @@ async function createImplementationPr(input: {
       input.input.exec,
       input.input.repository,
       input.issue.number,
-      triage.account,
+      creator.account,
     )
 
     const branch = `magi/issue-${input.issue.number}-${Date.now().toString(36)}`
-    const worktreePath = join(
-      worktreeBaseDir(input.input.directory, input.input.config, "issue"),
-      `issue-${input.issue.number}`,
-    )
+    const worktreePath = issueRunWorktreeDir({
+      config: input.input.config,
+      directory: input.input.directory,
+      issue: input.issue.number,
+      runId: input.runId,
+    })
     await mkdir(dirname(worktreePath), { recursive: true })
     await input.input.exec(
       `git worktree add -b ${shellQuote(branch)} ${shellQuote(worktreePath)}`,
@@ -1303,6 +1400,7 @@ async function createImplementationPr(input: {
           }
         },
         options: creator.options,
+        parentSessionId: input.input.parentSessionId,
         parse: parseTriageCreatePrOutput,
         permission: creator.permission,
         prompt,
@@ -1361,7 +1459,7 @@ export async function runTriage(
   input: TriageRunInput,
 ): Promise<TriageRunResult> {
   const triage = input.repository.triage
-  if (!triage?.account) throw new Error("triage.account is required")
+  if (!triage) throw new Error("triage configuration is required")
   const agents = input.repository.agents.triage
   if (!agents?.length) throw new Error("triage.agents is required")
 
@@ -1412,6 +1510,9 @@ export async function runTriage(
   await emitProgress(input, { phase: "triaging", type: "phase" })
   let processed = relationship.previousMarker?.processed ?? []
   let result: FinalResult | undefined
+  let askCommentOutputs: VoteRunOutput<string>[] | undefined
+  let commentReason: string | undefined
+  let markAskComments = false
 
   if (relationship.previousMarker) {
     if (!relationship.mentionReplies.length) {
@@ -1435,6 +1536,7 @@ export async function runTriage(
           processed,
           relationship,
           result,
+          runId,
         })
       }
 
@@ -1466,7 +1568,7 @@ export async function runTriage(
     if (!triggeringComments.length) {
       if (!input.dryRun) {
         await persistProcessedMarker({
-          account: triage.account,
+          account: relationship.previousMarker.account ?? "",
           comments: relationship.comments,
           exec: input.exec,
           issue,
@@ -1492,22 +1594,41 @@ export async function runTriage(
       },
     })
     await writeFile(join(outputDir, "context.md"), `${context}\n`)
-    const vote = await runReconsiderationVote({ context, input, outputDir })
     const previous = finalResultFromMarker(relationship.previousMarker)
-    result =
-      vote === "YES"
-        ? { category: previous.category, disposition: "accepted" }
-        : vote === "NO"
-          ? { category: previous.category, disposition: "rejected" }
-          : {
-              askReason: "acceptance_unclear",
-              category: previous.category,
-              disposition: "ask",
-            }
+    if (
+      previous.disposition !== "ask" ||
+      previous.askReason !== "acceptance_unclear"
+    ) {
+      const reconsideration = await runReconsiderationVote({
+        context,
+        input,
+        outputDir,
+      })
+      const reporter = triageReporter(input.repository, issue.number)
+      commentReason = chooseDecisionReason({
+        outputs: reconsideration.outputs,
+        reporter,
+        vote: reconsideration.vote ?? "ASK",
+      })
+      result =
+        reconsideration.vote === "YES"
+          ? { category: previous.category, disposition: "accepted" }
+          : reconsideration.vote === "NO"
+            ? { category: previous.category, disposition: "rejected" }
+            : {
+                askReason: "acceptance_unclear",
+                category: previous.category,
+                disposition: "ask",
+              }
+      if (result.disposition === "ask") {
+        askCommentOutputs = askOutputs(reconsideration.outputs)
+        markAskComments = true
+      }
+    }
   }
 
   if (!result && relationship.relatedPullRequests.length) {
-    const vote = await runPhaseVote<TriageExistingPrVote>({
+    const existingPr = await runPhaseVote<TriageExistingPrVote>({
       context,
       input,
       outputDir,
@@ -1517,7 +1638,7 @@ export async function runTriage(
       schemaName: "triage existing PR",
       votes: EXISTING_PR_VOTES,
     })
-    if (vote === "RELATED_PR_HANDLES_ISSUE") {
+    if (existingPr.vote === "RELATED_PR_HANDLES_ISSUE") {
       const merged = relationship.relatedPullRequests.some(
         (pr) => pr.state === "MERGED",
       )
@@ -1534,81 +1655,22 @@ export async function runTriage(
           createPr: false,
           postComment: true,
         }
-        await emitProgress(input, {
-          action: plan.action,
-          result: relatedPrDecision,
-          type: "decision",
-        })
-        await runActionPrompt({
+        return finishWithResult({
+          commentReason: chooseDecisionReason({
+            outputs: existingPr.outputs,
+            reporter: triageReporter(input.repository, issue.number),
+            vote: "RELATED_PR_HANDLES_ISSUE",
+          }),
           context,
-          input,
-          outputDir,
-          plan,
-          result: relatedPrDecision,
-        })
-        const body = await composeResultComment({
-          action: "CLOSE",
-          context: `Result: ${decisionText(relatedPrDecision)}\nAction: CLOSE\n\n${context}`,
           input,
           issue,
           outputDir,
+          plan,
           processed,
+          relationship,
           result: relatedPrDecision,
+          runId,
         })
-        if (!input.dryRun) {
-          await emitProgress(input, { type: "comment_posting" })
-          const posted = await postMarkedIssueComment({
-            account: triage.account,
-            body,
-            exec: input.exec,
-            issue: issue.number,
-            outputDir,
-            repository: input.repository,
-          })
-          await emitProgress(input, { type: "comment_posted", url: posted.url })
-          const clearLabels = existingClearLabels(
-            issue,
-            triage.automation.clear,
-          )
-
-          if (clearLabels.length) {
-            await removeIssueLabels(
-              input.exec,
-              input.repository,
-              issue.number,
-              clearLabels,
-              triage.account,
-            )
-          }
-          const closedPrs: number[] = []
-          for (const pr of relationship.relatedPullRequests.filter(
-            (pr) => pr.state === "OPEN",
-          )) {
-            await closePullRequest(
-              input.exec,
-              input.repository,
-              pr.number,
-              triage.account,
-            )
-            closedPrs.push(pr.number)
-          }
-          if (closedPrs.length)
-            await writeJson(join(outputDir, "closed-prs.json"), closedPrs)
-          await closeIssue(
-            input.exec,
-            input.repository,
-            issue.number,
-            triage.account,
-          )
-        }
-        const report = `Magi triage closed #${issue.number} because a related PR was merged.`
-        await writeFile(join(outputDir, "report.md"), `${report}\n`)
-        return {
-          issue: issue.number,
-          outputDir,
-          report,
-          result: relatedPrDecision,
-        }
       }
       return finishWithResult({
         context,
@@ -1618,6 +1680,7 @@ export async function runTriage(
         processed,
         relationship,
         result: { category: null, disposition: "clear_only" },
+        runId,
       })
     }
   }
@@ -1633,6 +1696,7 @@ export async function runTriage(
     })
     if (duplicate) {
       context = `${context}\n\nDuplicate decision: ${JSON.stringify(duplicate)}`
+      commentReason = duplicate.reason
       result = { category: null, disposition: "duplicate" }
     }
   }
@@ -1643,23 +1707,23 @@ export async function runTriage(
       category: resolvedCategory,
       source: resolvedCategory ? "config" : "vote",
     })
-    const category =
-      resolvedCategory ??
-      (await runPhaseVote<TriageCategoryVote>({
-        context,
-        input,
-        outputDir,
-        parse: (text) =>
-          parseTriageCategoryOutput(
-            text,
-            triage.categories.map((item) => item.id),
-          ),
-        phase: "category",
-        prompt: composeTriageCategoryPrompt,
-        schemaName: "triage category",
-        votes: ["ASK", ...triage.categories.map((item) => item.id)],
-      })) ??
-      "ASK"
+    const categoryVote = resolvedCategory
+      ? undefined
+      : await runPhaseVote<TriageCategoryVote>({
+          context,
+          input,
+          outputDir,
+          parse: (text) =>
+            parseTriageCategoryOutput(
+              text,
+              triage.categories.map((item) => item.id),
+            ),
+          phase: "category",
+          prompt: composeTriageCategoryPrompt,
+          schemaName: "triage category",
+          votes: ["ASK", ...triage.categories.map((item) => item.id)],
+        })
+    const category = resolvedCategory ?? categoryVote?.vote ?? "ASK"
 
     if (category === "ASK") {
       result = {
@@ -1667,6 +1731,8 @@ export async function runTriage(
         category: null,
         disposition: "ask",
       }
+      askCommentOutputs = askOutputs(categoryVote?.outputs)
+      markAskComments = false
     } else {
       const categoryConfig = triage.categories.find(
         (item) => item.id === category,
@@ -1679,7 +1745,7 @@ export async function runTriage(
         null,
         2,
       )
-      const vote = await runPhaseVote<TriageBinaryVote>({
+      const acceptance = await runPhaseVote<TriageBinaryVote>({
         context: voteContext,
         input,
         outputDir,
@@ -1689,23 +1755,36 @@ export async function runTriage(
         schemaName: "triage acceptance",
         votes: BINARY_VOTES,
       })
+      const reporter = triageReporter(input.repository, issue.number)
+      commentReason = chooseDecisionReason({
+        outputs: acceptance.outputs,
+        reporter,
+        vote: acceptance.vote ?? "ASK",
+      })
       result =
-        vote === "YES"
+        acceptance.vote === "YES"
           ? { category, disposition: "accepted" }
-          : vote === "NO"
+          : acceptance.vote === "NO"
             ? { category, disposition: "rejected" }
             : {
                 askReason: "acceptance_unclear",
                 category,
                 disposition: "ask",
               }
+      if (result.disposition === "ask") {
+        askCommentOutputs = askOutputs(acceptance.outputs)
+        markAskComments = true
+      }
     }
   }
 
   return finishWithResult({
+    askOutputs: askCommentOutputs,
+    commentReason,
     context,
     input,
     issue,
+    markAskComments,
     outputDir,
     processed,
     relationship,
@@ -1714,5 +1793,6 @@ export async function runTriage(
       category: null,
       disposition: "ask",
     },
+    runId,
   })
 }

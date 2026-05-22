@@ -22,7 +22,6 @@ import {
   repoSpecifier,
   searchDuplicateIssues,
   shellQuote,
-  waitForChecks,
   waitForMergeQueue,
 } from "./commands"
 
@@ -623,6 +622,61 @@ describe("GitHub command helpers", () => {
     expectBalancedBraces(extractGraphqlQuery(graphqlCommand))
   })
 
+  test("normalizes PR review comments from GraphQL review nodes", async () => {
+    const reviews = await fetchPullRequestReviews(
+      async () =>
+        JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                reviews: {
+                  nodes: [
+                    {
+                      author: { login: "bot-a" },
+                      body: "Changes requested: 1 inline comment.",
+                      comments: {
+                        nodes: [
+                          {
+                            body: "**Issue:** Keep finding.\n\n**Fix:** Restore it.",
+                            line: 20,
+                            path: "src/orchestrator/review.ts",
+                            startLine: 18,
+                          },
+                        ],
+                      },
+                      commit: { oid: "head" },
+                      state: "CHANGES_REQUESTED",
+                      submittedAt: "2026-01-01T00:00:00Z",
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        }),
+      repository,
+      7557,
+    )
+
+    expect(reviews).toEqual([
+      {
+        author: { login: "bot-a" },
+        body: "Changes requested: 1 inline comment.",
+        comments: [
+          {
+            body: "**Issue:** Keep finding.\n\n**Fix:** Restore it.",
+            line: 20,
+            path: "src/orchestrator/review.ts",
+            startLine: 18,
+          },
+        ],
+        commit: { oid: "head" },
+        state: "CHANGES_REQUESTED",
+        submittedAt: "2026-01-01T00:00:00Z",
+      },
+    ])
+  })
+
   test("passes configured GitHub host to GraphQL requests", async () => {
     let graphqlCommand = ""
     const enterprise = {
@@ -1138,6 +1192,7 @@ describe("GitHub command helpers", () => {
 describe("createWorktree", () => {
   test("checks out pull requests without binding the head branch", async () => {
     const root = await mkdtemp(join(tmpdir(), "magi-worktrees-"))
+    const worktreePath = join(root, "1", "run-test")
     const commands: string[] = []
 
     try {
@@ -1150,10 +1205,11 @@ describe("createWorktree", () => {
         },
         repository,
         1,
-        root,
+        worktreePath,
       )
 
       expect(result.branch).toBeUndefined()
+      expect(result.path).toBe(worktreePath)
       expect(commands).toContain(
         "gh pr checkout 1 --repo 'owner/repo' --detach",
       )
@@ -1164,6 +1220,8 @@ describe("createWorktree", () => {
 
   test("serializes worktree creation for the same repository root", async () => {
     const root = await mkdtemp(join(tmpdir(), "magi-worktrees-"))
+    const firstWorktreePath = join(root, "1", "run-first")
+    const secondWorktreePath = join(root, "2", "run-second")
     const commands: string[] = []
     let markFirstCheckoutReached!: () => void
     let releaseFirstCheckout!: () => void
@@ -1189,7 +1247,7 @@ describe("createWorktree", () => {
         },
         repository,
         1,
-        root,
+        firstWorktreePath,
       )
 
       await firstCheckoutReached
@@ -1203,21 +1261,23 @@ describe("createWorktree", () => {
         },
         repository,
         2,
-        root,
+        secondWorktreePath,
       )
 
       await Promise.resolve()
 
-      expect(commands.some((command) => command.includes("pr-2"))).toBe(false)
+      expect(commands.some((command) => command.includes("run-second"))).toBe(
+        false,
+      )
 
       releaseFirstCheckout()
       await Promise.all([first, second])
 
       expect(
-        commands.filter((command) => command.includes("pr-1")),
+        commands.filter((command) => command.includes("run-first")),
       ).not.toHaveLength(0)
       expect(
-        commands.filter((command) => command.includes("pr-2")),
+        commands.filter((command) => command.includes("run-second")),
       ).not.toHaveLength(0)
     } finally {
       await removePath(root, { force: true, recursive: true })
@@ -1226,6 +1286,7 @@ describe("createWorktree", () => {
 
   test("retries checkout when git config is locked", async () => {
     const root = await mkdtemp(join(tmpdir(), "magi-worktrees-"))
+    const worktreePath = join(root, "1", "run-test")
     let checkoutAttempts = 0
 
     try {
@@ -1245,7 +1306,7 @@ describe("createWorktree", () => {
         },
         repository,
         1,
-        root,
+        worktreePath,
       )
 
       expect(checkoutAttempts).toBe(2)
@@ -1257,7 +1318,7 @@ describe("createWorktree", () => {
   test("removes a partially created worktree after checkout failure", async () => {
     const root = await mkdtemp(join(tmpdir(), "magi-worktrees-"))
     const commands: string[] = []
-    const worktreePath = join(root, "pr-1")
+    const worktreePath = join(root, "1", "run-test")
 
     try {
       await expect(
@@ -1272,7 +1333,7 @@ describe("createWorktree", () => {
           },
           repository,
           1,
-          root,
+          worktreePath,
         ),
       ).rejects.toThrow("checkout failed")
 
@@ -1283,57 +1344,5 @@ describe("createWorktree", () => {
     } finally {
       await removePath(root, { force: true, recursive: true })
     }
-  })
-})
-
-describe("waitForChecks", () => {
-  test("returns an empty report when checks pass", async () => {
-    const commands: string[] = []
-    const result = await waitForChecks(
-      async (command) => {
-        commands.push(command)
-        return ""
-      },
-      repository,
-      1,
-    )
-
-    expect(result).toEqual({
-      attempts: 0,
-      excluded: [],
-      failed: [],
-      rerun: [],
-      scopeInside: [],
-      scopeOutsideRecovered: [],
-      scopeOutsideUnresolved: [],
-    })
-    expect(commands).toHaveLength(1)
-    expect(commands[0]).toContain("gh pr checks 1")
-  })
-
-  test("returns failed checks without classifying or rerunning", async () => {
-    const failed = [
-      {
-        bucket: "fail",
-        link: "https://github.com/owner/repo/actions/runs/1/job/123",
-        name: "Test",
-        state: "FAILURE",
-        workflow: "CI",
-      },
-    ]
-
-    const result = await waitForChecks(
-      async (command) => {
-        if (command.includes("--watch")) throw new Error("checks failed")
-        if (command.includes("--json")) return JSON.stringify(failed)
-
-        return ""
-      },
-      repository,
-      1,
-    )
-
-    expect(result?.failed).toEqual(failed)
-    expect(result?.rerun).toEqual([])
   })
 })

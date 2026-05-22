@@ -473,7 +473,6 @@ describe("prompt composer", () => {
       prompts: {},
       safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
       triage: {
-        account: "magi-bot",
         automation: {
           clear: ["triage"],
           close: false,
