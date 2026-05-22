@@ -155,6 +155,7 @@ type ReviewerAssignment =
   | { review: PullRequestReview; type: "skip" }
 
 type ReviewEntry = {
+  inlineCommentTargets: InlineCommentTargets
   key: string
   raw: string
   sessionId: string
@@ -378,6 +379,20 @@ function parseRereviewOutputWithInlineTargets(
   validateInlineCommentTargets(output.newFindings, targets, "newFindings")
 
   return output
+}
+
+export async function inlineCommentTargetsForDiff(input: {
+  exec: Exec
+  fromSha: string
+  toSha: string
+  worktreePath: string
+}): Promise<InlineCommentTargets> {
+  return parseRightSideDiffTargets(
+    await input.exec(
+      `git diff --no-ext-diff --unified=3 ${shellQuote(input.fromSha)}...${shellQuote(input.toSha)}`,
+      { cwd: input.worktreePath },
+    ),
+  )
 }
 
 function parsePostedFindingLocation(
@@ -764,7 +779,6 @@ async function runFindingValidation(input: {
 
 async function runCloseReconsideration(input: {
   entries: ReviewEntry[]
-  inlineCommentTargets: InlineCommentTargets
   meta: { baseRefOid: string; headRefOid: string }
   outputDir: string
   reviewContext: string
@@ -853,7 +867,7 @@ async function runCloseReconsideration(input: {
 
               validateInlineCommentTargets(
                 output.findings,
-                input.inlineCommentTargets,
+                entry.inlineCommentTargets,
               )
 
               return output
@@ -900,6 +914,7 @@ async function runCloseReconsideration(input: {
       input.sessionIds[reviewer.key] = result.sessionId
 
       return {
+        inlineCommentTargets: entry.inlineCommentTargets,
         key: entry.key,
         raw: result.raw,
         sessionId: result.sessionId,
@@ -1138,12 +1153,12 @@ export async function runReview(
         return [{ assignment, reviewer }]
       },
     )
-    const inlineCommentTargets = parseRightSideDiffTargets(
-      await exec(
-        `git diff --no-ext-diff --unified=3 ${shellQuote(meta.baseRefOid)} ${shellQuote(meta.headRefOid)}`,
-        { cwd: worktreePath },
-      ),
-    )
+    const initialInlineCommentTargets = await inlineCommentTargetsForDiff({
+      exec,
+      fromSha: meta.baseRefOid,
+      toSha: meta.headRefOid,
+      worktreePath,
+    })
     for (const reviewer of input.repository.agents.reviewers) {
       const assignment = mode.assignments.get(reviewer.account)
       if (assignment?.type !== "skip") continue
@@ -1170,6 +1185,13 @@ export async function runReview(
             throw new Error(
               `Missing previous review commit for ${reviewer.account}`,
             )
+
+          const inlineCommentTargets = await inlineCommentTargetsForDiff({
+            exec,
+            fromSha: previous.commit.oid,
+            toSha: meta.headRefOid,
+            worktreePath,
+          })
 
           const unresolved =
             unresolvedThreadsByAccount.get(reviewer.account) ??
@@ -1259,6 +1281,7 @@ export async function runReview(
           })
 
           return {
+            inlineCommentTargets,
             key: reviewer.key,
             raw: result.raw,
             sessionId: result.sessionId,
@@ -1310,7 +1333,10 @@ export async function runReview(
               options: reviewer.options,
               parentSessionId: input.parentSessionId,
               parse: (text) =>
-                parseReviewOutputWithInlineTargets(text, inlineCommentTargets),
+                parseReviewOutputWithInlineTargets(
+                  text,
+                  initialInlineCommentTargets,
+                ),
               permission: reviewer.permission,
               prompt,
               repairAttempts: input.config.output?.repairAttempts ?? 3,
@@ -1340,6 +1366,7 @@ export async function runReview(
         })
 
         return {
+          inlineCommentTargets: initialInlineCommentTargets,
           key: reviewer.key,
           raw: result.raw,
           sessionId: result.sessionId,
@@ -1385,6 +1412,7 @@ export async function runReview(
         return [
           {
             key: reviewer.key,
+            inlineCommentTargets: initialInlineCommentTargets,
             raw: assignment.review.body ?? "",
             sessionId: "",
             value: reviewOutputFromState(assignment.review),
@@ -1394,7 +1422,6 @@ export async function runReview(
     )
     entries = await runCloseReconsideration({
       entries: [...entries, ...skippedCloseEntries],
-      inlineCommentTargets,
       meta,
       outputDir,
       reviewContext,
