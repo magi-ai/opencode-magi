@@ -1,13 +1,57 @@
 import type { PullRequestReview } from "../github/commands"
+import type { Exec, MagiConfig, ResolvedRepository } from "../types"
+import type { ModelClient } from "./model"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { describe, expect, test } from "vitest"
 import {
   hasPendingThreadReply,
+  runReview,
   reviewOutputFromState,
   resolveReviewMode,
   reviewFreshnessTarget,
 } from "./review"
 
 const accounts = ["bot-a", "bot-b", "bot-c"]
+
+const repository: ResolvedRepository = {
+  agents: {
+    reviewers: accounts.map((account, index) => ({
+      account,
+      index,
+      key: `reviewer-${index + 1}`,
+      model: "provider/model",
+      permission: { read: "allow" },
+      persona: `Reviewer ${index + 1}`,
+    })),
+  },
+  alias: "repo",
+  automation: { close: true, merge: true },
+  checks: {
+    exclude: [],
+    retryFailedJobs: 0,
+    waitAfterEdit: false,
+    waitBeforeReview: false,
+  },
+  concurrency: { runs: 1, reviewers: 1 },
+  github: {
+    apiRetryAttempts: 3,
+    host: "github.com",
+    owner: "owner",
+    repo: "repo",
+  },
+  merge: {
+    approvalPolicy: "majority",
+    auto: false,
+    deleteBranch: false,
+    maxThreadResolutionCycles: 1,
+    mergeQueue: false,
+    method: "squash",
+  },
+  prompts: {},
+  safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
+}
 
 function review(account: string, commit: string, submittedAt: string) {
   return {
@@ -16,6 +60,124 @@ function review(account: string, commit: string, submittedAt: string) {
     state: "APPROVED",
     submittedAt,
   } satisfies PullRequestReview
+}
+
+function graphqlResponse(value: unknown): string {
+  return JSON.stringify({ data: { repository: { pullRequest: value } } })
+}
+
+function fakeExec(commands: string[]): Exec {
+  return async (command) => {
+    commands.push(command)
+
+    if (command.startsWith("gh pr view ")) {
+      return JSON.stringify({
+        author: { login: "author" },
+        baseRefName: "main",
+        baseRefOid: "base",
+        body: "Review this PR.",
+        changedFiles: 1,
+        headRefName: "feature",
+        headRefOid: "head",
+        isDraft: false,
+        number: 1,
+        state: "OPEN",
+        title: "Feature",
+        url: "https://github.com/owner/repo/pull/1",
+      })
+    }
+
+    if (command.includes("reviews(first: 100)")) {
+      return graphqlResponse({
+        reviews: {
+          nodes: [
+            {
+              author: { login: "bot-a" },
+              body: "Previous review.",
+              commit: { oid: "old" },
+              state: "APPROVED",
+              submittedAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+        },
+      })
+    }
+
+    if (command.includes("commits(first: 100)")) {
+      return graphqlResponse({
+        commits: {
+          nodes: [
+            {
+              commit: {
+                committedDate: "2026-01-02T00:00:00Z",
+                oid: "head",
+                parents: { totalCount: 1 },
+              },
+            },
+          ],
+        },
+      })
+    }
+
+    if (command.includes("comments(last:")) {
+      return graphqlResponse({ comments: { nodes: [], totalCount: 0 } })
+    }
+
+    if (command.includes("reviewThreads(last:")) {
+      return graphqlResponse({ reviewThreads: { nodes: [], totalCount: 0 } })
+    }
+
+    if (command.includes("reviewThreads(first:")) {
+      return graphqlResponse({ reviewThreads: { nodes: [] } })
+    }
+
+    if (command.includes("changedFiles labels")) {
+      return graphqlResponse({
+        author: { login: "author" },
+        changedFiles: 1,
+        files: {
+          nodes: [{ path: "src/app.ts" }],
+          pageInfo: { hasNextPage: false },
+        },
+        labels: { nodes: [] },
+      })
+    }
+
+    if (command.includes("closingIssuesReferences")) {
+      return graphqlResponse({ closingIssuesReferences: { nodes: [] } })
+    }
+
+    if (command.startsWith("gh pr checks ")) return "[]"
+    if (command.startsWith("git worktree add ")) return ""
+    if (command.startsWith("gh pr checkout ")) return ""
+    if (command === "git branch --show-current") return "feature"
+    if (command.startsWith("git diff ")) return ""
+
+    throw new Error(`Unexpected command: ${command}`)
+  }
+}
+
+function fakeClient(outputs: string[], prompts: string[]): ModelClient {
+  let session = 0
+
+  return {
+    session: {
+      async create() {
+        session += 1
+        return { id: `session-${session}` }
+      },
+      async prompt(input) {
+        const parts = input.body.parts as { text?: string }[] | undefined
+
+        prompts.push(String(parts?.[0]?.text ?? ""))
+        const text = outputs.shift()
+
+        if (!text) throw new Error("No model output queued")
+
+        return { info: { text } }
+      },
+    },
+  }
 }
 
 function expectActiveAssignments(
@@ -239,5 +401,57 @@ describe("review flow", () => {
         "bot-a",
       ),
     ).toBe(false)
+  })
+
+  test("reconsiders minority close verdicts from rereview outputs", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-review-test-"))
+    const commands: string[] = []
+    const prompts: string[] = []
+    const outputs = [
+      JSON.stringify({
+        followUps: [],
+        newFindings: [],
+        reason: "stale review should close",
+        resolve: [],
+        verdict: "CLOSE",
+      }),
+      JSON.stringify({ findings: [], verdict: "MERGE" }),
+      JSON.stringify({ findings: [], verdict: "MERGE" }),
+      JSON.stringify({
+        followUps: [],
+        newFindings: [],
+        resolve: [],
+        verdict: "MERGE",
+      }),
+    ]
+
+    try {
+      const result = await runReview({
+        client: fakeClient(outputs, prompts),
+        config: {
+          review: { output: "runs", worktree: "worktrees" },
+        } satisfies MagiConfig,
+        directory,
+        dryRun: true,
+        exec: fakeExec(commands),
+        pr: 1,
+        repository,
+      })
+
+      expect(result.outputs["reviewer-1"]).toMatchObject({
+        followUps: [],
+        newFindings: [],
+        resolve: [],
+        verdict: "MERGE",
+      })
+      expect(result.verdict).toBe("MERGE")
+      expect(
+        prompts.find((prompt) =>
+          prompt.includes("CLOSE is not allowed in this reconsideration step"),
+        ),
+      ).toContain('"newFindings"')
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
   })
 })

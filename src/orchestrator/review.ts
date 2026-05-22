@@ -32,6 +32,7 @@ import {
 import {
   composeFindingValidationPrompt,
   composeCloseReconsiderationPrompt,
+  composeRereviewCloseReconsiderationPrompt,
   composeRereviewPrompt,
   composeReviewPrompt,
 } from "../prompts/compose"
@@ -40,6 +41,7 @@ import { worktreeBaseDir } from "../config/worktree"
 import {
   parseCloseReconsiderationOutput,
   parseFindingValidationOutput,
+  parseRereviewCloseReconsiderationOutput,
   parseRereviewOutput,
   parseReviewOutput,
 } from "../prompts/output"
@@ -155,6 +157,7 @@ type ReviewerAssignment =
 
 type ReviewEntry = {
   key: string
+  previousHeadSha?: string
   raw: string
   sessionId: string
   value: RereviewOutput | ReviewOutput
@@ -748,7 +751,7 @@ async function runCloseReconsideration(input: {
 
   return Promise.all(
     input.entries.map(async (entry) => {
-      if (!targets.includes(entry.key) || !isReviewOutput(entry.value)) {
+      if (!targets.includes(entry.key)) {
         return entry
       }
 
@@ -759,20 +762,45 @@ async function runCloseReconsideration(input: {
       if (!reviewer) return entry
 
       const hasReviewerSession = Boolean(input.sessionIds[reviewer.key])
-      const prompt = await composeCloseReconsiderationPrompt({
-        baseSha: input.meta.baseRefOid,
-        ciFailureContext: undefined,
-        closeReason: entry.value.reason,
-        directory: input.reviewInput.directory,
-        headSha: input.meta.headRefOid,
-        includeReviewGuidelines: !hasReviewerSession,
-        includeSessionContext: !hasReviewerSession,
-        pr: input.reviewInput.pr,
-        repository: input.reviewInput.repository,
-        reviewContext: input.reviewContext,
-        reviewer,
-        worktreePath: input.worktreePath,
-      })
+      const isReviewEntry = isReviewOutput(entry.value)
+      let prompt: string
+
+      if (isReviewEntry) {
+        prompt = await composeCloseReconsiderationPrompt({
+          baseSha: input.meta.baseRefOid,
+          ciFailureContext: undefined,
+          closeReason: entry.value.reason,
+          directory: input.reviewInput.directory,
+          headSha: input.meta.headRefOid,
+          includeReviewGuidelines: !hasReviewerSession,
+          includeSessionContext: !hasReviewerSession,
+          pr: input.reviewInput.pr,
+          repository: input.reviewInput.repository,
+          reviewContext: input.reviewContext,
+          reviewer,
+          worktreePath: input.worktreePath,
+        })
+      } else {
+        if (!entry.previousHeadSha) {
+          throw new Error(
+            `Missing previous review commit for ${reviewer.account}`,
+          )
+        }
+
+        prompt = await composeRereviewCloseReconsiderationPrompt({
+          baseSha: input.meta.baseRefOid,
+          closeReason: entry.value.reason,
+          directory: input.reviewInput.directory,
+          headSha: input.meta.headRefOid,
+          includeReviewGuidelines: !hasReviewerSession,
+          includeSessionContext: !hasReviewerSession,
+          pr: input.reviewInput.pr,
+          previousHeadSha: entry.previousHeadSha,
+          repository: input.reviewInput.repository,
+          reviewer,
+          worktreePath: input.worktreePath,
+        })
+      }
       const result = await withReviewerFailureProgress({
         onProgress: input.reviewInput.onProgress,
         reviewer: reviewer.key,
@@ -805,11 +833,16 @@ async function runCloseReconsideration(input: {
             },
             options: reviewer.options,
             parse: (text) => {
-              const output = parseCloseReconsiderationOutput(text)
+              const output = isReviewEntry
+                ? parseCloseReconsiderationOutput(text)
+                : parseRereviewCloseReconsiderationOutput(text)
+              const findings =
+                "newFindings" in output ? output.newFindings : output.findings
 
               validateInlineCommentTargets(
-                output.findings,
+                findings,
                 input.inlineCommentTargets,
+                "newFindings" in output ? "newFindings" : "findings",
               )
 
               return output
@@ -857,6 +890,7 @@ async function runCloseReconsideration(input: {
 
       return {
         key: entry.key,
+        previousHeadSha: entry.previousHeadSha,
         raw: result.raw,
         sessionId: result.sessionId,
         value: result.value,
@@ -1214,6 +1248,7 @@ export async function runReview(
 
           return {
             key: reviewer.key,
+            previousHeadSha: previous.commit.oid,
             raw: result.raw,
             sessionId: result.sessionId,
             value: result.value,
