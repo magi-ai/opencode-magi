@@ -1163,7 +1163,7 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
         threads: unresolvedThreads,
       })
       const editorFindings = blockingReviewFindings(reportOutputs)
-      const editableFindings = editableThreads.length ? editorFindings : []
+      const editableFindings = editorFindings
       const findingAttemptsExhausted =
         input.repository.merge.maxThreadResolutionCycles !== 0 &&
         cycle > input.repository.merge.maxThreadResolutionCycles
