@@ -64,6 +64,11 @@ describe("MagiRunManager notifications", () => {
         },
       },
       session: {
+        abort: async (input) => {
+          actions.push({ input, type: "session.abort" })
+
+          return true
+        },
         create: async () => ({ id: "session" }),
         delete: async (input) => {
           actions.push({ input, type: "session.delete" })
@@ -506,6 +511,99 @@ describe("MagiRunManager notifications", () => {
 
       expect(state.status).toBe("failed")
       expect(state.error).toBe("Magi sync run timed out after 0.001 seconds.")
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test("fails and aborts active review child sessions on synchronous timeout", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-sync-review-timeout-"))
+    const { actions, manager } = managerWithPromptCapture(directory)
+    const privateManager = manager as unknown as {
+      active: Map<string, MagiRunState>
+    }
+
+    runReviewMock.mockImplementationOnce((input) => {
+      const state = privateManager.active.get(input.runId)
+      state!.reviewers.security!.sessionId = "review-session"
+      state!.reviewers.security!.status = "running"
+
+      return new Promise(() => undefined)
+    })
+
+    try {
+      const statePromise = manager.startReview({
+        config: { github: { owner: "owner", repo: "repo" } },
+        pr: 7557,
+        repository: sampleRepository(),
+        sync: true,
+        timeoutMs: 1000,
+      })
+      await vi.waitFor(() => expect(runReviewMock).toHaveBeenCalledTimes(1))
+      const state = await statePromise
+
+      expect(state.status).toBe("failed")
+      expect(state.reviewers.security).toMatchObject({
+        error: "Magi sync run timed out after 1 seconds.",
+        status: "failed",
+      })
+      expect(actions).toContainEqual({
+        input: { path: { id: "review-session" } },
+        type: "session.abort",
+      })
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test("fails and aborts active triage creator sessions on synchronous timeout", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-sync-triage-timeout-"))
+    const { actions, manager } = managerWithPromptCapture(directory)
+    const repository = sampleTriageRepository({
+      clear: ["triage"],
+      close: false,
+      create: true,
+      merge: false,
+      review: false,
+    })
+    repository.agents.triageCreator = {
+      account: "creator-bot",
+      author: { email: "creator@example.com", name: "Creator Bot" },
+      model: "mock/model",
+      permission: "deny",
+    }
+    const privateManager = manager as unknown as {
+      active: Map<string, MagiRunState>
+    }
+
+    runTriageMock.mockImplementationOnce((input) => {
+      const state = privateManager.active.get(input.runId)
+      state!.triageCreator!.sessionId = "creator-session"
+      state!.triageCreator!.status = "running"
+
+      return new Promise(() => undefined)
+    })
+
+    try {
+      const statePromise = manager.startTriage({
+        config: { github: { owner: "owner", repo: "repo" } },
+        issue: 115,
+        repository,
+        sync: true,
+        timeoutMs: 1000,
+      })
+      await vi.waitFor(() => expect(runTriageMock).toHaveBeenCalledTimes(1))
+      const state = await statePromise
+
+      expect(state.status).toBe("failed")
+      expect(state.triageCreator).toMatchObject({
+        error: "Magi sync run timed out after 1 seconds.",
+        status: "failed",
+      })
+      expect(actions).toContainEqual({
+        input: { path: { id: "creator-session" } },
+        type: "session.abort",
+      })
     } finally {
       await rm(directory, { force: true, recursive: true })
     }

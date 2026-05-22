@@ -199,17 +199,27 @@ export async function promptModelText(input: {
 }): Promise<string> {
   throwIfAborted(input.signal)
 
-  const result = await input.client.session.prompt({
-    body: {
-      model: modelBody(input.model),
-      parts: [{ type: "text", text: input.prompt }],
-    },
-    path: { id: input.sessionId },
-  })
+  const abort = () => {
+    void input.client.session
+      .abort?.({ path: { id: input.sessionId } })
+      .catch(() => undefined)
+  }
+  input.signal?.addEventListener("abort", abort, { once: true })
+  try {
+    const result = await input.client.session.prompt({
+      body: {
+        model: modelBody(input.model),
+        parts: [{ type: "text", text: input.prompt }],
+      },
+      path: { id: input.sessionId },
+    })
 
-  throwIfAborted(input.signal)
+    throwIfAborted(input.signal)
 
-  return extractText(result, input.allowEmpty)
+    return extractText(result, input.allowEmpty)
+  } finally {
+    input.signal?.removeEventListener("abort", abort)
+  }
 }
 
 async function sendPrompt(
