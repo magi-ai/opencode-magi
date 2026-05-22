@@ -171,12 +171,17 @@ export interface ClassifiedCheck {
   reason: string
 }
 
+export interface CiClassifierCheck {
+  classification: "SCOPE_IN" | "SCOPE_OUT"
+  name: string
+  reason: string
+}
+
 export interface CiClassifierRun {
-  classification?: "SCOPE_IN" | "SCOPE_OUT"
+  checks?: CiClassifierCheck[]
   error?: string
   promptPath?: string
   rawPath?: string
-  reason?: string
   repairAttempts: number
   reviewer: string
   sessionId?: string

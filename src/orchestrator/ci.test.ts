@@ -64,8 +64,13 @@ function check(
 }
 
 function classifierClient(input: {
-  classification: "SCOPE_IN" | "SCOPE_OUT"
-  reason: string
+  checks?: {
+    classification: "SCOPE_IN" | "SCOPE_OUT"
+    name: string
+    reason: string
+  }[]
+  classification?: "SCOPE_IN" | "SCOPE_OUT"
+  reason?: string
 }) {
   return {
     session: {
@@ -73,7 +78,7 @@ function classifierClient(input: {
       prompt: async () => ({
         info: {
           text: JSON.stringify({
-            checks: [
+            checks: input.checks ?? [
               {
                 classification: input.classification,
                 name: "Test",
@@ -339,6 +344,90 @@ describe("check handling", () => {
     expect(result?.ciFailureContext).toContain("Type error")
     expect(result?.ciFailureContext).toContain("Classifier reason")
     expect(commands.some((command) => command.includes("--watch"))).toBe(false)
+  })
+
+  test("records every check returned by a classifier run", async () => {
+    const failed = [
+      check({
+        link: "https://github.com/owner/repo/actions/runs/1/job/123",
+        name: "Unit Tests",
+      }),
+      check({
+        link: "https://github.com/owner/repo/actions/runs/1/job/456",
+        name: "Browser Tests",
+      }),
+    ]
+    const progress: unknown[] = []
+
+    const result = await waitForChecksWithClassification({
+      client: classifierClient({
+        checks: [
+          {
+            classification: "SCOPE_IN",
+            name: "Unit Tests",
+            reason: "Type error in changed code.",
+          },
+          {
+            classification: "SCOPE_OUT",
+            name: "Browser Tests",
+            reason: "Unrelated flaky browser timeout.",
+          },
+        ],
+      }),
+      directory: ".",
+      exec: async (command) => {
+        if (command.includes("--watch")) throw new Error("checks failed")
+        if (command.includes("--json")) return JSON.stringify(failed)
+        if (command.includes("--log-failed")) return "failure log"
+
+        return ""
+      },
+      onClassifierProgress: (event) => {
+        progress.push(event)
+      },
+      pr: 1,
+      repairAttempts: 0,
+      repository: {
+        ...repository,
+        checks: { ...repository.checks, retryFailedJobs: 0 },
+        agents: { reviewers: [reviewer()] },
+      },
+      wait: false,
+    })
+
+    expect(result?.report.classifierRuns).toMatchObject([
+      {
+        checks: [
+          {
+            classification: "SCOPE_IN",
+            name: "Unit Tests",
+            reason: "Type error in changed code.",
+          },
+          {
+            classification: "SCOPE_OUT",
+            name: "Browser Tests",
+            reason: "Unrelated flaky browser timeout.",
+          },
+        ],
+      },
+    ])
+    expect(progress).toContainEqual(
+      expect.objectContaining({
+        checks: [
+          {
+            classification: "SCOPE_IN",
+            name: "Unit Tests",
+            reason: "Type error in changed code.",
+          },
+          {
+            classification: "SCOPE_OUT",
+            name: "Browser Tests",
+            reason: "Unrelated flaky browser timeout.",
+          },
+        ],
+        type: "classifier_completed",
+      }),
+    )
   })
 
   test("waits for checks from the target head instead of trusting old checks", async () => {
@@ -771,7 +860,13 @@ describe("check handling", () => {
     ])
     expect(result?.report.classifierRuns).toMatchObject([
       {
-        classification: "SCOPE_OUT",
+        checks: [
+          {
+            classification: "SCOPE_OUT",
+            name: "Test",
+            reason: "Transient browser timeout.",
+          },
+        ],
         reviewer: "a",
         sessionId: "session-2",
         status: "completed",

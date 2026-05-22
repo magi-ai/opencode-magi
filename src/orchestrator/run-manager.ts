@@ -24,6 +24,7 @@ import { worktreeBaseDirs } from "../config/worktree"
 import {
   removeBranch,
   removeWorktree,
+  type CiClassifierCheck,
   type CheckWaitReport,
 } from "../github/commands"
 import { withGitHubApiRetry } from "../github/retry"
@@ -87,9 +88,8 @@ export interface MagiRunState {
   ciClassifiers?: Record<
     string,
     MagiRunAgentState & {
-      classification?: string
+      checks?: CiClassifierCheck[]
       promptPath?: string
-      reason?: string
     }
   >
   completedAt?: string
@@ -340,6 +340,18 @@ function ciReportText(input: { pr: string; report: CheckWaitReport }): string {
   const scopeInside = input.report.scopeInside.length
 
   return `CI report for ${input.pr}: ${failed} failed, ${scopeInside} scope-in, ${rerun} rerun, ${recovered} recovered, ${unresolved} unresolved.`
+}
+
+function ciClassifierCompletedText(input: {
+  checks: CiClassifierCheck[]
+  pr: string
+  reviewer: string
+}): string {
+  const summary = input.checks
+    .map((check) => `${check.name}: ${check.classification} - ${check.reason}`)
+    .join("; ")
+
+  return `**CI classifier ${input.reviewer}** completed for ${input.pr}: ${summary}`
 }
 
 function closeReconsiderationText(input: {
@@ -2467,9 +2479,8 @@ export class MagiRunManager {
     if (progress.type === "ci_classifier_completed") {
       const classifier = state.ciClassifiers?.[progress.reviewer]
       if (classifier) {
-        classifier.classification = progress.classification
+        classifier.checks = progress.checks
         classifier.rawPath = progress.rawPath
-        classifier.reason = progress.reason
         classifier.sessionId = progress.sessionId
         classifier.status = "completed"
         classifier.lastUpdate = now()
@@ -2607,7 +2618,11 @@ export class MagiRunManager {
     if (progress.type === "ci_classifier_completed") {
       await this.notify(
         state,
-        `**CI classifier ${progress.reviewer}** completed for ${prMarkdownLink(state)}: ${progress.classification} - ${progress.reason}`,
+        ciClassifierCompletedText({
+          checks: progress.checks,
+          pr: prMarkdownLink(state),
+          reviewer: progress.reviewer,
+        }),
       )
     }
 
