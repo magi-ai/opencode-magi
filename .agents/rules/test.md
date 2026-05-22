@@ -7,6 +7,7 @@ Use targeted automated tests to protect changed behavior. Keep tests determinist
 - Add or update unit tests when changing config validation, config resolution, majority logic, prompt composition, model output parsing, report formatting, or small pure helpers.
 - Add or update integration or flow tests when changing orchestration across modules, command sequencing, retry behavior, safety gates, run state, review flow, merge flow, triage flow, or CI handling.
 - Add or update scenario tests when a user-visible command or long-running workflow changes across multiple decisions, such as issue triage, PR review, merge orchestration, CI reruns, or thread resolution.
+- Name scenario tests as `scenario: /magi:<command>` and keep command-flow fixtures explicit in the test file.
 - Prefer updating an existing nearby test file before adding a new one.
 
 ## Test Placement
@@ -21,6 +22,7 @@ Use targeted automated tests to protect changed behavior. Keep tests determinist
 - Mock GitHub command execution by injecting fake exec functions, returning deterministic stdout or errors, and recording commands for assertions.
 - Mock `gh auth token`, `gh api`, `gh pr`, `gh issue`, `gh run`, and other CLI responses instead of shelling out to the real GitHub CLI.
 - Mock model responses with exact text or structured output needed by the flow. Include malformed output and repair cases when changing output parsing or retry logic.
+- Limit manual or live validation to provider behavior that cannot be faithfully unit-tested, such as authentication setup, organization permission differences, branch protection or merge queue policy enforcement, real workflow latency, review-thread side effects, and OpenCode model/session availability.
 
 ## Verification Commands
 
