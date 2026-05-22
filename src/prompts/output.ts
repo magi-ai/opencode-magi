@@ -143,10 +143,15 @@ function parseTriageVote<T extends string>(
   const data = extractJson(text) as Record<string, unknown>
   if (!data || typeof data !== "object")
     throw new Error("triage vote output must be an object")
+  const vote = requireOneOf(data.vote, "vote", votes)
+  const body = data.body == null ? undefined : requireString(data.body, "body")
+
+  if (vote === "ASK" && !body?.trim()) throw new Error("ASK requires body")
 
   return {
+    body,
     reason: requireString(data.reason, "reason"),
-    vote: requireOneOf(data.vote, "vote", votes),
+    vote,
   }
 }
 

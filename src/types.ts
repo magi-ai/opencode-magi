@@ -42,6 +42,7 @@ export interface EditorConfig {
 }
 
 export interface TriageAgentConfig {
+  account: string
   id?: string
   model: string
   options?: ModelOptions
@@ -221,7 +222,6 @@ export interface TriageSafetyConfig {
 }
 
 export interface TriageConfig {
-  account?: string
   agents?: TriageAgentConfig[]
   automation?: TriageAutomationConfig
   categories?: TriageCategoryConfig[]
@@ -229,6 +229,7 @@ export interface TriageConfig {
   creator?: TriageCreatorConfig
   output?: string
   prompts?: TriagePromptConfig
+  reporter?: string
   safety?: TriageSafetyConfig
   worktree?: string
 }
@@ -318,12 +319,12 @@ export interface ResolvedRepository extends RepositoryConfig {
     maxChangedFiles?: number
   }
   triage?: {
-    account?: string
     automation: Required<TriageAutomationConfig>
     categories: ResolvedTriageCategory[]
     concurrency: Required<TriageConcurrencyConfig>
     output?: string
     prompts: TriagePromptConfig
+    reporter?: string
     safety: Required<TriageSafetyConfig>
     worktree?: string
   }
@@ -409,6 +410,7 @@ export interface TriageDecision {
 }
 
 export interface TriageVoteOutput<T extends string = string> {
+  body?: string
   reason: string
   vote: T
 }

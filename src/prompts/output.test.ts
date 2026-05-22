@@ -354,11 +354,17 @@ describe("triage output parsing", () => {
       vote: "bug",
     })
     expect(
-      parseTriageBinaryOutput('{"vote":"ASK","reason":"missing"}'),
+      parseTriageBinaryOutput(
+        '{"vote":"ASK","reason":"missing","body":"Please clarify."}',
+      ),
     ).toEqual({
+      body: "Please clarify.",
       reason: "missing",
       vote: "ASK",
     })
+    expect(() =>
+      parseTriageBinaryOutput('{"vote":"ASK","reason":"missing"}'),
+    ).toThrow("ASK requires body")
   })
 
   test("requires duplicate target for duplicate vote", () => {

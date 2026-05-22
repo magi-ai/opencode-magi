@@ -62,7 +62,7 @@ describe("resolveRepository", () => {
   test("resolves default triage categories", () => {
     const repo = resolveRepository({
       github: { owner: "owner", repo: "repo" },
-      triage: { account: "magi-bot", agents: [] },
+      triage: { agents: [] },
     })
 
     expect(repo.triage?.categories).toEqual([
@@ -98,7 +98,6 @@ describe("resolveRepository", () => {
     const repo = resolveRepository({
       github: { owner: "owner", repo: "repo" },
       triage: {
-        account: "magi-bot",
         agents: [],
         automation: { create: true, merge: true, review: true },
       },
@@ -115,7 +114,6 @@ describe("resolveRepository", () => {
     const repo = resolveRepository({
       github: { owner: "owner", repo: "repo" },
       triage: {
-        account: "magi-bot",
         agents: [],
         categories: [{ id: "question" }],
       },

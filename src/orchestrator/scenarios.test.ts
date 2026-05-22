@@ -684,7 +684,6 @@ function triageRepository(
 ): ResolvedRepository {
   const { automation, safety, ...rest } = overrides
   const triage = {
-    account: "magi-bot",
     categories: [
       {
         description: "Something is broken or behaves incorrectly.",
@@ -732,6 +731,7 @@ function triageRepository(
       ...repository.agents,
       triage: [
         {
+          account: "melchior-bot",
           id: "Melchior",
           index: 0,
           key: "Melchior",
@@ -739,6 +739,7 @@ function triageRepository(
           permission: "deny",
         },
         {
+          account: "balthasar-bot",
           id: "Balthasar",
           index: 1,
           key: "Balthasar",
@@ -746,6 +747,7 @@ function triageRepository(
           permission: "deny",
         },
         {
+          account: "caspar-bot",
           id: "Caspar",
           index: 2,
           key: "Caspar",
@@ -795,7 +797,11 @@ async function runTriageScenario(input: {
 }
 
 function triageVote(vote: string): string {
-  return JSON.stringify({ reason: `${vote} reason`, vote })
+  return JSON.stringify({
+    body: vote === "ASK" ? `${vote} body` : undefined,
+    reason: `${vote} reason`,
+    vote,
+  })
 }
 
 function duplicateVote(vote: string, duplicateOf?: number): string {
@@ -1131,7 +1137,6 @@ describe("scenario: /magi:triage", () => {
         triageVote("YES"),
         triageVote("YES"),
         triageAction("COMMENT"),
-        "Bug accepted comment",
       ],
     })
 
@@ -1155,7 +1160,6 @@ describe("scenario: /magi:triage", () => {
         triageVote("YES"),
         triageVote("YES"),
         triageAction("COMMENT"),
-        "Feature accepted comment",
       ],
     })
 
@@ -1176,7 +1180,6 @@ describe("scenario: /magi:triage", () => {
         duplicateVote("DUPLICATE", 10),
         duplicateVote("NOT_DUPLICATE"),
         triageAction("COMMENT"),
-        "Duplicate comment",
       ],
     })
 
@@ -1228,7 +1231,6 @@ describe("scenario: /magi:triage", () => {
         triageVote("RELATED_PR_HANDLES_ISSUE"),
         triageVote("RELATED_PR_DOES_NOT_HANDLE_ISSUE"),
         triageAction("CLOSE"),
-        "Merged PR comment",
       ],
       relatedPullRequests: [
         {
@@ -1257,14 +1259,14 @@ describe("scenario: /magi:triage", () => {
     const result = await runTriageScenario({
       comments: [
         comment({
-          author: "magi-bot",
+          author: "melchior-bot",
           body: "Previous comment\n\n<!-- opencode-magi:triage v=1 issue=1 result=FEATURE_ACCEPTED action=COMMENT checkpoint=10 pr=none processed= -->",
           id: 10,
         }),
         comment({
           author: "maintainer",
           authorAssociation: "MEMBER",
-          body: "@magi-bot this should be reconsidered",
+          body: "@melchior-bot this should be reconsidered",
           id: 11,
         }),
       ],
@@ -1278,7 +1280,6 @@ describe("scenario: /magi:triage", () => {
         triageVote("NO"),
         triageVote("ASK"),
         triageAction("COMMENT"),
-        "Reconsidered comment",
       ],
     })
 
@@ -1291,7 +1292,7 @@ describe("scenario: /magi:triage", () => {
       category: "feature",
       disposition: "rejected",
     })
-    expect(commentBody).toContain("Reconsidered comment")
+    expect(commentBody).toContain("NO reason")
     expect(
       result.sessionTitles.some((title) => title.includes("triage reconsider")),
     ).toBe(true)
