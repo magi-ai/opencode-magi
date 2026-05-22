@@ -36,7 +36,7 @@ import {
   composeReviewPrompt,
 } from "../prompts/compose"
 import { prRunOutputDir } from "../config/output"
-import { worktreeBaseDir } from "../config/worktree"
+import { prRunWorktreeDir } from "../config/worktree"
 import {
   parseCloseReconsiderationOutput,
   parseFindingValidationOutput,
@@ -987,14 +987,13 @@ export async function runReview(
   if (mode.type === "already_reviewed" && !input.allowAlreadyReviewed)
     throw new Error("PR has already been reviewed by all configured accounts")
 
-  const outputDir = join(
-    prRunOutputDir({
-      config: input.config,
-      directory: input.directory,
-      pr: input.pr,
-    }),
-    ...(input.runId ? [input.runId] : []),
-  )
+  const runId = input.runId ?? `run-${Date.now().toString(36)}`
+  const outputDir = prRunOutputDir({
+    config: input.config,
+    directory: input.directory,
+    pr: input.pr,
+    runId,
+  })
 
   await mkdir(outputDir, { recursive: true })
 
@@ -1070,15 +1069,19 @@ export async function runReview(
     await input.onProgress?.({ report: checkResult.report, type: "ci_report" })
   }
 
-  const worktreeRoot = worktreeBaseDir(input.directory, input.config, "pr")
+  const worktreePath = prRunWorktreeDir({
+    config: input.config,
+    directory: input.directory,
+    pr: input.pr,
+    runId,
+  })
   await input.onProgress?.({ phase: "creating worktree", type: "phase" })
   const worktree = await createWorktree(
     exec,
     input.repository,
     input.pr,
-    worktreeRoot,
+    worktreePath,
   )
-  const worktreePath = worktree.path
   await input.onProgress?.({
     branch: worktree.branch,
     type: "worktree_created",

@@ -889,6 +889,7 @@ describe("GitHub command helpers", () => {
 describe("createWorktree", () => {
   test("checks out pull requests without binding the head branch", async () => {
     const root = await mkdtemp(join(tmpdir(), "magi-worktrees-"))
+    const worktreePath = join(root, "1", "run-test")
     const commands: string[] = []
 
     try {
@@ -901,10 +902,11 @@ describe("createWorktree", () => {
         },
         repository,
         1,
-        root,
+        worktreePath,
       )
 
       expect(result.branch).toBeUndefined()
+      expect(result.path).toBe(worktreePath)
       expect(commands).toContain(
         "gh pr checkout 1 --repo 'owner/repo' --detach",
       )
@@ -915,6 +917,8 @@ describe("createWorktree", () => {
 
   test("serializes worktree creation for the same repository root", async () => {
     const root = await mkdtemp(join(tmpdir(), "magi-worktrees-"))
+    const firstWorktreePath = join(root, "1", "run-first")
+    const secondWorktreePath = join(root, "2", "run-second")
     const commands: string[] = []
     let markFirstCheckoutReached!: () => void
     let releaseFirstCheckout!: () => void
@@ -940,7 +944,7 @@ describe("createWorktree", () => {
         },
         repository,
         1,
-        root,
+        firstWorktreePath,
       )
 
       await firstCheckoutReached
@@ -954,21 +958,23 @@ describe("createWorktree", () => {
         },
         repository,
         2,
-        root,
+        secondWorktreePath,
       )
 
       await Promise.resolve()
 
-      expect(commands.some((command) => command.includes("pr-2"))).toBe(false)
+      expect(commands.some((command) => command.includes("run-second"))).toBe(
+        false,
+      )
 
       releaseFirstCheckout()
       await Promise.all([first, second])
 
       expect(
-        commands.filter((command) => command.includes("pr-1")),
+        commands.filter((command) => command.includes("run-first")),
       ).not.toHaveLength(0)
       expect(
-        commands.filter((command) => command.includes("pr-2")),
+        commands.filter((command) => command.includes("run-second")),
       ).not.toHaveLength(0)
     } finally {
       await removePath(root, { force: true, recursive: true })
@@ -977,6 +983,7 @@ describe("createWorktree", () => {
 
   test("retries checkout when git config is locked", async () => {
     const root = await mkdtemp(join(tmpdir(), "magi-worktrees-"))
+    const worktreePath = join(root, "1", "run-test")
     let checkoutAttempts = 0
 
     try {
@@ -996,7 +1003,7 @@ describe("createWorktree", () => {
         },
         repository,
         1,
-        root,
+        worktreePath,
       )
 
       expect(checkoutAttempts).toBe(2)
@@ -1008,7 +1015,7 @@ describe("createWorktree", () => {
   test("removes a partially created worktree after checkout failure", async () => {
     const root = await mkdtemp(join(tmpdir(), "magi-worktrees-"))
     const commands: string[] = []
-    const worktreePath = join(root, "pr-1")
+    const worktreePath = join(root, "1", "run-test")
 
     try {
       await expect(
@@ -1023,7 +1030,7 @@ describe("createWorktree", () => {
           },
           repository,
           1,
-          root,
+          worktreePath,
         ),
       ).rejects.toThrow("checkout failed")
 

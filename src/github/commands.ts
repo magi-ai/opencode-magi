@@ -1178,10 +1178,11 @@ export async function createWorktree(
   exec: Exec,
   repository: ResolvedRepository,
   pr: number,
-  root: string,
+  worktreePath: string,
 ): Promise<CreatedWorktree> {
-  const worktreePath = join(root, `pr-${pr}`)
-  const lockKey = `${repoSpecifier(repository)}:${root}`
+  const lockKey = `${repoSpecifier(repository)}:${dirname(
+    dirname(worktreePath),
+  )}`
 
   return withWorktreeCreateLock(lockKey, async () => {
     let worktreeAdded = false
