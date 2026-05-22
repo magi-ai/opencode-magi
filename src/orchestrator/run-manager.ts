@@ -2191,18 +2191,18 @@ export class MagiRunManager {
     }
 
     if (progress.type === "triage_agent_started") {
-      const agentState = state.reviewers[progress.voter]
-      if (agentState) agentState.status = "running"
+      const voter = state.reviewers[progress.voter]
+      if (voter) voter.status = "running"
     }
 
     if (progress.type === "triage_agent_session") {
-      const agentState = state.reviewers[progress.voter]
-      if (agentState) {
+      const voter = state.reviewers[progress.voter]
+      if (voter) {
         if (progress.options)
           this.input.setSessionOptions?.(progress.sessionId, progress.options)
-        agentState.sessionId = progress.sessionId
-        agentState.status = "running"
-        agentState.lastUpdate = now()
+        voter.sessionId = progress.sessionId
+        voter.status = "running"
+        voter.lastUpdate = now()
         this.sessionToRun.set(progress.sessionId, {
           agent: progress.voter,
           runId,
@@ -2211,46 +2211,46 @@ export class MagiRunManager {
     }
 
     if (progress.type === "triage_agent_repair") {
-      const agentState = state.reviewers[progress.voter]
-      if (agentState) {
-        agentState.status = "repairing"
-        agentState.repairAttempts += 1
-        agentState.lastUpdate = now()
+      const voter = state.reviewers[progress.voter]
+      if (voter) {
+        voter.status = "repairing"
+        voter.repairAttempts += 1
+        voter.lastUpdate = now()
       }
     }
 
     if (progress.type === "triage_agent_response") {
-      const agentState = state.reviewers[progress.voter]
-      if (agentState) {
-        agentState.sessionId = progress.sessionId
-        agentState.lastUpdate = now()
+      const voter = state.reviewers[progress.voter]
+      if (voter) {
+        voter.sessionId = progress.sessionId
+        voter.lastUpdate = now()
       }
     }
 
     if (progress.type === "triage_agent_completed") {
-      const agentState = state.reviewers[progress.voter]
-      if (agentState) {
-        agentState.sessionId = progress.sessionId
-        agentState.status = "completed"
-        agentState.verdict = progress.vote
-        agentState.rawPath = join(
+      const voter = state.reviewers[progress.voter]
+      if (voter) {
+        voter.sessionId = progress.sessionId
+        voter.status = "completed"
+        voter.verdict = progress.vote
+        voter.rawPath = join(
           state.outputDir,
           `${progress.voter}.${progress.phase}.raw.txt`,
         )
-        agentState.parsedPath = join(
+        voter.parsedPath = join(
           state.outputDir,
           `${progress.voter}.${progress.phase}.json`,
         )
-        agentState.lastUpdate = now()
+        voter.lastUpdate = now()
       }
     }
 
     if (progress.type === "triage_agent_failed") {
-      const agentState = state.reviewers[progress.voter]
-      if (agentState) {
-        agentState.status = "failed"
-        agentState.error = redactSecrets(progress.error)
-        agentState.lastUpdate = now()
+      const voter = state.reviewers[progress.voter]
+      if (voter) {
+        voter.status = "failed"
+        voter.error = redactSecrets(progress.error)
+        voter.lastUpdate = now()
       }
     }
 

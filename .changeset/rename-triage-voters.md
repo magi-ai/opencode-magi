@@ -2,4 +2,4 @@
 "opencode-magi": patch
 ---
 
-Rename triage vote output agent fields from reviewer to voter.
+Rename triage vote output metadata from reviewer-oriented fields to voter-oriented fields.
