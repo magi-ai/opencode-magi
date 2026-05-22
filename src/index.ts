@@ -494,6 +494,16 @@ function prMarkdownLink(repository: ResolvedRepository, pr: number): string {
   return `[#${pr}](${url})`
 }
 
+export function formatRunStartMessage(
+  command: "merge" | "review",
+  repository: ResolvedRepository,
+  pr: number,
+): string {
+  const action = command === "merge" ? "merge flow" : "reviewing"
+
+  return `Started ${action} ${prMarkdownLink(repository, pr)}.`
+}
+
 function issueMarkdownLink(
   repository: ResolvedRepository,
   issue: number,
@@ -739,9 +749,8 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
           if (sync) return syncResult(runManager, states)
 
           return states
-            .map(
-              (state) =>
-                `Started reviewing ${prMarkdownLink(repository, state.pr as number)}.`,
+            .map((state) =>
+              formatRunStartMessage("merge", repository, state.pr as number),
             )
             .join("\n")
         },
@@ -801,9 +810,8 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
           if (sync) return syncResult(runManager, states)
 
           return states
-            .map(
-              (state) =>
-                `Started reviewing ${prMarkdownLink(repository, state.pr as number)}.`,
+            .map((state) =>
+              formatRunStartMessage("review", repository, state.pr as number),
             )
             .join("\n")
         },
