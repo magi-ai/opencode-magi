@@ -22,6 +22,7 @@ import {
   repoSpecifier,
   searchDuplicateIssues,
   shellQuote,
+  watchChecks,
   waitForAutoMerge,
   waitForMergeQueue,
 } from "./commands"
@@ -137,13 +138,17 @@ describe("GitHub command helpers", () => {
     })
   })
 
-  test("falls back to gh issue view without issue type when GraphQL is unavailable", async () => {
+  test("falls back to gh issue view without issue type when issueType is unavailable", async () => {
     const commands: string[] = []
 
     const result = await fetchIssue(
       async (value) => {
         commands.push(value)
-        if (value.includes("graphql")) throw new Error("unsupported field")
+        if (value.includes("graphql")) {
+          throw new Error(
+            'GraphQL: Cannot query field "issueType" on type "Issue".',
+          )
+        }
 
         return JSON.stringify({
           author: { login: "author" },
@@ -164,6 +169,42 @@ describe("GitHub command helpers", () => {
       "--json number,title,body,url,state,author,labels",
     )
     expect(result.type).toBeUndefined()
+  })
+
+  test("surfaces non-issueType GraphQL command failures", async () => {
+    const commands: string[] = []
+
+    await expect(
+      fetchIssue(
+        async (value) => {
+          commands.push(value)
+          throw new Error("authentication required")
+        },
+        repository,
+        56,
+      ),
+    ).rejects.toThrow("authentication required")
+
+    expect(commands).toHaveLength(1)
+    expect(commands[0]).toContain("gh api graphql")
+  })
+
+  test("surfaces malformed GraphQL issue responses", async () => {
+    const commands: string[] = []
+
+    await expect(
+      fetchIssue(
+        async (value) => {
+          commands.push(value)
+          return "not json"
+        },
+        repository,
+        56,
+      ),
+    ).rejects.toThrow()
+
+    expect(commands).toHaveLength(1)
+    expect(commands[0]).toContain("gh api graphql")
   })
 
   test("searches duplicate issue candidates by title and excludes the current issue", async () => {
@@ -534,6 +575,44 @@ describe("GitHub command helpers", () => {
     )
 
     expect(result).toEqual([])
+  })
+
+  test("fetches only required pull request checks when requested", async () => {
+    let command = ""
+
+    await fetchPullRequestChecks(
+      async (value) => {
+        command = value
+
+        return "[]"
+      },
+      repository,
+      1,
+      { requiredOnly: true },
+    )
+
+    expect(command).toBe(
+      "gh pr checks 1 --repo 'owner/repo' --json name,state,bucket,link,workflow --required",
+    )
+  })
+
+  test("watches only required pull request checks when requested", async () => {
+    let command = ""
+
+    await watchChecks(
+      async (value) => {
+        command = value
+
+        return ""
+      },
+      repository,
+      1,
+      { requiredOnly: true },
+    )
+
+    expect(command).toBe(
+      "gh pr checks 1 --repo 'owner/repo' --watch --required",
+    )
   })
 
   test("keeps other pull request check failures fatal", async () => {
