@@ -29,7 +29,7 @@ Triage flags:
 
 `/magi:triage` triages GitHub issues with dedicated `triage.agents`. It does not reuse `review.agents`.
 
-Magi fetches bounded issue relationship data, asks triage agents to vote on existing PRs, duplicate issues, issue kind, and bug or feature decisions, then posts one author-mentioned result comment through `triage.account` unless the run is a clear-only linked PR case.
+Magi fetches bounded issue relationship data, asks triage agents to vote on existing PRs, duplicate issues, issue kind, and bug or feature decisions, then posts one author-mentioned result comment through the selected triage reporter account unless the run is a clear-only linked PR case.
 
 ## Flow
 
@@ -61,7 +61,7 @@ Triage results:
 
 ## Outputs
 
-Magi may post one author-mentioned issue comment through `triage.account`, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. Clear-only related PR runs do not post a comment.
+Magi may post one author-mentioned issue comment through the selected triage reporter account, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. Clear-only related PR runs do not post a comment.
 
 Triage artifacts are written to the issue run output directory:
 
@@ -83,8 +83,9 @@ Important settings:
 
 | Setting                                | Purpose                                                                                               |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `triage.account`                       | GitHub account used for triage comments and mutations.                                                |
+| `triage.reporter`                      | Optional triage agent key used as the reporter for result comments and mutations.                      |
 | `triage.agents`                        | Dedicated issue triage voting agents.                                                                 |
+| `triage.agents[].account`              | GitHub account used by each triage agent for ASK comments and reporter-owned mutations.                |
 | `triage.creator`                       | Agent used for implementation PR creation when enabled.                                               |
 | `triage.categories`                    | Category IDs and label/type rules that can skip Category Vote. Type rules require GitHub issue types. |
 | `triage.automation.close`              | Enables closing rejected or duplicate issues.                                                         |
@@ -133,7 +134,7 @@ Magi currently fetches issue comments `last: 50`, related PR timeline items `fir
 
 ### Which GitHub accounts are used?
 
-`triage.account` posts triage comments, closes issues and related PRs, and removes labels. `triage.creator.account` pushes implementation branches and opens PRs when PR automation is enabled. Both accounts must be authenticated with GitHub CLI; the triage account needs repository read access, and the creator account needs push access when it differs from the triage account.
+`triage.agents[].account` values are used for triage comments and mutations. `triage.reporter` names the triage agent key whose account posts result comments, writes markers, removes labels, and closes issues or related PRs. If `triage.reporter` is unset, Magi selects a stable reporter from `triage.agents` by issue number. Individual `ASK` comments are posted through the accounts of the triage agents that produced them. `triage.creator.account` pushes implementation branches and opens PRs when PR automation is enabled. All configured triage agent accounts must be authenticated with GitHub CLI and need repository read access; the creator account needs push access when PR creation automation is enabled.
 
 ### What do the automation flags control?
 

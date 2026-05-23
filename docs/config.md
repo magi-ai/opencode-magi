@@ -95,7 +95,7 @@ If at least one config exists, Magi validates the merged effective config and re
     "editor": { "ref": "account-4" }
   },
   "triage": {
-    "account": "account-5",
+    "reporter": "voter-1",
     "agents": [
       { "ref": "account-1" },
       { "ref": "account-2" },
@@ -161,15 +161,16 @@ Entries with `ref` are expanded from `agents.refs`. Fields set alongside `ref` o
 | `review.output`                        | Both    | No                               | `.magi/runs/pr`                                      | Directory for PR run artifacts. PR #123 is stored under `<dir>/123/<runId>`.                                         |
 | `review.worktree`                      | Both    | No                               | `.magi/worktrees/pr`                                 | Directory for temporary PR worktrees. PR #123 is stored under `<dir>/pr-123`.                                        |
 | `triage`                               | Both    | Yes (`/magi:triage`)             | -                                                    | Issue triage configuration.                                                                                          |
-| `triage.account`                       | Both    | Yes (`/magi:triage`)             | -                                                    | GitHub account used to post triage comments, close issues and linked PRs, remove labels, and create PRs by default.  |
+| `triage.reporter`                      | Both    | No                               | Issue-number based triage agent                     | Triage agent key used for result comments, markers, label removal, issue close, and related PR close operations.      |
 | `triage.agents`                        | Both    | Yes (`/magi:triage`)             | -                                                    | Dedicated issue triage agents. Odd-length array of at least 3 agents.                                                |
 | `triage.agents[].id`                   | Both    | No                               | `voter-1`, ...                                       | Triage agent key used for output files and session tracking.                                                         |
 | `triage.agents[].model`                | Both    | Yes                              | -                                                    | Full OpenCode model ID used by the triage agent.                                                                     |
+| `triage.agents[].account`              | Both    | Yes                              | -                                                    | GitHub account used by this triage agent for ASK comments and, when selected as reporter, triage mutations.           |
 | `triage.agents[].options`              | Both    | No                               | -                                                    | OpenCode provider/model options injected for this triage agent.                                                      |
 | `triage.agents[].permissions`          | Both    | No                               | [json](/src/permissions/common.json)                 | OpenCode permission overrides for this triage agent.                                                                 |
 | `triage.agents[].persona`              | Both    | No                               | -                                                    | Triage vote perspective for this agent.                                                                              |
 | `triage.creator`                       | Both    | Yes (`triage.automation.create`) | -                                                    | Agent used to create implementation PRs from accepted issues.                                                        |
-| `triage.creator.account`               | Both    | No                               | `triage.account`                                     | GitHub account used to create PRs when different from `triage.account`.                                              |
+| `triage.creator.account`               | Both    | Yes (`triage.automation.create`) | -                                                    | GitHub account used to assign issues, push implementation branches, and create PRs.                                  |
 | `triage.creator.model`                 | Both    | Yes (`triage.automation.create`) | -                                                    | Full OpenCode model ID used by the PR creator agent.                                                                 |
 | `triage.creator.options`               | Both    | No                               | -                                                    | OpenCode provider/model options injected for the PR creator agent.                                                   |
 | `triage.creator.permissions`           | Both    | No                               | [json](/src/permissions/editor.json)                 | OpenCode permission overrides for the PR creator agent.                                                              |
@@ -189,8 +190,8 @@ Entries with `ref` are expanded from `agents.refs`. Fields set alongside `ref` o
 | `triage.safety.requiredLabels`         | Both    | No                               | `["triage"]`                                         | Labels required before initial triage runs.                                                                          |
 | `triage.safety.blockedLabels`          | Both    | No                               | `[]`                                                 | Labels that prevent triage from running.                                                                             |
 | `triage.safety.allowAuthors`           | Both    | No                               | `[]`                                                 | If set, only issues created by these GitHub logins can be triaged.                                                   |
-| `triage.safety.allowMentionActors`     | Both    | No                               | `[]`                                                 | GitHub logins allowed to trigger reconsideration by mentioning `triage.account`.                                     |
-| `triage.safety.allowMentionRoles`      | Both    | No                               | `["AUTHOR", "OWNER", "MEMBER", "COLLABORATOR"]`      | GitHub author associations allowed to trigger reconsideration by mentioning `triage.account`.                        |
+| `triage.safety.allowMentionActors`     | Both    | No                               | `[]`                                                 | GitHub logins allowed to trigger reconsideration from mention replies to previous triage comments.                   |
+| `triage.safety.allowMentionRoles`      | Both    | No                               | `["AUTHOR", "OWNER", "MEMBER", "COLLABORATOR"]`      | GitHub author associations allowed to trigger reconsideration from mention replies to previous triage comments.      |
 | `triage.concurrency.runs`              | Both    | No                               | `3`                                                  | Maximum issues processed concurrently.                                                                               |
 | `triage.prompts`                       | Both    | No                               | -                                                    | Triage prompt template file path overrides.                                                                          |
 | `triage.prompts.existingPr`            | Both    | No                               | [md](/docs/prompts/triage/existing-pr.md)            | Task template override for checking whether related pull requests handle the issue.                                  |
@@ -272,6 +273,9 @@ Supported actions are `allow`, `ask`, and `deny`. Pattern objects are order-sens
 - Reviewers must be an odd number of at least 3.
 - Reviewer keys must be unique. The key is `id` when provided, otherwise `reviewer-1`, `reviewer-2`, and so on.
 - Reviewer `account` values must be unique.
+- Triage agents must be an odd number of at least 3.
+- Triage agent keys and `account` values must be unique.
+- `triage.reporter`, when set, must match a triage agent key. If unset, Magi picks a stable fallback reporter from `triage.agents` by issue number.
 - Each configured account must be logged in for GitHub CLI: `gh auth token --user <account>`.
 - `merge.editor` is required when running `/magi:merge`, but not when running only `/magi:review`.
 - Permission values must be `allow`, `ask`, `deny`, or an object of pattern-to-action rules.
