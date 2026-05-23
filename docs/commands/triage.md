@@ -32,12 +32,12 @@ Triage flags:
 
 `/magi:triage` triages GitHub issues with dedicated `triage.agents`. It does not reuse `review.agents`.
 
-Magi fetches bounded issue relationship data, asks triage agents to vote on existing PRs, duplicate issues, issue kind, and bug or feature decisions, then posts one author-mentioned result comment through the reporter triage agent account unless the run is a clear-only linked PR case. Configure `triage.reporter` to choose the reporter by resolved triage agent key; otherwise Magi selects one from the issue number.
+Magi fetches bounded issue relationship data, asks triage agents to vote on existing PRs, duplicate issues, issue kind, and bug or feature decisions, then posts one author-mentioned result comment through the selected triage reporter account unless the run is a clear-only linked PR case or is blocked by a safety gate. Configure `triage.reporter` to choose the reporter by resolved triage agent key; otherwise Magi selects one from the issue number.
 
 ## Flow
 
 1. Parse issue arguments and load `triage.*` config.
-2. Check issue safety gates such as required labels and blocked labels.
+2. Check issue safety gates such as required labels and blocked labels. Failed safety gates return immediately before agent voting and label clearing.
 3. Scan bounded relationships: related PRs, duplicate candidates, and previous Magi markers.
 4. Vote whether related PRs already handle the issue.
 5. Vote whether duplicate candidates are true duplicates.
@@ -53,18 +53,18 @@ Issue type rules use GitHub GraphQL `issueType`. If issue types are unavailable,
 
 Triage results:
 
-| Disposition  | Meaning                                                                                                     |
-| ------------ | ----------------------------------------------------------------------------------------------------------- |
-| `ask`        | Magi needs more information. It posts a question and skips close, PR creation, and label clearing.          |
-| `accepted`   | The selected category was accepted. PR creation may run when `triage.automation.create` is enabled.         |
-| `rejected`   | The selected category was rejected. The issue may be closed when `triage.automation.close` is enabled.      |
-| `duplicate`  | Duplicate voting found majority support for the same candidate issue. The issue may be closed when enabled. |
-| `clear_only` | A related PR already handles the issue, so Magi only clears configured labels.                              |
-| `failed`     | A safety gate blocked the run before agent voting completed.                                                |
+| Disposition  | Meaning                                                                                                                                                                                |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ask`        | Magi needs more information. It posts a question and skips close, PR creation, and label clearing.                                                                                     |
+| `accepted`   | The selected category was accepted. PR creation may run when `triage.automation.create` is enabled. Related-PR voting can also return this when a merged related PR handles the issue. |
+| `rejected`   | The selected category was rejected. The issue may be closed when `triage.automation.close` is enabled.                                                                                 |
+| `duplicate`  | Duplicate voting found majority support for the same candidate issue. The issue may be closed when enabled.                                                                            |
+| `clear_only` | Related-PR voting found that an existing PR handles the issue without the merged-PR close path. Magi only clears configured labels.                                                    |
+| `failed`     | A safety gate blocked the run before agent voting. Magi writes a report and does not post comments, close issues or PRs, create PRs, or clear labels.                                  |
 
 ## Outputs
 
-Magi may post one author-mentioned issue comment through the reporter triage agent account, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. Clear-only related PR runs do not post a comment.
+Magi may post one author-mentioned issue comment through the selected triage reporter account, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. Clear-only related PR runs do not post a comment or close the issue or related PRs.
 
 Triage artifacts are written to the issue run output directory:
 
@@ -87,7 +87,7 @@ Important settings:
 | Setting                                | Purpose                                                                                               |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `triage.agents`                        | Dedicated issue triage voting agents. Must be an odd-length array of at least 3 agents.               |
-| `triage.agents[].account`              | GitHub accounts used for voting and reporter mutations. Accounts must be unique after ref expansion.  |
+| `triage.agents[].account`              | GitHub account used by each triage agent for ASK comments and reporter-owned mutations.               |
 | `triage.reporter`                      | Optional resolved triage agent key used for comments and mutations.                                   |
 | `triage.creator`                       | Agent used for implementation PR creation when enabled.                                               |
 | `triage.creator.account`               | Required when `triage.automation.create` is true; pushes branches and opens PRs.                      |
@@ -126,7 +126,9 @@ Magi posts a concise question that mentions the issue author. It does not close 
 
 ### How are existing related PRs handled?
 
-Magi scans bounded issue timeline relationship data and asks triage agents whether a related PR already handles the issue. If the majority says it does, Magi clears configured labels. If a related PR is already merged and close automation is enabled, Magi can also comment, close the issue, and clear labels.
+Magi scans bounded issue timeline relationship data and asks triage agents whether a related PR already handles the issue. If the majority says it does and either no related PR is merged or close automation is disabled, Magi returns `clear_only`: it does not post a comment, does not close the issue or related PRs, and only clears configured labels.
+
+If the majority says a related PR handles the issue, any related PR is `MERGED`, and `triage.automation.close` is enabled, Magi returns an `accepted` decision with close automation. That path posts a result comment, clears configured labels, closes the issue, and closes any related PRs that are still open.
 
 ### How does duplicate voting work?
 
@@ -136,10 +138,14 @@ Agents vote on the duplicate candidates found by GitHub issue search. `DUPLICATE
 
 Magi currently fetches issue comments `last: 50`, related PR timeline items `first: 50`, and up to `5` duplicate issue candidates. The model context includes the last `20` fetched issue comments, so older comments and relationships can be omitted on very large issues.
 
+### When does reconsideration run?
+
+Reconsideration requires a previous trusted Magi marker and eligible mention replies after that marker checkpoint. Replies must mention `triage.account`, must not have been processed already, and must pass the configured `triage.safety.allowMentionActors` or `triage.safety.allowMentionRoles` rules. Magi then classifies those replies and only reconsiders when at least one is classified as `CLARIFICATION`, `NEW_EVIDENCE`, or `OBJECTION`.
+
 ### Which GitHub accounts are used?
 
-Each `triage.agents[].account` must be authenticated with GitHub CLI and able to read the repository. The reporter triage agent account posts triage comments, closes issues and related PRs, and removes labels. `triage.reporter`, when configured, must match a resolved triage agent key such as an explicit `id` or generated `voter-1` key. `triage.creator.account` is required when PR automation is enabled, pushes implementation branches and opens PRs, and must have repository push permission.
+`triage.agents[].account` values are used for triage comments and mutations. Each triage agent account must be authenticated with GitHub CLI and able to read the repository. `triage.reporter` names the resolved triage agent key whose account posts result comments, writes markers, removes labels, and closes issues or related PRs. If `triage.reporter` is unset, Magi selects a stable reporter from `triage.agents` by issue number. Individual `ASK` comments are posted through the accounts of the triage agents that produced them. `triage.creator.account` is required when PR automation is enabled, pushes implementation branches and opens PRs, and must have repository push permission.
 
 ### What do the automation flags control?
 
-`triage.automation.close` allows Magi to close rejected or duplicate issues and related open PRs. `triage.automation.create` allows accepted issues to trigger creator-agent implementation PR creation. `triage.automation.review` starts review automation after that PR is created, while `triage.automation.merge` starts merge automation and takes precedence when both are enabled. `triage.automation.clear` lists labels removed after non-`ASK` outcomes.
+`triage.automation.close` allows Magi to close rejected or duplicate issues, and to close accepted issues when related-PR voting finds that a merged related PR handles the issue. Whenever close automation closes an issue, it also closes related PRs that are still open. `triage.automation.create` allows regular accepted issues to trigger creator-agent implementation PR creation. `triage.automation.review` starts review automation after that PR is created, while `triage.automation.merge` starts merge automation and takes precedence when both are enabled. `triage.automation.clear` lists labels removed after non-`ASK` outcomes that reach action execution; safety-gate `failed` results return before label clearing.

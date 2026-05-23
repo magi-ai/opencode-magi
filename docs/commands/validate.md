@@ -74,7 +74,7 @@ Yes. The slash command enables auth checks by default and runs `gh auth token --
 
 ### Does it check repository permissions?
 
-Yes, after auth succeeds. Reviewer and triage agent accounts must be able to read the repository. The editor account must be able to push for editor operations. The triage creator account must be able to push when implementation PR creation is enabled.
+Yes, after auth succeeds. Reviewer accounts and each triage agent account must be able to read the repository. The editor account must be able to push for editor operations. The triage creator account must be able to push when implementation PR creation is enabled.
 
 ### Why can validation pass without an editor?
 
