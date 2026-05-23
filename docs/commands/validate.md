@@ -53,7 +53,8 @@ It does not modify files, create runs, post to GitHub, or start agents.
 | `review.prompts.*`        | Must point to readable files when configured.               |
 | `merge.prompts.*`         | Must point to readable files when configured.               |
 | `triage.agents`           | Required for triage, at least 3 agents, odd count.          |
-| `triage.account`          | Required GitHub account for triage comments and mutations.  |
+| `triage.agents[].account` | Required GitHub account for each triage agent.              |
+| `triage.reporter`         | Optional triage agent key for non-`ASK` comments and mutations. |
 | `triage.creator`          | Optional creator agent for triage PR automation.            |
 | `triage.prompts.*`        | Must point to readable files when configured.               |
 
@@ -73,7 +74,7 @@ Yes. The slash command enables auth checks by default and runs `gh auth token --
 
 ### Does it check repository permissions?
 
-Yes, after auth succeeds. Reviewer accounts must be able to read the repository. The editor account must be able to push for editor operations. The triage account must be able to read the repository, and the triage creator account must be able to push when configured separately for implementation PR creation.
+Yes, after auth succeeds. Reviewer accounts must be able to read the repository. The editor account must be able to push for editor operations. Triage agent accounts must be able to read the repository, and the triage creator account must be able to push for implementation PR creation.
 
 ### Why can validation pass without an editor?
 

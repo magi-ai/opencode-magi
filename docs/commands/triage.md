@@ -29,7 +29,7 @@ Triage flags:
 
 `/magi:triage` triages GitHub issues with dedicated `triage.agents`. It does not reuse `review.agents`.
 
-Magi fetches bounded issue relationship data, asks triage agents to vote on existing PRs, duplicate issues, issue kind, and bug or feature decisions, then posts one author-mentioned result comment through `triage.account` unless the run is a clear-only linked PR case.
+Magi fetches bounded issue relationship data, asks triage agents to vote on existing PRs, duplicate issues, issue kind, and bug or feature decisions, then posts comments according to the final result unless the run is a clear-only linked PR case. `ASK` comments come from each non-empty `ASK` vote body and use that voting agent's account. Non-`ASK` result comments are generated from the decision summary and use the selected reporter account.
 
 ## Flow
 
@@ -40,11 +40,11 @@ Magi fetches bounded issue relationship data, asks triage agents to vote on exis
 5. Vote whether duplicate candidates are true duplicates.
 6. Resolve issue category from `triage.categories` labels/types or run Category Vote.
 7. Run the common Acceptance Vote for the selected category.
-8. Compose an author-mentioned comment or question.
+8. Compose `ASK` vote comments or a non-`ASK` decision comment.
 9. Apply enabled automation: close, PR creation, post-PR review or merge, and label clearing.
 10. Write artifacts and a report.
 
-`ASK` is a normal result. It posts a question comment and does not close, create PRs, or clear labels.
+`ASK` is a normal result. It posts each non-empty `ASK` vote body as a separate question comment and does not close, create PRs, or clear labels. Comment bodies are not automatically prefixed with an issue author mention.
 
 Issue type rules use GitHub GraphQL `issueType`. If issue types are unavailable, Magi falls back to labels and Category Vote instead of failing triage.
 
@@ -52,7 +52,7 @@ Triage results:
 
 | Disposition  | Meaning                                                                                                     |
 | ------------ | ----------------------------------------------------------------------------------------------------------- |
-| `ask`        | Magi needs more information. It posts a question and skips close, PR creation, and label clearing.          |
+| `ask`        | Magi needs more information. It posts `ASK` vote question bodies and skips close, PR creation, and label clearing. |
 | `accepted`   | The selected category was accepted. PR creation may run when `triage.automation.create` is enabled.         |
 | `rejected`   | The selected category was rejected. The issue may be closed when `triage.automation.close` is enabled.      |
 | `duplicate`  | Duplicate voting found majority support for the same candidate issue. The issue may be closed when enabled. |
@@ -61,7 +61,7 @@ Triage results:
 
 ## Outputs
 
-Magi may post one author-mentioned issue comment through `triage.account`, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. Clear-only related PR runs do not post a comment.
+Magi may post issue comments, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. `ASK` results may post multiple comments through the `ASK`-voting agent accounts. Non-`ASK` results may post one decision comment through the selected reporter account. Clear-only related PR runs do not post a comment.
 
 Triage artifacts are written to the issue run output directory:
 
@@ -83,8 +83,9 @@ Important settings:
 
 | Setting                                | Purpose                                                                                               |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `triage.account`                       | GitHub account used for triage comments and mutations.                                                |
 | `triage.agents`                        | Dedicated issue triage voting agents.                                                                 |
+| `triage.agents[].account`              | GitHub account used for that agent's `ASK` comments.                                                   |
+| `triage.reporter`                      | Optional triage agent key used for non-`ASK` comments and mutations; defaults by issue number.         |
 | `triage.creator`                       | Agent used for implementation PR creation when enabled.                                               |
 | `triage.categories`                    | Category IDs and label/type rules that can skip Category Vote. Type rules require GitHub issue types. |
 | `triage.automation.close`              | Enables closing rejected or duplicate issues.                                                         |
@@ -117,7 +118,7 @@ See [Config](/docs/config.md) for the complete reference.
 
 ### What happens on `ASK`?
 
-Magi posts a concise question that mentions the issue author. It does not close the issue, create a PR, or clear labels. A later mention reply can be used for reconsideration when it passes the configured safety rules.
+Magi posts each non-empty `ASK` vote body as its own question comment through that voting agent's account. The prompt contract asks agents to write the body for the issue author, but Magi does not automatically add or validate an author mention. It does not close the issue, create a PR, or clear labels. A later mention reply can be used for reconsideration when it passes the configured safety rules.
 
 ### How are existing related PRs handled?
 
@@ -133,7 +134,7 @@ Magi currently fetches issue comments `last: 50`, related PR timeline items `fir
 
 ### Which GitHub accounts are used?
 
-`triage.account` posts triage comments, closes issues and related PRs, and removes labels. `triage.creator.account` pushes implementation branches and opens PRs when PR automation is enabled. Both accounts must be authenticated with GitHub CLI; the triage account needs repository read access, and the creator account needs push access when it differs from the triage account.
+`ASK` comments are posted by the `ASK`-voting triage agent accounts. Non-`ASK` comments, issue and related PR closes, and label removal use the selected reporter account: `triage.reporter` when configured, otherwise a triage agent selected by issue number. `triage.creator.account` pushes implementation branches and opens PRs when PR automation is enabled. All participating accounts must be authenticated with GitHub CLI; triage agent accounts need repository read access, and the creator account needs push access.
 
 ### What do the automation flags control?
 
