@@ -50,13 +50,13 @@ Issue type rules use GitHub GraphQL `issueType`. If issue types are unavailable,
 
 Triage results:
 
-| Disposition  | Meaning                                                                                                                                                                                 |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ask`        | Magi needs more information. It posts a question and skips close, PR creation, and label clearing.                                                                                      |
+| Disposition  | Meaning                                                                                                                                                                                |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ask`        | Magi needs more information. It posts a question and skips close, PR creation, and label clearing.                                                                                     |
 | `accepted`   | The selected category was accepted. PR creation may run when `triage.automation.create` is enabled. Related-PR voting can also return this when a merged related PR handles the issue. |
-| `rejected`   | The selected category was rejected. The issue may be closed when `triage.automation.close` is enabled.                                                                                  |
-| `duplicate`  | Duplicate voting found majority support for the same candidate issue. The issue may be closed when enabled.                                                                             |
-| `clear_only` | Related-PR voting found that an existing PR handles the issue without the merged-PR close path. Magi only clears configured labels.                                                     |
+| `rejected`   | The selected category was rejected. The issue may be closed when `triage.automation.close` is enabled.                                                                                 |
+| `duplicate`  | Duplicate voting found majority support for the same candidate issue. The issue may be closed when enabled.                                                                            |
+| `clear_only` | Related-PR voting found that an existing PR handles the issue without the merged-PR close path. Magi only clears configured labels.                                                    |
 | `failed`     | A safety gate blocked the run before agent voting. Magi writes a report and does not post comments, close issues or PRs, create PRs, or clear labels.                                  |
 
 ## Outputs
