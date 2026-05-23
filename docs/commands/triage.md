@@ -29,7 +29,7 @@ Triage flags:
 
 `/magi:triage` triages GitHub issues with dedicated `triage.agents`. It does not reuse `review.agents`.
 
-Magi fetches bounded issue relationship data, asks triage agents to vote on existing PRs, duplicate issues, issue kind, and bug or feature decisions, then posts one author-mentioned result comment through `triage.account` unless the run is a clear-only linked PR case.
+Magi fetches bounded issue relationship data, asks triage agents to vote on existing PRs, duplicate issues, issue kind, and bug or feature decisions, then posts one author-mentioned result comment through the reporter triage agent unless the run is a clear-only linked PR case.
 
 ## Flow
 
@@ -61,7 +61,7 @@ Triage results:
 
 ## Outputs
 
-Magi may post one author-mentioned issue comment through `triage.account`, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. Clear-only related PR runs do not post a comment.
+Magi may post one author-mentioned issue comment through the reporter triage agent, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. Clear-only related PR runs do not post a comment.
 
 Triage artifacts are written to the issue run output directory:
 
@@ -83,9 +83,10 @@ Important settings:
 
 | Setting                                | Purpose                                                                                               |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `triage.account`                       | GitHub account used for triage comments and mutations.                                                |
 | `triage.agents`                        | Dedicated issue triage voting agents.                                                                 |
+| `triage.reporter`                      | Optional triage agent key used for comments and issue mutations.                                       |
 | `triage.creator`                       | Agent used for implementation PR creation when enabled.                                               |
+| `triage.creator.account`               | Required when `triage.automation.create` is true; pushes branches and opens PRs.                      |
 | `triage.categories`                    | Category IDs and label/type rules that can skip Category Vote. Type rules require GitHub issue types. |
 | `triage.automation.close`              | Enables closing rejected or duplicate issues.                                                         |
 | `triage.automation.create`             | Enables implementation PR creation for accepted issues.                                               |
@@ -133,7 +134,7 @@ Magi currently fetches issue comments `last: 50`, related PR timeline items `fir
 
 ### Which GitHub accounts are used?
 
-`triage.account` posts triage comments, closes issues and related PRs, and removes labels. `triage.creator.account` pushes implementation branches and opens PRs when PR automation is enabled. Both accounts must be authenticated with GitHub CLI; the triage account needs repository read access, and the creator account needs push access when it differs from the triage account.
+A triage agent account posts triage comments, closes issues and related PRs, and removes labels. Set `triage.reporter` to choose a specific triage agent key; otherwise Magi selects a reporter by issue number. `triage.creator.account` is required when PR automation is enabled and pushes implementation branches and opens PRs. Triage agent accounts need repository read access, and the creator account needs push access.
 
 ### What do the automation flags control?
 
