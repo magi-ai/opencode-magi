@@ -54,7 +54,7 @@ It does not modify files, create runs, post to GitHub, or start agents.
 | `merge.prompts.*`         | Must point to readable files when configured.                                               |
 | `triage.agents`           | Required for triage, at least 3 agents, odd count.                                          |
 | `triage.agents[].account` | Required GitHub account for each triage agent, unique after refs.                           |
-| `triage.reporter`         | Optional resolved triage agent key used for comments and mutations.                         |
+| `triage.reporter`         | Optional resolved triage agent key used for non-`ASK` comments and mutations.               |
 | `triage.creator.*`        | Required creator account, model, and author fields when `triage.automation.create` is true. |
 | `triage.prompts.*`        | Must point to readable files when configured.                                               |
 
