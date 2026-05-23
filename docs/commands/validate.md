@@ -42,20 +42,20 @@ It does not modify files, create runs, post to GitHub, or start agents.
 
 `/magi:validate` validates the same settings documented in [Config](/docs/config.md). The most important requirements are:
 
-| Setting                   | Requirement                                                 |
-| ------------------------- | ----------------------------------------------------------- |
-| `review.agents`           | Required for review/merge, at least 3 reviewers, odd count. |
-| `review.agents[].model`   | Required full OpenCode model ID in `provider/model` form.   |
-| `review.agents[].account` | Required GitHub account, unique across reviewers.           |
-| `merge.editor`            | Required by `/magi:merge`, optional for `/magi:review`.     |
-| `github.owner`            | Required for PR review/merge runs.                          |
-| `github.repo`             | Required for PR review/merge runs.                          |
-| `review.prompts.*`        | Must point to readable files when configured.               |
-| `merge.prompts.*`         | Must point to readable files when configured.               |
-| `triage.agents`           | Required for triage, at least 3 agents, odd count.          |
-| `triage.agents[].account` | Required GitHub account for each triage agent.              |
+| Setting                   | Requirement                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------- |
+| `review.agents`           | Required for review/merge, at least 3 reviewers, odd count.                                 |
+| `review.agents[].model`   | Required full OpenCode model ID in `provider/model` form.                                   |
+| `review.agents[].account` | Required GitHub account, unique across reviewers.                                           |
+| `merge.editor`            | Required by `/magi:merge`, optional for `/magi:review`.                                     |
+| `github.owner`            | Required for PR review/merge runs.                                                          |
+| `github.repo`             | Required for PR review/merge runs.                                                          |
+| `review.prompts.*`        | Must point to readable files when configured.                                               |
+| `merge.prompts.*`         | Must point to readable files when configured.                                               |
+| `triage.agents`           | Required for triage, at least 3 agents, odd count.                                          |
+| `triage.agents[].account` | Required GitHub account for each triage agent.                                              |
 | `triage.creator.*`        | Required creator account, model, and author fields when `triage.automation.create` is true. |
-| `triage.prompts.*`        | Must point to readable files when configured.               |
+| `triage.prompts.*`        | Must point to readable files when configured.                                               |
 
 ## FAQ
 
