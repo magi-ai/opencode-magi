@@ -32,7 +32,7 @@ Triage flags:
 
 `/magi:triage` triages GitHub issues with dedicated `triage.agents`. It does not reuse `review.agents`.
 
-Magi fetches bounded issue relationship data, asks triage agents to vote on existing PRs, duplicate issues, issue kind, and bug or feature decisions, then posts one author-mentioned result comment through the reporter triage agent account unless the run is a clear-only linked PR case. Configure `triage.reporter` to choose the reporter by resolved triage agent key; otherwise Magi selects one from the issue number.
+Magi fetches bounded issue relationship data, asks triage agents to vote on existing PRs, duplicate issues, issue kind, and bug or feature decisions, then posts one author-mentioned result comment through the selected triage reporter account unless the run is a clear-only linked PR case. Configure `triage.reporter` to choose the reporter by resolved triage agent key; otherwise Magi selects one from the issue number.
 
 ## Flow
 
@@ -64,7 +64,7 @@ Triage results:
 
 ## Outputs
 
-Magi may post one author-mentioned issue comment through the reporter triage agent account, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. Clear-only related PR runs do not post a comment.
+Magi may post one author-mentioned issue comment through the selected triage reporter account, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. Clear-only related PR runs do not post a comment.
 
 Triage artifacts are written to the issue run output directory:
 
@@ -87,7 +87,7 @@ Important settings:
 | Setting                                | Purpose                                                                                               |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `triage.agents`                        | Dedicated issue triage voting agents. Must be an odd-length array of at least 3 agents.               |
-| `triage.agents[].account`              | GitHub accounts used for voting and reporter mutations. Accounts must be unique after ref expansion.  |
+| `triage.agents[].account`              | GitHub account used by each triage agent for ASK comments and reporter-owned mutations.               |
 | `triage.reporter`                      | Optional resolved triage agent key used for comments and mutations.                                   |
 | `triage.creator`                       | Agent used for implementation PR creation when enabled.                                               |
 | `triage.categories`                    | Category IDs and label/type rules that can skip Category Vote. Type rules require GitHub issue types. |
@@ -137,7 +137,7 @@ Magi currently fetches issue comments `last: 50`, related PR timeline items `fir
 
 ### Which GitHub accounts are used?
 
-Each `triage.agents[].account` must be authenticated with GitHub CLI and able to read the repository. The reporter triage agent account posts triage comments, closes issues and related PRs, and removes labels. `triage.reporter`, when configured, must match a resolved triage agent key such as an explicit `id` or generated `voter-1` key. `triage.creator.account` pushes implementation branches and opens PRs when PR automation is enabled, and must have repository push permission.
+`triage.agents[].account` values are used for triage comments and mutations. `triage.reporter` names the resolved triage agent key whose account posts result comments, writes markers, removes labels, and closes issues or related PRs. If `triage.reporter` is unset, Magi selects a stable reporter from `triage.agents` by issue number. Individual `ASK` comments are posted through the accounts of the triage agents that produced them. `triage.creator.account` pushes implementation branches and opens PRs when PR automation is enabled. All configured triage agent accounts must be authenticated with GitHub CLI and need repository read access; the creator account needs push access when PR creation automation is enabled.
 
 ### What do the automation flags control?
 

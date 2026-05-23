@@ -20,7 +20,7 @@ It is safe to run after creating or updating `~/.config/opencode/magi.json` or `
 4. Merge existing configs, with project config overriding global config.
 5. Validate known keys, value types, reviewer and triage agent counts, reviewer IDs, duplicate accounts, model IDs, prompts, output settings, worktree settings, check settings, review settings, merge settings, triage settings, automation settings, and clear settings.
 6. Require `github.owner` and `github.repo` when a project config exists.
-7. Verify GitHub CLI authentication for configured reviewer, editor, triage, and triage creator accounts.
+7. Verify GitHub CLI authentication for configured reviewer, editor, triage agent, and triage creator accounts.
 8. Verify repository permissions when GitHub authentication succeeds.
 9. Print errors and warnings.
 
@@ -53,7 +53,7 @@ It does not modify files, create runs, post to GitHub, or start agents.
 | `review.prompts.*`        | Must point to readable files when configured.                         |
 | `merge.prompts.*`         | Must point to readable files when configured.                         |
 | `triage.agents`           | Required for triage, at least 3 agents, odd count.                    |
-| `triage.agents[].account` | Required GitHub account, unique across resolved triage agents.        |
+| `triage.agents[].account` | Required GitHub account for each triage agent, unique after refs.     |
 | `triage.reporter`         | Optional resolved triage agent key used for comments and mutations.   |
 | `triage.creator`          | Required with `triage.creator.account` when PR automation is enabled. |
 | `triage.prompts.*`        | Must point to readable files when configured.                         |
@@ -70,11 +70,11 @@ Project config overrides global config. Object values are deep merged; array val
 
 ### Does it check GitHub authentication?
 
-Yes. The slash command enables auth checks by default and runs `gh auth token --user <account>` for configured reviewer, editor, triage, and triage creator accounts.
+Yes. The slash command enables auth checks by default and runs `gh auth token --user <account>` for configured reviewer, editor, triage agent, and triage creator accounts.
 
 ### Does it check repository permissions?
 
-Yes, after auth succeeds. Reviewer accounts must be able to read the repository. The editor account must be able to push for editor operations. Triage agent accounts must be able to read the repository, and the triage creator account must be able to push when implementation PR creation is enabled.
+Yes, after auth succeeds. Reviewer accounts must be able to read the repository. The editor account must be able to push for editor operations. Each triage agent account must be able to read the repository, and the triage creator account must be able to push when implementation PR creation is enabled.
 
 ### Why can validation pass without an editor?
 

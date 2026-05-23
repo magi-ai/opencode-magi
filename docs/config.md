@@ -164,7 +164,7 @@ Entries with `ref` are expanded from `agents.refs`. Fields set alongside `ref` o
 | `triage.agents`                        | Both    | Yes (`/magi:triage`)             | -                                                    | Dedicated issue triage agents. Odd-length array of at least 3 agents.                                                |
 | `triage.agents[].id`                   | Both    | No                               | `voter-1`, ...                                       | Triage agent key used for output files and session tracking.                                                         |
 | `triage.agents[].model`                | Both    | Yes                              | -                                                    | Full OpenCode model ID used by the triage agent.                                                                     |
-| `triage.agents[].account`              | Both    | Yes                              | -                                                    | GitHub account used by the triage agent. Accounts must be unique after ref expansion.                                |
+| `triage.agents[].account`              | Both    | Yes                              | -                                                    | GitHub account used by this triage agent for ASK comments and, when selected as reporter, triage mutations.          |
 | `triage.agents[].options`              | Both    | No                               | -                                                    | OpenCode provider/model options injected for this triage agent.                                                      |
 | `triage.agents[].permissions`          | Both    | No                               | [json](/src/permissions/common.json)                 | OpenCode permission overrides for this triage agent.                                                                 |
 | `triage.agents[].persona`              | Both    | No                               | -                                                    | Triage vote perspective for this agent.                                                                              |
@@ -276,7 +276,7 @@ Supported actions are `allow`, `ask`, and `deny`. Pattern objects are order-sens
 - Triage agents must be an odd number of at least 3.
 - Triage agent keys must be unique after ref expansion. The key is `id` when provided, otherwise `voter-1`, `voter-2`, and so on.
 - Triage agent `account` values must be unique after ref expansion.
-- `triage.reporter`, when configured, must match a resolved triage agent key.
+- `triage.reporter`, when configured, must match a resolved triage agent key. If unset, Magi picks a stable fallback reporter from `triage.agents` by issue number.
 - Each configured account must be logged in for GitHub CLI: `gh auth token --user <account>`.
 - `merge.editor` is required when running `/magi:merge`, but not when running only `/magi:review`.
 - `triage.creator` and `triage.creator.account` are required when `triage.automation.create` is `true`.
