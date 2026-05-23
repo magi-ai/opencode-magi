@@ -15,8 +15,7 @@ concurrency:
 
 jobs:
   merge:
-    if: false
-    # if: ${{ github.event.pull_request.user.login == 'hirotomoyamada' && !github.event.pull_request.draft }}
+    if: ${{ github.event.pull_request.user.login == 'hirotomoyamada' && !github.event.pull_request.draft }}
     name: Merge
     runs-on: ubuntu-latest
     steps:
