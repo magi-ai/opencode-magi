@@ -64,7 +64,7 @@ Triage results:
 
 ## Outputs
 
-Magi may post issue comments, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. `ASK` results may post multiple comments through the `ASK`-voting agent accounts. Non-`ASK` results may post one author-mentioned decision comment through the selected reporter account. Clear-only related PR runs do not post a comment or close the issue or related PRs.
+Magi may post issue comments, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. `ASK` results may post multiple comments through the `ASK`-voting agent accounts. Non-`ASK` results may post one decision comment through the selected reporter account. Clear-only related PR runs do not post a comment or close the issue or related PRs.
 
 Triage artifacts are written to the issue run output directory:
 
@@ -138,7 +138,7 @@ Magi currently fetches issue comments `last: 50`, related PR timeline items `fir
 
 ### When does reconsideration run?
 
-Reconsideration requires a previous trusted Magi marker and eligible mention replies after that marker checkpoint. Replies must mention `triage.account`, must not have been processed already, and must pass the configured `triage.safety.allowMentionActors` or `triage.safety.allowMentionRoles` rules. Magi then classifies those replies and only reconsiders when at least one is classified as `CLARIFICATION`, `NEW_EVIDENCE`, or `OBJECTION`.
+Reconsideration requires a previous trusted Magi marker and eligible mention replies after that marker checkpoint. Replies must mention the selected reporter account, must not have been processed already, and must pass the configured `triage.safety.allowMentionActors` or `triage.safety.allowMentionRoles` rules. Magi then classifies those replies and only reconsiders when at least one is classified as `CLARIFICATION`, `NEW_EVIDENCE`, or `OBJECTION`.
 
 ### Which GitHub accounts are used?
 
