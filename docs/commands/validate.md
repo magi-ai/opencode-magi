@@ -42,21 +42,21 @@ It does not modify files, create runs, post to GitHub, or start agents.
 
 `/magi:validate` validates the same settings documented in [Config](/docs/config.md). The most important requirements are:
 
-| Setting                   | Requirement                                                           |
-| ------------------------- | --------------------------------------------------------------------- |
-| `review.agents`           | Required for review/merge, at least 3 reviewers, odd count.           |
-| `review.agents[].model`   | Required full OpenCode model ID in `provider/model` form.             |
-| `review.agents[].account` | Required GitHub account, unique across reviewers.                     |
-| `merge.editor`            | Required by `/magi:merge`, optional for `/magi:review`.               |
-| `github.owner`            | Required for PR review/merge runs.                                    |
-| `github.repo`             | Required for PR review/merge runs.                                    |
-| `review.prompts.*`        | Must point to readable files when configured.                         |
-| `merge.prompts.*`         | Must point to readable files when configured.                         |
-| `triage.agents`           | Required for triage, at least 3 agents, odd count.                    |
-| `triage.agents[].account` | Required GitHub account for each triage agent, unique after refs.     |
-| `triage.reporter`         | Optional resolved triage agent key used for comments and mutations.   |
-| `triage.creator`          | Required with `triage.creator.account` when PR automation is enabled. |
-| `triage.prompts.*`        | Must point to readable files when configured.                         |
+| Setting                   | Requirement                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------- |
+| `review.agents`           | Required for review/merge, at least 3 reviewers, odd count.                                 |
+| `review.agents[].model`   | Required full OpenCode model ID in `provider/model` form.                                   |
+| `review.agents[].account` | Required GitHub account, unique across reviewers.                                           |
+| `merge.editor`            | Required by `/magi:merge`, optional for `/magi:review`.                                     |
+| `github.owner`            | Required for PR review/merge runs.                                                          |
+| `github.repo`             | Required for PR review/merge runs.                                                          |
+| `review.prompts.*`        | Must point to readable files when configured.                                               |
+| `merge.prompts.*`         | Must point to readable files when configured.                                               |
+| `triage.agents`           | Required for triage, at least 3 agents, odd count.                                          |
+| `triage.agents[].account` | Required GitHub account for each triage agent, unique after refs.                           |
+| `triage.reporter`         | Optional resolved triage agent key used for comments and mutations.                         |
+| `triage.creator.*`        | Required creator account, model, and author fields when `triage.automation.create` is true. |
+| `triage.prompts.*`        | Must point to readable files when configured.                                               |
 
 ## FAQ
 
@@ -74,7 +74,7 @@ Yes. The slash command enables auth checks by default and runs `gh auth token --
 
 ### Does it check repository permissions?
 
-Yes, after auth succeeds. Reviewer accounts must be able to read the repository. The editor account must be able to push for editor operations. Each triage agent account must be able to read the repository, and the triage creator account must be able to push when implementation PR creation is enabled.
+Yes, after auth succeeds. Reviewer accounts and each triage agent account must be able to read the repository. The editor account must be able to push for editor operations. The triage creator account must be able to push when implementation PR creation is enabled.
 
 ### Why can validation pass without an editor?
 

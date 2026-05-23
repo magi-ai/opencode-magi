@@ -90,6 +90,7 @@ Important settings:
 | `triage.agents[].account`              | GitHub account used by each triage agent for ASK comments and reporter-owned mutations.               |
 | `triage.reporter`                      | Optional resolved triage agent key used for comments and mutations.                                   |
 | `triage.creator`                       | Agent used for implementation PR creation when enabled.                                               |
+| `triage.creator.account`               | Required when `triage.automation.create` is true; pushes branches and opens PRs.                      |
 | `triage.categories`                    | Category IDs and label/type rules that can skip Category Vote. Type rules require GitHub issue types. |
 | `triage.automation.close`              | Enables closing rejected or duplicate issues.                                                         |
 | `triage.automation.create`             | Enables implementation PR creation for accepted issues.                                               |
@@ -143,7 +144,7 @@ Reconsideration requires a previous trusted Magi marker and eligible mention rep
 
 ### Which GitHub accounts are used?
 
-`triage.agents[].account` values are used for triage comments and mutations. `triage.reporter` names the resolved triage agent key whose account posts result comments, writes markers, removes labels, and closes issues or related PRs. If `triage.reporter` is unset, Magi selects a stable reporter from `triage.agents` by issue number. Individual `ASK` comments are posted through the accounts of the triage agents that produced them. `triage.creator.account` pushes implementation branches and opens PRs when PR automation is enabled. All configured triage agent accounts must be authenticated with GitHub CLI and need repository read access; the creator account needs push access when PR creation automation is enabled.
+`triage.agents[].account` values are used for triage comments and mutations. Each triage agent account must be authenticated with GitHub CLI and able to read the repository. `triage.reporter` names the resolved triage agent key whose account posts result comments, writes markers, removes labels, and closes issues or related PRs. If `triage.reporter` is unset, Magi selects a stable reporter from `triage.agents` by issue number. Individual `ASK` comments are posted through the accounts of the triage agents that produced them. `triage.creator.account` is required when PR automation is enabled, pushes implementation branches and opens PRs, and must have repository push permission.
 
 ### What do the automation flags control?
 
