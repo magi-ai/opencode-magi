@@ -45,7 +45,6 @@ interface CiFailureEvidence {
 interface TargetChecks {
   blocking: PullRequestCheck[]
   hasAnyActionCheck: boolean
-  hasAnyCheck: boolean
   hasPending: boolean
   hasTargetActionCheck: boolean
 }
@@ -382,7 +381,7 @@ async function checksForHead(input: {
     input.exec,
     input.repository,
     input.pr,
-    { tolerateMissingChecks: Boolean(input.headSha) },
+    { requiredOnly: true, tolerateMissingChecks: Boolean(input.headSha) },
   )
   const targetChecks: PullRequestCheck[] = []
   let hasAnyActionCheck = false
@@ -415,7 +414,6 @@ async function checksForHead(input: {
       (check) => isFailedCheck(check) || isCancelledCheck(check),
     ),
     hasAnyActionCheck,
-    hasAnyCheck: checks.length > 0,
     hasPending: targetChecks.some(isPendingCheck),
     hasTargetActionCheck,
   }
@@ -718,7 +716,9 @@ export async function waitForChecksWithClassification(input: {
 
     for (let attempt = 0; ; attempt += 1) {
       try {
-        await watchChecks(input.exec, input.repository, input.pr)
+        await watchChecks(input.exec, input.repository, input.pr, {
+          requiredOnly: true,
+        })
       } catch {
         // gh exits non-zero for pending checks too; re-read check state below.
       }
@@ -726,8 +726,8 @@ export async function waitForChecksWithClassification(input: {
       const target = await readTargetChecks()
       const waitingForTargetHead =
         Boolean(input.headSha) &&
-        (!target.hasAnyCheck ||
-          (target.hasAnyActionCheck && !target.hasTargetActionCheck))
+        target.hasAnyActionCheck &&
+        !target.hasTargetActionCheck
 
       if (!waitingForTargetHead && !target.hasPending) {
         await assignBlockingChecks(target.blocking)
@@ -834,7 +834,11 @@ export async function waitForChecksWithClassification(input: {
     try {
       await input.onProgress?.("waiting for rerun CI checks")
       await watchRerunRuns(input.exec, input.repository, rerunnable)
-      if (input.wait) await watchChecks(input.exec, input.repository, input.pr)
+      if (input.wait) {
+        await watchChecks(input.exec, input.repository, input.pr, {
+          requiredOnly: true,
+        })
+      }
     } catch {
       // Re-read the PR checks below so stale failed checks are not trusted.
     }

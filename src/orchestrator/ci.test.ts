@@ -308,6 +308,42 @@ describe("check handling", () => {
     expect(progress).toContain("CI checks passed")
   })
 
+  test("uses required checks for CI waiting and classification", async () => {
+    const commands: string[] = []
+
+    const result = await waitForChecksWithClassification({
+      client: {
+        session: {
+          create: async () => ({ id: "session" }),
+          prompt: async () => {
+            throw new Error("optional checks should not be classified")
+          },
+        },
+      },
+      directory: ".",
+      exec: async (command) => {
+        commands.push(command)
+
+        if (command.includes("--watch")) return ""
+        if (command.includes("--json")) return "[]"
+
+        return ""
+      },
+      pr: 1,
+      repairAttempts: 0,
+      repository,
+      wait: true,
+    })
+
+    expect(result?.report.failed).toEqual([])
+    expect(commands).toContain(
+      "gh pr checks 1 --repo 'owner/repo' --watch --required",
+    )
+    expect(commands).toContain(
+      "gh pr checks 1 --repo 'owner/repo' --json name,state,bucket,link,workflow --required",
+    )
+  })
+
   test("classifies existing failures without waiting when wait is false", async () => {
     const commands: string[] = []
     const failed = [check()]
@@ -506,15 +542,8 @@ describe("check handling", () => {
     expect(result?.ciFailureContext).toContain("new head failure")
   })
 
-  test("keeps polling when target-head checks are not reported yet", async () => {
+  test("does not keep polling when no required checks are reported", async () => {
     let checksCalls = 0
-    const passed = {
-      bucket: "pass",
-      link: "https://github.com/owner/repo/actions/runs/2/job/456",
-      name: "Test",
-      state: "SUCCESS",
-      workflow: "CI",
-    }
 
     const result = await waitForChecksWithClassification({
       client: {
@@ -532,13 +561,9 @@ describe("check handling", () => {
         }
         if (command.includes("--json")) {
           checksCalls += 1
-          if (checksCalls === 1) {
-            throw Object.assign(new Error("Command failed"), {
-              stderr: "no checks reported on the 'feature-branch' branch",
-            })
-          }
-
-          return JSON.stringify([passed])
+          throw Object.assign(new Error("Command failed"), {
+            stderr: "no checks reported on the 'feature-branch' branch",
+          })
         }
 
         return ""
@@ -551,7 +576,7 @@ describe("check handling", () => {
       waitPollIntervalMs: 0,
     })
 
-    expect(checksCalls).toBe(2)
+    expect(checksCalls).toBe(1)
     expect(result?.report.failed).toEqual([])
     expect(result?.ciFailureContext).toBe("")
   })

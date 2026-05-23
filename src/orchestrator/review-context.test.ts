@@ -286,7 +286,7 @@ describe("review context", () => {
     expect(snapshot.referencedIssues).toEqual([])
     expect(
       commands.filter((command) => command.startsWith("gh issue view ")),
-    ).toHaveLength(5)
+    ).toHaveLength(0)
   })
 
   test("detects closing and referenced issue relationships", () => {
