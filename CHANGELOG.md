@@ -1,5 +1,19 @@
 # opencode-magi
 
+## 0.6.1
+
+### Patch Changes
+
+- [#252](https://github.com/magi-ai/opencode-magi/pull/252) [`762abc7`](https://github.com/magi-ai/opencode-magi/commit/762abc70b0d3a845eb63017f25b2798ddc8975b1) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Honor configured structured output repair attempts in triage model calls.
+
+- [#246](https://github.com/magi-ai/opencode-magi/pull/246) [`aef1c0f`](https://github.com/magi-ai/opencode-magi/commit/aef1c0fbfb364743b9835a4be939f4ec64033a6c) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Fix the existing PR triage prompt to use the structured vote names required by the output contract.
+
+- [#249](https://github.com/magi-ai/opencode-magi/pull/249) [`b565176`](https://github.com/magi-ai/opencode-magi/commit/b565176068c9c84e98c8ced8fa1ec2537d8380fd) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Limit fetchIssue CLI fallback to issue type schema errors.
+
+- [#250](https://github.com/magi-ai/opencode-magi/pull/250) [`c07b95a`](https://github.com/magi-ai/opencode-magi/commit/c07b95a15b934b9495fc8adfe505780f31f53ee0) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Remove unused triage comment and question prompt configuration keys.
+
+- [#254](https://github.com/magi-ai/opencode-magi/pull/254) [`e2a167b`](https://github.com/magi-ai/opencode-magi/commit/e2a167b6b6d2dc80fe4cb106a0c6bda39db32a6d) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Wait only for required pull request checks during CI gating.
+
 ## 0.6.0
 
 ### Minor Changes
