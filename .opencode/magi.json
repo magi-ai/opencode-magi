@@ -6,16 +6,19 @@
     "refs": {
       "melchior": {
         "id": "Melchior",
-        "model": "opencode-go/deepseek-v4-pro",
+        "account": "melchior-magi",
+        "model": "openai/gpt-5.5",
         "options": { "reasoningEffort": "high" }
       },
       "balthasar": {
         "id": "Balthasar",
-        "model": "opencode-go/minimax-m2.7",
+        "account": "balthasar-magi",
+        "model": "opencode/deepseek-v4-flash-free",
         "options": { "reasoningEffort": "high" }
       },
       "caspar": {
         "id": "Caspar",
+        "account": "caspar-magi",
         "model": "opencode-go/qwen3.6-plus",
         "options": { "thinking": { "type": "enabled", "budgetTokens": 16000 } }
       },
@@ -33,9 +36,9 @@
   },
   "review": {
     "agents": [
-      { "ref": "melchior", "account": "melchior-magi" },
-      { "ref": "balthasar", "account": "balthasar-magi" },
-      { "ref": "caspar", "account": "caspar-magi" }
+      { "ref": "melchior" },
+      { "ref": "balthasar" },
+      { "ref": "caspar" }
     ],
     "merge": { "queue": true, "approvalPolicy": "unanimous" },
     "prompts": {
@@ -50,9 +53,9 @@
   },
   "triage": {
     "agents": [
-      { "ref": "melchior", "account": "melchior-magi" },
-      { "ref": "balthasar", "account": "balthasar-magi" },
-      { "ref": "caspar", "account": "caspar-magi" }
+      { "ref": "melchior" },
+      { "ref": "balthasar" },
+      { "ref": "caspar" }
     ],
     "creator": { "ref": "hirotomoyamada" },
     "automation": { "create": true }
