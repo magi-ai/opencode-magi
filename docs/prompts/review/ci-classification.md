@@ -6,8 +6,8 @@ Config key: `review.prompts.ciClassification`
 
 Built-in template: [`review/ci-classification.md`](/src/prompts/templates/review/ci-classification.md)
 
-| Placeholder          | Meaning                                                                                               |
-| -------------------- | ----------------------------------------------------------------------------------------------------- |
-| `{pr}`               | Pull request number.                                                                                  |
-| `{owner}` / `{repo}` | GitHub repository owner and name.                                                                     |
-| `{failedChecks}`     | JSON list of failed checks with `name`, `workflow`, `state`, `link`, and structured failure evidence. |
+| Placeholder          | Meaning                                                                                                        |
+| -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `{pr}`               | Pull request number.                                                                                           |
+| `{owner}` / `{repo}` | GitHub repository owner and name.                                                                              |
+| `{failedChecks}`     | JSON list of failed required checks with `name`, `workflow`, `state`, `link`, and structured failure evidence. |

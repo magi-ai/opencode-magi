@@ -46,7 +46,7 @@ It skips reviewer accounts that already reviewed the current effective head. If 
 5. Determine review freshness against the latest non-merge PR commit.
 6. Skip current reviewers, use re-review mode for stale reviewers, and use initial review mode for reviewers with no prior review.
 7. Fetch and write review context for the PR, related issues, PR comments, and review discussion.
-8. Wait for PR checks when `review.checks.wait` is enabled.
+8. Wait for required PR checks when `review.checks.wait` is enabled. Optional checks are ignored for review gating.
 9. If checks fail, remove checks matching `review.checks.exclude`, fetch failed job logs, classify each remaining failure as `SCOPE_IN` or `SCOPE_OUT`, rerun only `SCOPE_OUT` GitHub Actions jobs up to `review.checks.retryFailedJobs`, and pass `SCOPE_IN` failure context to reviewers. Dry runs skip the rerun and report it as a planned action.
 10. Create a detached git worktree under `review.worktree` and check out the PR branch.
 11. Run each non-skipped reviewer agent through the reviewer worker pool.
@@ -106,7 +106,7 @@ Important settings for `/magi:review`:
 | Setting                               | Purpose                                                       |
 | ------------------------------------- | ------------------------------------------------------------- |
 | `review.agents`                       | Reviewer agents, models, personas, permissions, and accounts. |
-| `review.checks.wait`                  | Wait for PR checks before review.                             |
+| `review.checks.wait`                  | Wait for required PR checks before review.                    |
 | `review.checks.exclude`               | Ignore matching failed checks.                                |
 | `review.checks.retryFailedJobs`       | Retry scope-outside GitHub Actions jobs.                      |
 | `review.concurrency.reviewers`        | Maximum reviewer agents running at once.                      |
@@ -137,6 +137,10 @@ Magi reuses that review when it is current for the latest non-merge PR commit. I
 ### What happens on a draft PR?
 
 Magi aborts before running reviewers or posting results.
+
+### Do optional checks block review?
+
+No. `review.checks.wait` waits only for required PR checks. Optional pending checks do not gate review or failed-check classification.
 
 ### How does re-review mode choose the diff?
 
