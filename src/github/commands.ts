@@ -96,7 +96,12 @@ export interface PullRequestCheck {
 }
 
 export interface FetchPullRequestChecksOptions {
+  requiredOnly?: boolean
   tolerateMissingChecks?: boolean
+}
+
+export interface WatchChecksOptions {
+  requiredOnly?: boolean
 }
 
 export interface IssueComment {
@@ -1141,9 +1146,12 @@ export async function watchChecks(
   exec: Exec,
   repository: ResolvedRepository,
   pr: number,
+  options: WatchChecksOptions = {},
 ): Promise<void> {
+  const requiredFlag = options.requiredOnly ? " --required" : ""
+
   await exec(
-    `gh pr checks ${pr} --repo ${shellQuote(repoSpecifier(repository))} --watch`,
+    `gh pr checks ${pr} --repo ${shellQuote(repoSpecifier(repository))} --watch${requiredFlag}`,
   )
 }
 
@@ -1162,10 +1170,11 @@ export async function fetchPullRequestChecks(
   options: FetchPullRequestChecksOptions = {},
 ): Promise<PullRequestCheck[]> {
   let raw: string
+  const requiredFlag = options.requiredOnly ? " --required" : ""
 
   try {
     raw = await exec(
-      `gh pr checks ${pr} --repo ${shellQuote(repoSpecifier(repository))} --json name,state,bucket,link,workflow`,
+      `gh pr checks ${pr} --repo ${shellQuote(repoSpecifier(repository))} --json name,state,bucket,link,workflow${requiredFlag}`,
     )
   } catch (error) {
     if (

@@ -22,6 +22,7 @@ import {
   repoSpecifier,
   searchDuplicateIssues,
   shellQuote,
+  watchChecks,
   waitForAutoMerge,
   waitForMergeQueue,
 } from "./commands"
@@ -534,6 +535,44 @@ describe("GitHub command helpers", () => {
     )
 
     expect(result).toEqual([])
+  })
+
+  test("fetches only required pull request checks when requested", async () => {
+    let command = ""
+
+    await fetchPullRequestChecks(
+      async (value) => {
+        command = value
+
+        return "[]"
+      },
+      repository,
+      1,
+      { requiredOnly: true },
+    )
+
+    expect(command).toBe(
+      "gh pr checks 1 --repo 'owner/repo' --json name,state,bucket,link,workflow --required",
+    )
+  })
+
+  test("watches only required pull request checks when requested", async () => {
+    let command = ""
+
+    await watchChecks(
+      async (value) => {
+        command = value
+
+        return ""
+      },
+      repository,
+      1,
+      { requiredOnly: true },
+    )
+
+    expect(command).toBe(
+      "gh pr checks 1 --repo 'owner/repo' --watch --required",
+    )
   })
 
   test("keeps other pull request check failures fatal", async () => {
