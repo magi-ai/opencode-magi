@@ -7,7 +7,7 @@
       "melchior": {
         "id": "Melchior",
         "account": "melchior-magi",
-        "model": "openai/gpt-5.5",
+        "model": "opencode/nemotron-3-super-free",
         "options": { "reasoningEffort": "high" }
       },
       "balthasar": {
@@ -19,7 +19,7 @@
       "caspar": {
         "id": "Caspar",
         "account": "caspar-magi",
-        "model": "opencode-go/qwen3.6-plus",
+        "model": "opencode-go/qwen3.5-plus",
         "options": { "thinking": { "type": "enabled", "budgetTokens": 16000 } }
       },
       "hirotomoyamada": {
