@@ -5,6 +5,7 @@
 ```txt
 /magi:triage <ISSUE...>
 /magi:triage --dry-run <ISSUE...>
+/magi:triage --sync --timeout 300 <ISSUE...>
 /magi:triage --no-close --create --review <ISSUE...>
 ```
 
@@ -16,20 +17,22 @@ Per-run flags override merged config before validation and resolution. If both p
 
 Triage flags:
 
-| Flag                      | Overrides                  |
-| ------------------------- | -------------------------- |
-| `--language <value>`      | `language`                 |
-| `--close`, `--no-close`   | `triage.automation.close`  |
-| `--create`, `--no-create` | `triage.automation.create` |
-| `--review`, `--no-review` | `triage.automation.review` |
-| `--merge`, `--no-merge`   | `triage.automation.merge`  |
-| `--run-concurrency <n>`   | `triage.concurrency.runs`  |
+| Flag                      | Effect or override                                      |
+| ------------------------- | ------------------------------------------------------- |
+| `--sync`                  | Wait for the triage run to finish before returning.     |
+| `--timeout <seconds>`     | Stop waiting after this many seconds when synchronized. |
+| `--language <value>`      | `language`                                              |
+| `--close`, `--no-close`   | `triage.automation.close`                               |
+| `--create`, `--no-create` | `triage.automation.create`                              |
+| `--review`, `--no-review` | `triage.automation.review`                              |
+| `--merge`, `--no-merge`   | `triage.automation.merge`                               |
+| `--run-concurrency <n>`   | `triage.concurrency.runs`                               |
 
 ## What It Does
 
 `/magi:triage` triages GitHub issues with dedicated `triage.agents`. It does not reuse `review.agents`.
 
-Magi fetches bounded issue relationship data, asks triage agents to vote on existing PRs, duplicate issues, issue kind, and bug or feature decisions, then posts one author-mentioned result comment through the reporter triage agent unless the run is a clear-only linked PR case.
+Magi fetches bounded issue relationship data, asks triage agents to vote on existing PRs, duplicate issues, issue kind, and bug or feature decisions, then posts one author-mentioned result comment through the reporter triage agent account unless the run is a clear-only linked PR case. Configure `triage.reporter` to choose the reporter by resolved triage agent key; otherwise Magi selects one from the issue number.
 
 ## Flow
 
@@ -61,7 +64,7 @@ Triage results:
 
 ## Outputs
 
-Magi may post one author-mentioned issue comment through the reporter triage agent, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. Clear-only related PR runs do not post a comment.
+Magi may post one author-mentioned issue comment through the reporter triage agent account, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. Clear-only related PR runs do not post a comment.
 
 Triage artifacts are written to the issue run output directory:
 
@@ -83,8 +86,9 @@ Important settings:
 
 | Setting                                | Purpose                                                                                               |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `triage.agents`                        | Dedicated issue triage voting agents.                                                                 |
-| `triage.reporter`                      | Optional triage agent key used for comments and issue mutations.                                      |
+| `triage.agents`                        | Dedicated issue triage voting agents. Must be an odd-length array of at least 3 agents.               |
+| `triage.agents[].account`              | GitHub accounts used for voting and reporter mutations. Accounts must be unique after ref expansion.  |
+| `triage.reporter`                      | Optional resolved triage agent key used for comments and mutations.                                   |
 | `triage.creator`                       | Agent used for implementation PR creation when enabled.                                               |
 | `triage.creator.account`               | Required when `triage.automation.create` is true; pushes branches and opens PRs.                      |
 | `triage.categories`                    | Category IDs and label/type rules that can skip Category Vote. Type rules require GitHub issue types. |
@@ -134,7 +138,7 @@ Magi currently fetches issue comments `last: 50`, related PR timeline items `fir
 
 ### Which GitHub accounts are used?
 
-A triage agent account posts triage comments, closes issues and related PRs, and removes labels. Set `triage.reporter` to choose a specific triage agent key; otherwise Magi selects a reporter by issue number. `triage.creator.account` is required when PR automation is enabled and pushes implementation branches and opens PRs. Triage agent accounts need repository read access, and the creator account needs push access.
+Each `triage.agents[].account` must be authenticated with GitHub CLI and able to read the repository. The reporter triage agent account posts triage comments, closes issues and related PRs, and removes labels. `triage.reporter`, when configured, must match a resolved triage agent key such as an explicit `id` or generated `voter-1` key. `triage.creator.account` is required when PR automation is enabled, pushes implementation branches and opens PRs, and must have repository push permission.
 
 ### What do the automation flags control?
 

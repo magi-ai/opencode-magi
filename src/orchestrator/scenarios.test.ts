@@ -362,6 +362,7 @@ function createExec(
     issueComments?: IssueComment[]
     labels?: string[]
     relatedPullRequests?: RelatedPullRequest[]
+    requiredChecks?: PullRequestCheck[]
     reviews?: PullRequestReview[]
     triageIssue?: IssueMeta
     threads?: ReviewThread[]
@@ -396,7 +397,11 @@ function createExec(
     }
     if (command.startsWith("gh pr checks 7") && command.includes("--json")) {
       checksRead += 1
-      return JSON.stringify(checksRead === 1 ? (input.checks ?? []) : [])
+      const checks = command.includes("--required")
+        ? (input.requiredChecks ?? input.checks ?? [])
+        : (input.checks ?? [])
+
+      return JSON.stringify(checksRead === 1 ? checks : [])
     }
     if (command.startsWith("gh run view")) return "Error: stale test failure"
     if (command.startsWith("gh run rerun")) return ""
@@ -558,6 +563,7 @@ async function runReviewScenario(input: {
   labels?: string[]
   outputs: string[]
   repository?: ResolvedRepository
+  requiredChecks?: PullRequestCheck[]
   reviews?: PullRequestReview[]
   threads?: ReviewThread[]
 }) {
@@ -567,6 +573,7 @@ async function runReviewScenario(input: {
   const exec = createExec({
     checks: input.checks,
     labels: input.labels,
+    requiredChecks: input.requiredChecks,
     reviews: input.reviews,
     threads: input.threads,
   })
@@ -595,12 +602,17 @@ async function runMergeScenario(input: {
   dryRun?: boolean
   outputs: string[]
   repository?: ResolvedRepository
+  requiredChecks?: PullRequestCheck[]
   reviews?: PullRequestReview[]
 }) {
   const directory = await mkdtemp(join(tmpdir(), "magi-merge-scenario-"))
   temporaryDirs.push(directory)
   const model = createModelClient([...input.outputs])
-  const exec = createExec({ checks: input.checks, reviews: input.reviews })
+  const exec = createExec({
+    checks: input.checks,
+    requiredChecks: input.requiredChecks,
+    reviews: input.reviews,
+  })
   const progress: unknown[] = []
   const result = await runMerge({
     client: model.client,
@@ -665,6 +677,16 @@ function ciCheck(): PullRequestCheck {
     name: "test",
     state: "FAILURE",
     workflow: "CI",
+  }
+}
+
+function pendingMergeCheck(): PullRequestCheck {
+  return {
+    bucket: "pending",
+    link: "https://github.com/owner/repo/actions/runs/999/job/888",
+    name: "Merge",
+    state: "IN_PROGRESS",
+    workflow: "Merge",
   }
 }
 
@@ -998,6 +1020,30 @@ describe("scenario: /magi:merge", () => {
     expect(
       result.commands.some((command) => command.includes("enqueuePullRequest")),
     ).toBe(false)
+  })
+
+  test("does not wait on a non-required pending Merge check", async () => {
+    const result = await runMergeScenario({
+      checks: [pendingMergeCheck()],
+      outputs: [
+        reviewOutput("MERGE"),
+        reviewOutput("MERGE"),
+        reviewOutput("MERGE"),
+      ],
+      repository: {
+        ...repository,
+        checks: { ...repository.checks, waitBeforeReview: true },
+      },
+      requiredChecks: [],
+    })
+
+    expect(result.result.status).toBe("merged")
+    expect(
+      result.commands.filter((command) => command.startsWith("gh pr checks 7")),
+    ).toEqual([
+      "gh pr checks 7 --repo 'owner/repo' --watch --required",
+      "gh pr checks 7 --repo 'owner/repo' --json name,state,bucket,link,workflow --required",
+    ])
   })
 
   test("enqueues an approved PR when merge queue is required", async () => {

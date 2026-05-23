@@ -37,6 +37,9 @@ When editing or reviewing files that match a pattern below, read the linked rule
   - `schema.json`
   - `package.json`
   - `README.md`
+- [Source](.agents/rules/source.md):
+  - `src/**/*.{ts,md,json}`
+  - `!src/**/*.test.ts`
 - [Documentation](.agents/rules/documentation.md):
   - `{.agents,docs}/**/*.md`
   - `./*.md`

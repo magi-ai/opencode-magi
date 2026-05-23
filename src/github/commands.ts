@@ -96,7 +96,12 @@ export interface PullRequestCheck {
 }
 
 export interface FetchPullRequestChecksOptions {
+  requiredOnly?: boolean
   tolerateMissingChecks?: boolean
+}
+
+export interface WatchChecksOptions {
+  requiredOnly?: boolean
 }
 
 export interface IssueComment {
@@ -227,6 +232,37 @@ function errorText(error: unknown): string {
   return [value.message, value.stderr, value.stdout]
     .filter((item): item is string => typeof item === "string")
     .join("\n")
+}
+
+function isIssueTypeUnavailableText(text: string): boolean {
+  return (
+    /cannot query field ["']?issueType["']? on type ["']?Issue["']?/i.test(
+      text,
+    ) ||
+    /field ["']?issueType["']?.*(does not exist|doesn't exist|is not defined|not found).*type ["']?Issue["']?/i.test(
+      text,
+    ) ||
+    /undefinedField.*issueType/i.test(text) ||
+    /issueType.*unsupported field|unsupported field.*issueType/i.test(text)
+  )
+}
+
+function isIssueTypeUnavailableError(error: unknown): boolean {
+  return isIssueTypeUnavailableText(errorText(error))
+}
+
+function isIssueTypeUnavailableGraphqlResponse(data: {
+  errors?: { message?: string; type?: string }[]
+}): boolean {
+  return (
+    data.errors?.some((error) =>
+      isIssueTypeUnavailableText(
+        [error.message, error.type]
+          .filter((item): item is string => typeof item === "string")
+          .join("\n"),
+      ),
+    ) ?? false
+  )
 }
 
 async function localCommitExists(
@@ -534,43 +570,56 @@ export async function fetchIssue(
   issue: number,
 ): Promise<IssueMeta> {
   const query = `query($owner: String!, $repo: String!, $issue: Int!) { repository(owner: $owner, name: $repo) { issue(number: $issue) { number title body url state author { login } labels(first: 100) { nodes { name } } issueType { name } } } }`
+  let raw: string
 
   try {
-    const raw = await exec(
+    raw = await exec(
       `gh api${ghHostOption(repository)} graphql -f query=${shellQuote(query)} -F owner=${shellQuote(repository.github.owner)} -F repo=${shellQuote(repository.github.repo)} -F issue=${issue}`,
     )
-    const data = JSON.parse(raw) as {
-      data?: {
-        repository?: {
-          issue?: {
-            author?: { login?: string }
-            body?: string
-            issueType?: { name?: string } | null
-            labels?: { nodes?: { name: string }[] }
-            number: number
-            state: string
-            title: string
-            url: string
-          }
+  } catch (error) {
+    if (isIssueTypeUnavailableError(error)) {
+      return fetchIssueWithCli(exec, repository, issue)
+    }
+
+    throw error
+  }
+
+  const data = JSON.parse(raw) as {
+    data?: {
+      repository?: {
+        issue?: {
+          author?: { login?: string }
+          body?: string
+          issueType?: { name?: string } | null
+          labels?: { nodes?: { name: string }[] }
+          number: number
+          state: string
+          title: string
+          url: string
         }
       }
     }
-    const graphqlIssue = data.data?.repository?.issue
+    errors?: { message?: string; type?: string }[]
+  }
+  const graphqlIssue = data.data?.repository?.issue
 
-    if (!graphqlIssue) throw new Error(`Could not fetch issue #${issue}`)
-
-    return {
-      author: graphqlIssue.author?.login ?? "",
-      body: graphqlIssue.body ?? "",
-      labels: graphqlIssue.labels?.nodes?.map((label) => label.name) ?? [],
-      number: graphqlIssue.number,
-      state: graphqlIssue.state,
-      title: graphqlIssue.title,
-      type: graphqlIssue.issueType?.name,
-      url: graphqlIssue.url,
+  if (!graphqlIssue) {
+    if (isIssueTypeUnavailableGraphqlResponse(data)) {
+      return fetchIssueWithCli(exec, repository, issue)
     }
-  } catch {
-    return fetchIssueWithCli(exec, repository, issue)
+
+    throw new Error(`Could not fetch issue #${issue}`)
+  }
+
+  return {
+    author: graphqlIssue.author?.login ?? "",
+    body: graphqlIssue.body ?? "",
+    labels: graphqlIssue.labels?.nodes?.map((label) => label.name) ?? [],
+    number: graphqlIssue.number,
+    state: graphqlIssue.state,
+    title: graphqlIssue.title,
+    type: graphqlIssue.issueType?.name,
+    url: graphqlIssue.url,
   }
 }
 
@@ -1141,9 +1190,12 @@ export async function watchChecks(
   exec: Exec,
   repository: ResolvedRepository,
   pr: number,
+  options: WatchChecksOptions = {},
 ): Promise<void> {
+  const requiredFlag = options.requiredOnly ? " --required" : ""
+
   await exec(
-    `gh pr checks ${pr} --repo ${shellQuote(repoSpecifier(repository))} --watch`,
+    `gh pr checks ${pr} --repo ${shellQuote(repoSpecifier(repository))} --watch${requiredFlag}`,
   )
 }
 
@@ -1162,10 +1214,11 @@ export async function fetchPullRequestChecks(
   options: FetchPullRequestChecksOptions = {},
 ): Promise<PullRequestCheck[]> {
   let raw: string
+  const requiredFlag = options.requiredOnly ? " --required" : ""
 
   try {
     raw = await exec(
-      `gh pr checks ${pr} --repo ${shellQuote(repoSpecifier(repository))} --json name,state,bucket,link,workflow`,
+      `gh pr checks ${pr} --repo ${shellQuote(repoSpecifier(repository))} --json name,state,bucket,link,workflow${requiredFlag}`,
     )
   } catch (error) {
     if (
