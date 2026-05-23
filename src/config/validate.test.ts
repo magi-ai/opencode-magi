@@ -389,6 +389,29 @@ describe("validateConfig", () => {
     expect(result.errors).toContain("triage.prompts.action is not supported")
   })
 
+  test.each(["comment", "question"])(
+    "rejects unused triage %s prompt key",
+    async (promptKey) => {
+      const result = await validateConfig(
+        {
+          github: { owner: "owner", repo: "repo" },
+          triage: {
+            agents: triageAgents,
+            prompts: {
+              [promptKey]: `triage-${promptKey}.md`,
+            } as unknown as NonNullable<MagiConfig["triage"]>["prompts"],
+          },
+        },
+        { requireReview: false, requireTriage: true },
+      )
+
+      expect(result.ok).toBe(false)
+      expect(result.errors).toContain(
+        `triage.prompts.${promptKey} is not supported`,
+      )
+    },
+  )
+
   test.each([
     {
       name: "missing id",

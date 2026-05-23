@@ -172,13 +172,11 @@ const MERGE_PROMPT_KEYS = new Set([
 const TRIAGE_PROMPT_KEYS = new Set([
   "acceptance",
   "category",
-  "comment",
   "commentClassification",
   "create",
   "createGuidelines",
   "duplicate",
   "existingPr",
-  "question",
   "reconsider",
 ])
 

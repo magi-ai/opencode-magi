@@ -103,14 +103,6 @@ export interface TriagePromptInput {
   voter: ResolvedTriageAgent
 }
 
-export interface TriageCommentPromptInput {
-  author: string
-  context: string
-  directory: string
-  issue: number
-  repository: ResolvedRepository
-}
-
 export interface TriageCreatePrPromptInput {
   context: string
   directory: string
@@ -567,46 +559,6 @@ async function composeTriageVotePrompt(input: {
     languageBlock(input.repository.language),
     personaBlock(input.voter.persona),
     input.outputContract,
-  ]
-    .filter(Boolean)
-    .join("\n\n")
-}
-
-export async function composeTriageCommentPrompt(
-  input: TriageCommentPromptInput,
-): Promise<string> {
-  const values = triageValues(input)
-  const task = await taskBlock({
-    builtin: "triage/comment",
-    customPath: input.repository.triage?.prompts.comment,
-    directory: input.directory,
-    values,
-  })
-
-  return [
-    task,
-    languageBlock(input.repository.language),
-    `<context>\n${input.context}\n</context>`,
-  ]
-    .filter(Boolean)
-    .join("\n\n")
-}
-
-export async function composeTriageQuestionPrompt(
-  input: TriageCommentPromptInput,
-): Promise<string> {
-  const values = triageValues(input)
-  const task = await taskBlock({
-    builtin: "triage/question",
-    customPath: input.repository.triage?.prompts.question,
-    directory: input.directory,
-    values,
-  })
-
-  return [
-    task,
-    languageBlock(input.repository.language),
-    `<context>\n${input.context}\n</context>`,
   ]
     .filter(Boolean)
     .join("\n\n")
