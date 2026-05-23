@@ -12,10 +12,8 @@ import {
   composeRereviewCloseReconsiderationPrompt,
   composeRereviewPrompt,
   composeReviewPrompt,
-  composeTriageCommentPrompt,
   composeTriageCreatePrPrompt,
   composeTriageExistingPrPrompt,
-  composeTriageQuestionPrompt,
 } from "./compose"
 
 function evidence(
@@ -418,16 +416,8 @@ describe("prompt composer", () => {
     expect(prompt).toContain("caused by the PR changes or the editor changes")
   })
 
-  test("uses configured triage comment, question, and create PR prompts", async () => {
+  test("uses configured triage create PR prompt", async () => {
     const dir = await mkdtemp(join(tmpdir(), "magi-prompt-"))
-    await writeFile(
-      join(dir, "triage-comment.md"),
-      "Comment for @{author}: {context}",
-    )
-    await writeFile(
-      join(dir, "triage-question.md"),
-      "Question for @{author}: {context}",
-    )
     await writeFile(
       join(dir, "triage-create.md"),
       "Implement in {worktreePath}: {context}",
@@ -491,10 +481,8 @@ describe("prompt composer", () => {
         ],
         concurrency: { runs: 3 },
         prompts: {
-          comment: "triage-comment.md",
           create: "triage-create.md",
           createGuidelines: "triage-create-guidelines.md",
-          question: "triage-question.md",
         },
         safety: {
           allowAuthors: [],
@@ -506,20 +494,6 @@ describe("prompt composer", () => {
       },
     }
 
-    const commentPrompt = await composeTriageCommentPrompt({
-      author: "octocat",
-      context: "accepted",
-      directory: dir,
-      issue: 58,
-      repository,
-    })
-    const questionPrompt = await composeTriageQuestionPrompt({
-      author: "octocat",
-      context: "missing logs",
-      directory: dir,
-      issue: 58,
-      repository,
-    })
     const createPrPrompt = await composeTriageCreatePrPrompt({
       context: "fix issue",
       directory: dir,
@@ -528,8 +502,6 @@ describe("prompt composer", () => {
       worktreePath: "/tmp/issue-58",
     })
 
-    expect(commentPrompt).toContain("Comment for @octocat: accepted")
-    expect(questionPrompt).toContain("Question for @octocat: missing logs")
     expect(createPrPrompt).toContain("Implement in /tmp/issue-58: fix issue")
     expect(createPrPrompt).toContain(
       "<create_guidelines>\nKeep issue #58 fixes scoped to owner/repo.\n</create_guidelines>",

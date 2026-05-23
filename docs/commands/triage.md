@@ -106,8 +106,6 @@ Important settings:
 | `triage.prompts.duplicate`             | Duplicate issue voting prompt template.                                                               |
 | `triage.prompts.category`              | Category voting prompt template.                                                                      |
 | `triage.prompts.acceptance`            | Acceptance voting prompt template.                                                                    |
-| `triage.prompts.question`              | Clarification question prompt template.                                                               |
-| `triage.prompts.comment`               | Triage result comment prompt template.                                                                |
 | `triage.prompts.commentClassification` | Mention reply classification prompt template.                                                         |
 | `triage.prompts.reconsider`            | Reconsideration prompt template.                                                                      |
 | `triage.prompts.create`                | Implementation PR creation prompt template.                                                           |
