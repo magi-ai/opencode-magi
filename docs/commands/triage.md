@@ -83,9 +83,9 @@ Important settings:
 
 | Setting                                | Purpose                                                                                               |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `triage.reporter`                      | Optional triage agent key used as the reporter for result comments and mutations.                      |
+| `triage.reporter`                      | Optional triage agent key used as the reporter for result comments and mutations.                     |
 | `triage.agents`                        | Dedicated issue triage voting agents.                                                                 |
-| `triage.agents[].account`              | GitHub account used by each triage agent for ASK comments and reporter-owned mutations.                |
+| `triage.agents[].account`              | GitHub account used by each triage agent for ASK comments and reporter-owned mutations.               |
 | `triage.creator`                       | Agent used for implementation PR creation when enabled.                                               |
 | `triage.categories`                    | Category IDs and label/type rules that can skip Category Vote. Type rules require GitHub issue types. |
 | `triage.automation.close`              | Enables closing rejected or duplicate issues.                                                         |
