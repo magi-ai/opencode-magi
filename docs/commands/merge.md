@@ -51,7 +51,7 @@ During a single merge flow, Magi reuses reviewer OpenCode sessions from the init
 9. Parse editor output as the fixed edit JSON schema.
 10. Push the editor commit to the PR branch with the editor account when the editor made code changes, unless `--dry-run` is set.
 11. Post editor replies to the review comments listed in the editor output, unless `--dry-run` is set.
-12. Wait for PR checks again when the editor made code changes and `merge.checks.wait` is enabled. Dry runs skip post-edit CI because changes are not pushed.
+12. Wait for required PR checks again when the editor made code changes and `merge.checks.wait` is enabled. Optional checks are ignored for post-edit CI gating. Dry runs skip post-edit CI because changes are not pushed.
 13. Classify failed job logs as `SCOPE_IN` or `SCOPE_OUT`; rerun only `SCOPE_OUT` GitHub Actions jobs and pass `SCOPE_IN` failure context to re-reviewers.
 14. Fetch each reviewer's unresolved threads, or use synthetic dry-run threads from reviewer findings.
 15. Run every reviewer agent with the re-review prompt.
@@ -109,7 +109,7 @@ Important settings for `/magi:merge`:
 | `review.agents`                       | Reviewer agents used for initial review and re-review.             |
 | `merge.automation.close`              | Run `gh pr close` after a close decision.                          |
 | `merge.automation.merge`              | Merge or enqueue the PR after approval.                            |
-| `merge.checks.wait`                   | Wait for PR checks after editor changes.                           |
+| `merge.checks.wait`                   | Wait for required PR checks after editor changes.                  |
 | `review.merge.approvalPolicy`         | Decide readiness by `majority` or `unanimous`.                     |
 | `review.merge.auto`                   | Pass `--auto` to `gh pr merge` outside merge queue mode.           |
 | `review.merge.deleteBranch`           | Delete the PR branch during non-queue merges when configured.      |
@@ -161,6 +161,8 @@ When `review.merge.queue` is `true`, Magi also checks the base branch rules for 
 ### Does CI failure block review or editing?
 
 Scope-outside unresolved jobs do not stop review, editing, re-review, or approval posting. They do stop the final merge and return `ci_unresolved`.
+
+Optional pending checks do not block post-edit CI gating. `merge.checks.wait` waits only for required PR checks before classifying post-edit failures.
 
 ### Which GitHub account pushes and merges?
 
