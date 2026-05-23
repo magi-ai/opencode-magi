@@ -159,13 +159,11 @@ export interface ReviewPromptConfig {
 export interface TriagePromptConfig {
   acceptance?: string
   category?: string
-  comment?: string
   commentClassification?: string
   create?: string
   createGuidelines?: string
   duplicate?: string
   existingPr?: string
-  question?: string
   reconsider?: string
 }
 

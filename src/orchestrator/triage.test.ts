@@ -8,7 +8,12 @@ import type {
   IssueMeta,
   RelatedPullRequest,
 } from "../github/commands"
-import type { Exec, ResolvedRepository, TriageDuplicateOutput } from "../types"
+import type {
+  Exec,
+  MagiConfig,
+  ResolvedRepository,
+  TriageDuplicateOutput,
+} from "../types"
 import type { ModelClient } from "./model"
 import {
   chooseDuplicateOutput,
@@ -323,6 +328,7 @@ function createModelClient(outputs: string[]): {
 
 async function runScenario(input: {
   comments?: IssueComment[]
+  config?: MagiConfig
   dryRun?: boolean
   duplicateCandidates?: DuplicateIssueCandidate[]
   issue?: IssueMeta
@@ -342,7 +348,7 @@ async function runScenario(input: {
   const progress: unknown[] = []
   const result = await runTriage({
     client: model.client,
-    config: {},
+    config: input.config ?? {},
     directory,
     dryRun: input.dryRun ?? true,
     exec: exec.exec,
@@ -389,6 +395,20 @@ function repositoryWithTriage(
         ...repository.triage!.safety,
         ...triage.safety,
       },
+    },
+  }
+}
+
+function withSingleTriageAgent(
+  value: ResolvedRepository,
+  agents: Partial<ResolvedRepository["agents"]> = {},
+): ResolvedRepository {
+  return {
+    ...value,
+    agents: {
+      ...value.agents,
+      triage: [value.agents.triage![0]],
+      ...agents,
     },
   }
 }
@@ -544,6 +564,17 @@ describe("triage orchestration", () => {
     expect(
       result.sessionTitles.some((title) => title.includes("triage category")),
     ).toBe(false)
+  })
+
+  test("honors configured repair attempts for triage votes", async () => {
+    await expect(
+      runScenario({
+        config: { output: { repairAttempts: 0 } },
+        issue: issue({ type: "Feature" }),
+        outputs: ["not json", "not json", vote("YES")],
+        repository: withSingleTriageAgent(repository),
+      }),
+    ).rejects.toThrow()
   })
 
   test("clears triage only when an open related PR already handles the issue", async () => {
@@ -736,6 +767,51 @@ describe("triage orchestration", () => {
         },
       ]),
     )
+  })
+
+  test("honors configured repair attempts for triage PR creation", async () => {
+    await expect(
+      runScenario({
+        config: { output: { repairAttempts: 0 } },
+        dryRun: false,
+        issue: issue({ type: "Feature" }),
+        outputs: [
+          vote("YES"),
+          "not json",
+          "not json",
+          JSON.stringify({
+            commitMessage: "fix: address issue #1",
+            commitSha: "abcdef1234567890",
+            filesTouched: ["src/app.ts"],
+            mode: "EDITED",
+            pullRequest: {
+              body: "Closes #1",
+              title: "fix: address issue #1",
+            },
+            responses: [],
+          }),
+        ],
+        repository: withSingleTriageAgent(
+          repositoryWithTriage({
+            automation: {
+              close: false,
+              clear: ["triage"],
+              create: true,
+              merge: false,
+              review: false,
+            },
+          }),
+          {
+            triageCreator: {
+              account: "creator-bot",
+              author: { email: "bot@example.com", name: "Magi Bot" },
+              model: "mock/model",
+              permission: "deny",
+            },
+          },
+        ),
+      }),
+    ).rejects.toThrow()
   })
 
   test("skips reconsideration when a previous marker has no eligible mentions", async () => {
@@ -1014,6 +1090,38 @@ describe("triage orchestration", () => {
         title.includes("triage reconsider"),
       ),
     ).toHaveLength(3)
+  })
+
+  test("honors configured repair attempts for mention classification", async () => {
+    await expect(
+      runScenario({
+        comments: [
+          comment({
+            author: "melchior-bot",
+            body: "Previous comment\n\n<!-- opencode-magi:triage v=1 issue=1 result=FEATURE_ACCEPTED action=COMMENT checkpoint=10 pr=none processed= -->",
+            id: 10,
+          }),
+          comment({
+            author: "maintainer",
+            authorAssociation: "MEMBER",
+            body: "@melchior-bot please reconsider",
+            id: 11,
+          }),
+        ],
+        config: { output: { repairAttempts: 0 } },
+        issue: issue({ labels: [] }),
+        outputs: [
+          "not json",
+          "not json",
+          JSON.stringify({
+            comments: [
+              { classification: "OBJECTION", commentId: 11, reason: "valid" },
+            ],
+          }),
+        ],
+        repository: withSingleTriageAgent(repository),
+      }),
+    ).rejects.toThrow()
   })
 
   for (const { candidateNumbers, expectedDuplicateOf, outputs, title } of [

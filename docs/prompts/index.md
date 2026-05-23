@@ -33,8 +33,6 @@ Triage prompts:
 - [Duplicate](triage/duplicate.md) - Decide whether an issue duplicates another issue.
 - [Category](triage/category.md) - Decide which configured issue category applies.
 - [Acceptance](triage/acceptance.md) - Decide whether the selected category should be accepted.
-- [Comment](triage/comment.md) - Compose final decision comments.
-- [Question](triage/question.md) - Compose author questions for `ASK` results.
 - [Comment Classification](triage/comment-classification.md) - Classify mention replies for reconsideration.
 - [Reconsider](triage/reconsider.md) - Vote on mention-triggered reconsideration.
 - [Create PR](triage/create.md) - Instruct the creator agent for implementation PRs.
@@ -52,7 +50,7 @@ For example, in a review prompt:
 - With `review.prompts.review`, Magi uses that file instead of the built-in template.
 - In both cases, Magi still appends the fixed review output contract.
 
-In a triage prompt, `triage.prompts.existingPr`, `triage.prompts.duplicate`, `triage.prompts.category`, `triage.prompts.acceptance`, `triage.prompts.comment`, `triage.prompts.question`, `triage.prompts.commentClassification`, `triage.prompts.reconsider`, and `triage.prompts.create` replace their matching built-in triage task templates. Magi still appends the fixed output contract for structured phases.
+In a triage prompt, `triage.prompts.existingPr`, `triage.prompts.duplicate`, `triage.prompts.category`, `triage.prompts.acceptance`, `triage.prompts.commentClassification`, `triage.prompts.reconsider`, and `triage.prompts.create` replace their matching built-in triage task templates. Magi still appends the fixed output contract for structured phases.
 
 The custom file replaces the built-in task, but it does not replace the output schema.
 

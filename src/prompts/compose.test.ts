@@ -12,9 +12,8 @@ import {
   composeRereviewCloseReconsiderationPrompt,
   composeRereviewPrompt,
   composeReviewPrompt,
-  composeTriageCommentPrompt,
   composeTriageCreatePrPrompt,
-  composeTriageQuestionPrompt,
+  composeTriageExistingPrPrompt,
 } from "./compose"
 
 function evidence(
@@ -417,16 +416,8 @@ describe("prompt composer", () => {
     expect(prompt).toContain("caused by the PR changes or the editor changes")
   })
 
-  test("uses configured triage comment, question, and create PR prompts", async () => {
+  test("uses configured triage create PR prompt", async () => {
     const dir = await mkdtemp(join(tmpdir(), "magi-prompt-"))
-    await writeFile(
-      join(dir, "triage-comment.md"),
-      "Comment for @{author}: {context}",
-    )
-    await writeFile(
-      join(dir, "triage-question.md"),
-      "Question for @{author}: {context}",
-    )
     await writeFile(
       join(dir, "triage-create.md"),
       "Implement in {worktreePath}: {context}",
@@ -490,10 +481,8 @@ describe("prompt composer", () => {
         ],
         concurrency: { runs: 3 },
         prompts: {
-          comment: "triage-comment.md",
           create: "triage-create.md",
           createGuidelines: "triage-create-guidelines.md",
-          question: "triage-question.md",
         },
         safety: {
           allowAuthors: [],
@@ -505,20 +494,6 @@ describe("prompt composer", () => {
       },
     }
 
-    const commentPrompt = await composeTriageCommentPrompt({
-      author: "octocat",
-      context: "accepted",
-      directory: dir,
-      issue: 58,
-      repository,
-    })
-    const questionPrompt = await composeTriageQuestionPrompt({
-      author: "octocat",
-      context: "missing logs",
-      directory: dir,
-      issue: 58,
-      repository,
-    })
     const createPrPrompt = await composeTriageCreatePrPrompt({
       context: "fix issue",
       directory: dir,
@@ -527,8 +502,6 @@ describe("prompt composer", () => {
       worktreePath: "/tmp/issue-58",
     })
 
-    expect(commentPrompt).toContain("Comment for @octocat: accepted")
-    expect(questionPrompt).toContain("Question for @octocat: missing logs")
     expect(createPrPrompt).toContain("Implement in /tmp/issue-58: fix issue")
     expect(createPrPrompt).toContain(
       "<create_guidelines>\nKeep issue #58 fixes scoped to owner/repo.\n</create_guidelines>",
@@ -544,5 +517,78 @@ describe("prompt composer", () => {
     expect(createPrPrompt).toContain(
       "The orchestrator pushes and creates the PR using pullRequest exactly as provided.",
     )
+  })
+
+  test("uses valid existing PR triage vote names in the built-in prompt", async () => {
+    const repository: ResolvedRepository = {
+      agents: { reviewers: [] },
+      alias: "repo",
+      automation: { close: true, merge: true },
+      checks: {
+        exclude: [],
+        retryFailedJobs: 3,
+        waitAfterEdit: true,
+        waitBeforeReview: true,
+      },
+      concurrency: { runs: 3, reviewers: 3 },
+      github: {
+        apiRetryAttempts: 3,
+        host: "github.com",
+        owner: "owner",
+        repo: "repo",
+      },
+      merge: {
+        approvalPolicy: "majority",
+        auto: true,
+        deleteBranch: true,
+        maxThreadResolutionCycles: 5,
+        mergeQueue: false,
+        method: "squash",
+      },
+      prompts: {},
+      safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
+      triage: {
+        automation: {
+          clear: [],
+          close: false,
+          create: false,
+          merge: false,
+          review: false,
+        },
+        categories: [],
+        concurrency: { runs: 3 },
+        prompts: {},
+        safety: {
+          allowAuthors: [],
+          allowMentionActors: [],
+          allowMentionRoles: [],
+          blockedLabels: [],
+          requiredLabels: [],
+        },
+      },
+    }
+
+    const prompt = await composeTriageExistingPrPrompt({
+      context: "PR #12 closes issue #58.",
+      directory: process.cwd(),
+      issue: 58,
+      repository,
+      voter: {
+        account: "triage-a",
+        index: 0,
+        key: "triage-a",
+        model: "openai/gpt",
+        permission: { read: "allow" },
+      },
+    })
+
+    expect(prompt).toContain(
+      "Return RELATED_PR_HANDLES_ISSUE only when the PR clearly addresses the issue.",
+    )
+    expect(prompt).toContain("RELATED_PR_DOES_NOT_HANDLE_ISSUE")
+    expect(prompt).toContain(
+      '"vote": "RELATED_PR_HANDLES_ISSUE" | "RELATED_PR_DOES_NOT_HANDLE_ISSUE"',
+    )
+    expect(prompt).not.toContain("Return HANDLE")
   })
 })
