@@ -49,5 +49,6 @@ jobs:
       - name: Merge
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           opencode run --dir "$GITHUB_WORKSPACE" --command "magi:merge" "${{ github.event.pull_request.number }} --sync"

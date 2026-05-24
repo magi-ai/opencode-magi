@@ -49,5 +49,6 @@ jobs:
       - name: Triage
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           opencode run --dir "$GITHUB_WORKSPACE" --command "magi:triage" "${{ github.event.issue.number }} --sync"
