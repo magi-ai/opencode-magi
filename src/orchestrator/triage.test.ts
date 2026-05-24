@@ -513,6 +513,52 @@ describe("triage orchestration", () => {
     ).toHaveLength(3)
   })
 
+  test("scenario: /magi:triage posts natural non-ASK comments from selected reasons", async () => {
+    const result = await runScenario({
+      issue: issue({ type: "Feature" }),
+      outputs: [
+        JSON.stringify({ reason: "Melchior reason", vote: "YES" }),
+        JSON.stringify({
+          reason: "This is ready for implementation.",
+          vote: "YES",
+        }),
+        JSON.stringify({ reason: "Caspar reason", vote: "YES" }),
+      ],
+    })
+    const comment = await readFile(
+      join(result.result.outputDir, "comment.md"),
+      "utf8",
+    )
+    const visibleComment = comment.split("<!-- opencode-magi:triage")[0].trim()
+
+    expect(visibleComment).toBe("This is ready for implementation.")
+    expect(visibleComment).not.toContain("Magi triage decision:")
+    expect(visibleComment).not.toContain("Reason:")
+    expect(visibleComment).not.toContain("Action:")
+    expect(comment).toContain("<!-- opencode-magi:triage")
+  })
+
+  test("scenario: /magi:triage uses a natural fallback for non-ASK comments without reasons", async () => {
+    const result = await runScenario({
+      issue: issue({ type: "Feature" }),
+      outputs: [
+        JSON.stringify({ reason: " ", vote: "YES" }),
+        JSON.stringify({ reason: " ", vote: "YES" }),
+        JSON.stringify({ reason: " ", vote: "YES" }),
+      ],
+    })
+    const comment = await readFile(
+      join(result.result.outputDir, "comment.md"),
+      "utf8",
+    )
+    const visibleComment = comment.split("<!-- opencode-magi:triage")[0].trim()
+
+    expect(visibleComment).toBe("Magi accepted this feature issue.")
+    expect(visibleComment).not.toContain("Magi triage decision:")
+    expect(visibleComment).not.toContain("Action:")
+    expect(comment).toContain("<!-- opencode-magi:triage")
+  })
+
   test("asks without category details when category is unclear", async () => {
     const result = await runScenario({
       issue: issue({ type: undefined }),

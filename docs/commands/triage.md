@@ -32,7 +32,7 @@ Triage flags:
 
 `/magi:triage` triages GitHub issues with dedicated `triage.agents`. It does not reuse `review.agents`.
 
-Magi fetches bounded issue relationship data, asks triage agents to vote on existing PRs, duplicate issues, issue kind, and bug or feature decisions, then posts comments according to the final result unless the run is a clear-only linked PR case or is blocked by a safety gate. `ASK` comments come from each non-empty `ASK` vote body and use that voting agent's account. Non-`ASK` result comments are generated from the decision summary and use the selected reporter account. Configure `triage.reporter` to choose the reporter by resolved triage agent key; otherwise Magi selects one from the issue number.
+Magi fetches bounded issue relationship data, asks triage agents to vote on existing PRs, duplicate issues, issue kind, and bug or feature decisions, then posts comments according to the final result unless the run is a clear-only linked PR case or is blocked by a safety gate. `ASK` comments come from each non-empty `ASK` vote body and use that voting agent's account. Non-`ASK` result comments use the selected reason when one is available, otherwise a natural fallback, and are posted by the selected reporter account. Configure `triage.reporter` to choose the reporter by resolved triage agent key; otherwise Magi selects one from the issue number.
 
 ## Flow
 
@@ -64,7 +64,7 @@ Triage results:
 
 ## Outputs
 
-Magi may post issue comments, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. `ASK` results may post multiple comments through the `ASK`-voting agent accounts. Non-`ASK` results may post one decision comment through the selected reporter account. Clear-only related PR runs do not post a comment or close the issue or related PRs.
+Magi may post issue comments, close issues, close related open PRs, remove configured labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. `ASK` results may post multiple comments through the `ASK`-voting agent accounts. Non-`ASK` results may post one natural decision comment through the selected reporter account. Clear-only related PR runs do not post a comment or close the issue or related PRs.
 
 Triage artifacts are written to the issue run output directory:
 

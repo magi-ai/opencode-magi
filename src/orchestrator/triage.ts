@@ -929,11 +929,35 @@ function decisionCommentBody(input: {
   result: FinalResult
 }): string {
   const reason = input.reason?.trim()
-  const result = JSON.stringify(input.result)
 
   return reason
-    ? `Magi triage decision: ${result}\n\nReason: ${reason}`
-    : `Magi triage decision: ${result}\n\nAction: ${input.action}`
+    ? reason
+    : decisionCommentFallback({ action: input.action, result: input.result })
+}
+
+function decisionCommentFallback(input: {
+  action: string
+  result: FinalResult
+}): string {
+  if (input.result.disposition === "accepted") {
+    const category = input.result.category
+      ? `${input.result.category} issue`
+      : "issue"
+    return input.action === "PR"
+      ? `Magi accepted this ${category} and will prepare an implementation pull request.`
+      : `Magi accepted this ${category}.`
+  }
+  if (input.result.disposition === "rejected") {
+    const category = input.result.category
+      ? `${input.result.category} issue`
+      : "issue"
+    return `Magi does not plan to act on this ${category}.`
+  }
+  if (input.result.disposition === "duplicate") {
+    return "Magi marked this issue as a duplicate."
+  }
+
+  return "Magi completed triage for this issue."
 }
 
 function agentForKey(
