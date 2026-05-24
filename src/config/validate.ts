@@ -2,6 +2,7 @@ import type {
   EditorConfig,
   Exec,
   MagiConfig,
+  ModelOptions,
   PermissionConfig,
   ReviewerConfig,
   TriageAgentConfig,
@@ -17,7 +18,12 @@ import { access } from "node:fs/promises"
 import { homedir } from "node:os"
 import { isAbsolute, join } from "node:path"
 import schema from "../../schema.json" with { type: "json" }
-import { resolveAgents, validateReviewerId } from "./resolve"
+import {
+  resolveAgents,
+  reviewerKey,
+  triageAgentKey,
+  validateReviewerId,
+} from "./resolve"
 
 export type ModelCatalog = Record<string, readonly string[]>
 
@@ -26,6 +32,7 @@ export interface ValidationOptions {
   directory?: string
   exec?: Exec
   modelCatalog?: ModelCatalog
+  requireModelCatalog?: boolean
   requireEditor?: boolean
   requireGithub?: boolean
   requireReview?: boolean
@@ -61,7 +68,6 @@ const REVIEWER_KEYS = new Set([
   "account",
   "id",
   "model",
-  "options",
   "permissions",
   "persona",
 ])
@@ -69,7 +75,6 @@ const EDITOR_KEYS = new Set([
   "account",
   "author",
   "model",
-  "options",
   "permissions",
   "persona",
 ])
@@ -77,7 +82,6 @@ const TRIAGE_AGENT_KEYS = new Set([
   "account",
   "id",
   "model",
-  "options",
   "permissions",
   "persona",
 ])
@@ -85,7 +89,6 @@ const TRIAGE_CREATOR_KEYS = new Set([
   "account",
   "author",
   "model",
-  "options",
   "permissions",
   "persona",
 ])
@@ -179,8 +182,10 @@ const TRIAGE_PROMPT_KEYS = new Set([
   "existingPr",
   "reconsider",
 ])
+const MODEL_CANDIDATE_KEYS = new Set(["id", "options"])
 
 type AgentRefUse = Record<string, unknown> & { ref?: unknown }
+type ModelTarget = { model?: unknown; options?: unknown }
 
 function githubHost(config: MagiConfig): string {
   return config.github?.host ?? "github.com"
@@ -385,37 +390,126 @@ function validatePermissionConfig(
   }
 }
 
-function validateModel(
-  model: string | undefined,
+function modelValidationError(
+  model: string,
   path: string,
-  errors: string[],
   catalog?: ModelCatalog,
-): void {
-  if (!model) return
-
+): string | undefined {
   const slash = model.indexOf("/")
 
-  if (slash <= 0 || slash === model.length - 1) {
-    errors.push(
-      `${path} must be a full OpenCode model ID in provider/model form`,
-    )
-    return
-  }
+  if (slash <= 0 || slash === model.length - 1)
+    return `${path} must be a full OpenCode model ID in provider/model form`
 
-  if (!catalog) return
+  if (!catalog) return undefined
 
   const providerId = model.slice(0, slash)
   const modelId = model.slice(slash + 1)
   const models = catalog[providerId]
 
-  if (!models) {
-    errors.push(`${path} uses unknown OpenCode provider: ${providerId}`)
+  if (!models) return `${path} uses unknown OpenCode provider: ${providerId}`
+
+  if (!models.includes(modelId))
+    return `${path} uses unknown OpenCode model: ${model}`
+
+  return undefined
+}
+
+function validateModelId(
+  model: string,
+  path: string,
+  errors: string[],
+  catalog?: ModelCatalog,
+): boolean {
+  const error = modelValidationError(model, path, catalog)
+
+  if (error) {
+    errors.push(error)
+    return false
+  }
+
+  return true
+}
+
+function readModelCandidate(
+  value: unknown,
+  path: string,
+  errors: string[],
+): { id: string; options?: ModelOptions } | undefined {
+  if (typeof value === "string") return { id: value }
+
+  if (!isPlainObject(value)) {
+    errors.push(`${path} must be a string or an object`)
+    return undefined
+  }
+
+  validateKnownKeys(value, path, MODEL_CANDIDATE_KEYS, errors)
+
+  if (typeof value.id !== "string") {
+    errors.push(`${path}.id must be a string`)
+    return undefined
+  }
+
+  if (value.options != null && !isPlainObject(value.options)) {
+    errors.push(`${path}.options must be an object`)
+    return undefined
+  }
+
+  return { id: value.id, options: value.options as ModelOptions | undefined }
+}
+
+function validateAndNormalizeModel(
+  target: ModelTarget,
+  path: string,
+  errors: string[],
+  catalog?: ModelCatalog,
+): void {
+  const model = target.model
+
+  if (typeof model === "string") {
+    validateModelId(model, path, errors, catalog)
     return
   }
 
-  if (!models.includes(modelId)) {
-    errors.push(`${path} uses unknown OpenCode model: ${model}`)
+  if (!Array.isArray(model)) {
+    if (model != null) errors.push(`${path} must be a string or an array`)
+    return
   }
+
+  if (!model.length) {
+    errors.push(`${path} must contain at least one model candidate`)
+    return
+  }
+
+  if (!catalog) {
+    errors.push(`${path} requires an OpenCode model catalog`)
+    return
+  }
+
+  const candidateErrors: string[] = []
+
+  for (const [index, value] of model.entries()) {
+    const candidatePath = `${path}[${index}]`
+    const candidate = readModelCandidate(value, candidatePath, errors)
+    if (!candidate) continue
+
+    const idPath = isPlainObject(value) ? `${candidatePath}.id` : candidatePath
+    const error = modelValidationError(candidate.id, idPath, catalog)
+
+    if (!error) {
+      target.model = candidate.id
+      if (candidate.options) target.options = candidate.options
+      else delete target.options
+      return
+    }
+
+    candidateErrors.push(error)
+  }
+
+  errors.push(
+    `${path} must contain at least one usable OpenCode model candidate${
+      candidateErrors.length ? ` (${candidateErrors.join("; ")})` : ""
+    }`,
+  )
 }
 
 function validateReviewerList(
@@ -443,13 +537,15 @@ function validateReviewerList(
 
     validateKnownKeys(reviewer, `${path}[${index}]`, REVIEWER_KEYS, errors)
     if (!reviewer.model) errors.push(`${path}[${index}].model is required`)
-    validateString(reviewer.model, `${path}[${index}].model`, errors)
-    validateModel(reviewer.model, `${path}[${index}].model`, errors, catalog)
+    validateAndNormalizeModel(
+      reviewer as ModelTarget,
+      `${path}[${index}].model`,
+      errors,
+      catalog,
+    )
     if (!reviewer.account) errors.push(`${path}[${index}].account is required`)
     validateString(reviewer.account, `${path}[${index}].account`, errors)
     validateString(reviewer.persona, `${path}[${index}].persona`, errors)
-    if (reviewer.options != null && !isPlainObject(reviewer.options))
-      errors.push(`${path}[${index}].options must be an object`)
     validatePermissionConfig(
       reviewer.permissions,
       `${path}[${index}].permissions`,
@@ -494,13 +590,15 @@ function validateTriageAgentList(
 
     validateKnownKeys(agent, `${path}[${index}]`, TRIAGE_AGENT_KEYS, errors)
     if (!agent.model) errors.push(`${path}[${index}].model is required`)
-    validateString(agent.model, `${path}[${index}].model`, errors)
-    validateModel(agent.model, `${path}[${index}].model`, errors, catalog)
+    validateAndNormalizeModel(
+      agent as ModelTarget,
+      `${path}[${index}].model`,
+      errors,
+      catalog,
+    )
     if (!agent.account) errors.push(`${path}[${index}].account is required`)
     validateString(agent.account, `${path}[${index}].account`, errors)
     validateString(agent.persona, `${path}[${index}].persona`, errors)
-    if (agent.options != null && !isPlainObject(agent.options))
-      errors.push(`${path}[${index}].options must be an object`)
     validatePermissionConfig(
       agent.permissions,
       `${path}[${index}].permissions`,
@@ -572,14 +670,15 @@ function validateEditor(
 
   if (!editor.model) errors.push(`${path}.model is required`)
   validateKnownKeys(editor, path, EDITOR_KEYS, errors)
-  validateString(editor.model, `${path}.model`, errors)
+  validateAndNormalizeModel(
+    editor as ModelTarget,
+    `${path}.model`,
+    errors,
+    catalog,
+  )
   validateString(editor.account, `${path}.account`, errors)
   validateString(editor.persona, `${path}.persona`, errors)
-  validateModel(editor.model, `${path}.model`, errors, catalog)
   if (!editor.account) errors.push(`${path}.account is required`)
-  if (editor.options != null && !isPlainObject(editor.options)) {
-    errors.push(`${path}.options must be an object`)
-  }
   validatePermissionConfig(editor.permissions, `${path}.permissions`, errors)
   const author = editor.author
   if (!author || !isPlainObject(author)) {
@@ -617,12 +716,13 @@ function validateTriageCreator(
   validateKnownKeys(creator, path, TRIAGE_CREATOR_KEYS, errors)
   if (!creator.model) errors.push(`${path}.model is required`)
   validateString(creator.account, `${path}.account`, errors)
-  validateString(creator.model, `${path}.model`, errors)
+  validateAndNormalizeModel(
+    creator as ModelTarget,
+    `${path}.model`,
+    errors,
+    catalog,
+  )
   validateString(creator.persona, `${path}.persona`, errors)
-  validateModel(creator.model, `${path}.model`, errors, catalog)
-  if (creator.options != null && !isPlainObject(creator.options)) {
-    errors.push(`${path}.options must be an object`)
-  }
   validatePermissionConfig(creator.permissions, `${path}.permissions`, errors)
 
   const author = creator.author
@@ -946,7 +1046,14 @@ function validateTriage(
     options.modelCatalog,
   )
   if (Array.isArray(triage.agents)) {
-    const resolvedTriageAgents = resolveAgents(config).triage ?? []
+    const resolvedTriageAgents = triage.agents.map((agent, index) => ({
+      account:
+        agent && typeof agent === "object" && typeof agent.account === "string"
+          ? agent.account
+          : "",
+      key:
+        agent && typeof agent === "object" ? triageAgentKey(agent, index) : "",
+    }))
     validateResolvedTriageAgents(
       resolvedTriageAgents,
       "triage.resolvedAgents",
@@ -1144,13 +1251,13 @@ async function validateWorktreeConfig(
   options: ValidationOptions,
   errors: string[],
 ): Promise<void> {
-  const agents = resolveAgents(config)
   const checkEditor = Boolean(
-    agents.editor && (options.requireEditor || options.requireWorktreeConfig),
+    config.merge?.editor &&
+    (options.requireEditor || options.requireWorktreeConfig),
   )
   const checkTriageCreator = Boolean(
     config.triage?.automation?.create &&
-    agents.triageCreator &&
+    config.triage?.creator &&
     (options.requireTriage || options.requireWorktreeConfig),
   )
 
@@ -1274,6 +1381,10 @@ export async function validateConfig(
   if (!config || typeof config !== "object")
     errors.push("config must be an object")
 
+  if (options.requireModelCatalog && !options.modelCatalog) {
+    errors.push("OpenCode model catalog could not be loaded")
+  }
+
   expandAgentRefs(config, errors)
 
   if (config && typeof config === "object") validateJsonSchema(config, errors)
@@ -1310,7 +1421,18 @@ export async function validateConfig(
     )
     if (Array.isArray(config.review.agents)) {
       validateResolvedReviewers(
-        resolveAgents(config).reviewers,
+        config.review.agents.map((reviewer, index) => ({
+          account:
+            reviewer &&
+            typeof reviewer === "object" &&
+            typeof reviewer.account === "string"
+              ? reviewer.account
+              : "",
+          key:
+            reviewer && typeof reviewer === "object"
+              ? reviewerKey(reviewer, index)
+              : "",
+        })),
         "review.resolvedAgents",
         errors,
       )

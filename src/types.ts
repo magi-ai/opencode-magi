@@ -2,6 +2,13 @@ export type Verdict = "CHANGES_REQUESTED" | "CLOSE" | "MERGE"
 
 export type ModelOptions = Record<string, unknown>
 
+export interface ModelCandidateConfig {
+  id: string
+  options?: ModelOptions
+}
+
+export type ModelConfig = string | (string | ModelCandidateConfig)[]
+
 export type PermissionAction = "allow" | "ask" | "deny"
 
 export type PermissionRuleConfig =
@@ -21,8 +28,7 @@ export interface OpenCodePermissionRule {
 export interface ReviewerConfig {
   account: string
   id?: string
-  model: string
-  options?: ModelOptions
+  model: ModelConfig
   permissions?: PermissionConfig
   persona?: string
   ref?: string
@@ -34,8 +40,7 @@ export interface EditorConfig {
     email: string
     name: string
   }
-  model: string
-  options?: ModelOptions
+  model: ModelConfig
   permissions?: PermissionConfig
   persona?: string
   ref?: string
@@ -44,8 +49,7 @@ export interface EditorConfig {
 export interface TriageAgentConfig {
   account: string
   id?: string
-  model: string
-  options?: ModelOptions
+  model: ModelConfig
   permissions?: PermissionConfig
   persona?: string
   ref?: string
@@ -57,8 +61,7 @@ export interface TriageCreatorConfig {
     email: string
     name: string
   }
-  model: string
-  options?: ModelOptions
+  model: ModelConfig
   permissions?: PermissionConfig
   persona?: string
   ref?: string
@@ -71,8 +74,7 @@ export interface AgentRefConfig {
     name?: string
   }
   id?: string
-  model?: string
-  options?: ModelOptions
+  model?: ModelConfig
   permissions?: PermissionConfig
   persona?: string
 }
@@ -258,30 +260,44 @@ export interface MagiConfig {
   triage?: TriageConfig
 }
 
-export interface ResolvedReviewer extends Omit<ReviewerConfig, "permissions"> {
+export interface ResolvedReviewer extends Omit<
+  ReviewerConfig,
+  "model" | "options" | "permissions"
+> {
   index: number
   key: string
+  model: string
+  options?: ModelOptions
   permission: PermissionConfig
 }
 
-export interface ResolvedEditor extends Omit<EditorConfig, "permissions"> {
+export interface ResolvedEditor extends Omit<
+  EditorConfig,
+  "model" | "options" | "permissions"
+> {
+  model: string
+  options?: ModelOptions
   permission: PermissionConfig
 }
 
 export interface ResolvedTriageAgent extends Omit<
   TriageAgentConfig,
-  "permissions"
+  "model" | "options" | "permissions"
 > {
   index: number
   key: string
+  model: string
+  options?: ModelOptions
   permission: PermissionConfig
 }
 
 export interface ResolvedTriageCreator extends Omit<
   TriageCreatorConfig,
-  "permissions"
+  "model" | "options" | "permissions"
 > {
   account: string
+  model: string
+  options?: ModelOptions
   permission: PermissionConfig
 }
 

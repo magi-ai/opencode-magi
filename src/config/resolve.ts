@@ -53,6 +53,14 @@ export function validateReviewerId(id: string): boolean {
   return ID_PATTERN.test(id)
 }
 
+function normalizedModel(model: unknown): string {
+  if (typeof model !== "string") {
+    throw new Error("model must be normalized before resolving agents")
+  }
+
+  return model
+}
+
 function clonePermissionValue(
   value: PermissionRuleConfig,
 ): PermissionRuleConfig {
@@ -151,6 +159,7 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
     editor: editor
       ? {
           ...editor,
+          model: normalizedModel(editor.model),
           permission: resolveEditorPermission(agents, editor),
         }
       : undefined,
@@ -159,6 +168,7 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
         ...reviewer,
         key: reviewerKey(reviewer, index),
         index,
+        model: normalizedModel(reviewer.model),
         permission: resolveReviewerPermission(agents, reviewer),
       }),
     ),
@@ -167,6 +177,7 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
         ...agent,
         key: triageAgentKey(agent, index),
         index,
+        model: normalizedModel(agent.model),
         permission: resolveTriageAgentPermission(agents, agent),
       }),
     ),
@@ -174,6 +185,7 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
       ? {
           ...creator,
           account: creator.account ?? "",
+          model: normalizedModel(creator.model),
           permission: resolveTriageCreatorPermission(agents, creator),
         }
       : undefined,

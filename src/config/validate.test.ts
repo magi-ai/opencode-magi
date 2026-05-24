@@ -17,7 +17,6 @@ const config: MagiConfig = {
       {
         model: "anthropic/claude",
         account: "bot-a",
-        options: { thinking: { type: "enabled", budgetTokens: 16000 } },
       },
       { id: "security", model: "anthropic/claude", account: "bot-b" },
       { id: "compat", model: "openai/gpt", account: "bot-c" },
@@ -52,8 +51,13 @@ describe("validateConfig", () => {
       agents: {
         refs: {
           shared: {
-            model: "openai/gpt",
-            options: { reasoningEffort: "high" },
+            model: [
+              "missing/model",
+              {
+                id: "openai/gpt",
+                options: { reasoningEffort: "high" },
+              },
+            ],
             persona: "Shared persona",
           },
           editor: {
@@ -71,7 +75,13 @@ describe("validateConfig", () => {
             ref: "shared",
             id: "beta",
             account: "bot-b",
-            options: { reasoningEffort: "low" },
+            model: [
+              "missing/model",
+              {
+                id: "anthropic/claude",
+                options: { thinking: { type: "enabled" } },
+              },
+            ],
           },
           { ref: "shared", id: "gamma", account: "bot-c" },
         ],
@@ -90,22 +100,26 @@ describe("validateConfig", () => {
     } as unknown as MagiConfig
 
     const result = await validateConfig(refConfig, {
+      modelCatalog: { anthropic: ["claude"], openai: ["gpt"] },
       requireTriage: true,
     })
     const repository = resolveRepository(refConfig)
 
     expect(result).toMatchObject({ errors: [], ok: true })
     expect(refConfig.agents?.refs).toBeUndefined()
-    expect(refConfig.review?.agents?.[0]).toEqual({
+    expect(refConfig.review?.agents?.[0]).toMatchObject({
       account: "bot-a",
       id: "alpha",
       model: "openai/gpt",
-      options: { reasoningEffort: "high" },
       persona: "Shared persona",
     })
-    expect(refConfig.review?.agents?.[1].options).toEqual({
-      reasoningEffort: "low",
+    expect(repository.agents.reviewers[0].options).toEqual({
+      reasoningEffort: "high",
     })
+    expect(repository.agents.reviewers[1].options).toEqual({
+      thinking: { type: "enabled" },
+    })
+    expect(refConfig.review?.agents?.[1].model).toBe("anthropic/claude")
     expect(refConfig.review?.agents?.[0]).not.toHaveProperty("ref")
     expect(repository.agents.reviewers[0]).toMatchObject({
       account: "bot-a",
@@ -717,7 +731,113 @@ describe("validateConfig", () => {
     expect(result.errors).toContain(error)
   })
 
-  test("rejects non-object model options", async () => {
+  test("accepts model candidate arrays and normalizes the selected options", async () => {
+    const candidateConfig = {
+      ...config,
+      agents: {
+        refs: {
+          shared: {
+            account: "bot-a",
+            model: [
+              "missing/model",
+              {
+                id: "anthropic/claude",
+                options: {
+                  thinking: { budget_tokens: 12000, type: "enabled" },
+                },
+              },
+            ],
+          },
+        },
+      },
+      review: {
+        agents: [
+          { ref: "shared" },
+          { account: "bot-b", model: ["missing/model", "openai/gpt"] },
+          {
+            account: "bot-c",
+            model: [
+              {
+                id: "openai/gpt",
+                options: { reasoningEffort: "high" },
+              },
+            ],
+          },
+        ],
+      },
+      merge: {
+        editor: {
+          account: "bot-c",
+          author: { email: "bot-c@example.com", name: "Bot C" },
+          model: ["missing/model", "openai/gpt"],
+        },
+      },
+      triage: {
+        agents: [
+          { account: "triage-a", model: ["missing/model", "openai/gpt"] },
+          { account: "triage-b", model: ["anthropic/claude"] },
+          { account: "triage-c", model: ["google/gemini"] },
+        ],
+        creator: {
+          account: "creator-bot",
+          author: { email: "creator@example.com", name: "Creator Bot" },
+          model: [
+            {
+              id: "openai/gpt",
+              options: { reasoningEffort: "low" },
+            },
+          ],
+        },
+      },
+    } as unknown as MagiConfig
+
+    const result = await validateConfig(candidateConfig, {
+      modelCatalog: {
+        anthropic: ["claude"],
+        google: ["gemini"],
+        openai: ["gpt"],
+      },
+      requireTriage: true,
+    })
+
+    expect(result).toMatchObject({ errors: [], ok: true })
+    expect(candidateConfig.review?.agents?.[0]).toMatchObject({
+      model: "anthropic/claude",
+      options: { thinking: { budget_tokens: 12000, type: "enabled" } },
+    })
+    expect(candidateConfig.review?.agents?.[1]).toMatchObject({
+      model: "openai/gpt",
+    })
+    expect(candidateConfig.review?.agents?.[1]).not.toHaveProperty("options")
+    expect(candidateConfig.triage?.creator).toMatchObject({
+      model: "openai/gpt",
+      options: { reasoningEffort: "low" },
+    })
+  })
+
+  test("rejects model candidate arrays with no usable model", async () => {
+    const result = await validateConfig(
+      {
+        ...config,
+        review: {
+          ...config.review,
+          agents: [
+            { account: "bot-a", model: ["missing/model"] },
+            { account: "bot-b", model: "openai/gpt" },
+            { account: "bot-c", model: "openai/gpt" },
+          ],
+        },
+      } as unknown as MagiConfig,
+      { modelCatalog: { openai: ["gpt"] } },
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain(
+      "review.agents[0].model must contain at least one usable OpenCode model candidate (review.agents[0].model[0] uses unknown OpenCode provider: missing)",
+    )
+  })
+
+  test("rejects role-level model options", async () => {
     const result = await validateConfig({
       ...config,
       review: {
@@ -731,8 +851,31 @@ describe("validateConfig", () => {
     })
 
     expect(result.ok).toBe(false)
+    expect(result.errors).toContain("review.agents[0].options is not supported")
+  })
+
+  test("rejects non-object model candidate options", async () => {
+    const result = await validateConfig(
+      {
+        ...config,
+        review: {
+          ...config.review,
+          agents: [
+            {
+              account: "bot-a",
+              model: [{ id: "openai/gpt", options: "high" }],
+            },
+            { account: "bot-b", model: "openai/gpt" },
+            { account: "bot-c", model: "openai/gpt" },
+          ],
+        },
+      } as unknown as MagiConfig,
+      { modelCatalog: { openai: ["gpt"] } },
+    )
+
+    expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "review.agents[0].options must be an object",
+      "review.agents[0].model[0].options must be an object",
     )
   })
 
