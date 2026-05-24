@@ -35,6 +35,8 @@ It does not post to GitHub.
 
 Important settings for `/magi:clear`:
 
+Cleanup scope and resource selection come only from Magi config. The command does not accept inline cleanup selectors or cleanup flags.
+
 | Setting          | Purpose                                  |
 | ---------------- | ---------------------------------------- |
 | `clear.branch`   | Delete the branch recorded in run state. |

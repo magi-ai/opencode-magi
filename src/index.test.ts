@@ -539,7 +539,7 @@ describe("magi_validate", () => {
 })
 
 describe("magi_clear", () => {
-  test("keeps default cleanup enabled when false flags are defaulted", async () => {
+  test("ignores cleanup args and keeps default cleanup enabled", async () => {
     const home = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "magi-home-"))
     const directory = await mkdtemp(
       join(process.env.TMPDIR ?? "/tmp", "magi-project-"),
@@ -593,6 +593,7 @@ describe("magi_clear", () => {
         },
         directory,
       } as never)
+      expect(plugin.tool?.magi_clear.args).toEqual({})
       const result = await plugin.tool?.magi_clear.execute(
         {
           branch: "false",
@@ -618,7 +619,7 @@ describe("magi_clear", () => {
     }
   })
 
-  test("uses config when false flags are defaulted", async () => {
+  test("ignores cleanup args and uses configured cleanup defaults", async () => {
     const home = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "magi-home-"))
     const directory = await mkdtemp(
       join(process.env.TMPDIR ?? "/tmp", "magi-project-"),
@@ -674,6 +675,7 @@ describe("magi_clear", () => {
         },
         directory,
       } as never)
+      expect(plugin.tool?.magi_clear.args).toEqual({})
       const result = await plugin.tool?.magi_clear.execute(
         {
           branch: "false",
