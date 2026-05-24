@@ -13,7 +13,20 @@ import {
 import { mergeMagiConfig } from "./config/load"
 import { resolveRepository } from "./config/resolve"
 
-const mockState = vi.hoisted(() => ({ home: "" }))
+const mockState = vi.hoisted(() => ({
+  execAsync: vi.fn(async () => ({ stdout: "" })),
+  home: "",
+}))
+
+vi.mock("node:child_process", async () => {
+  const { promisify } =
+    await vi.importActual<typeof import("node:util")>("node:util")
+  const exec = vi.fn()
+
+  Object.defineProperty(exec, promisify.custom, { value: mockState.execAsync })
+
+  return { exec }
+})
 
 vi.mock("node:os", () => ({
   homedir: () => mockState.home,
@@ -347,6 +360,59 @@ describe("magi_status", () => {
       expect(result).toContain("PR: #96")
       expect(result).toContain("PR: #99")
       expect(result).not.toContain("PR: #100")
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+})
+
+describe("magi_triage", () => {
+  test("throws when config validation fails", async () => {
+    const directory = await mkdtemp(
+      join(process.env.TMPDIR ?? "/tmp", "magi-triage-"),
+    )
+
+    try {
+      await writeConfig(join(directory, ".opencode", "magi.json"), {
+        github: { owner: "owner", repo: "repo" },
+        review: {
+          agents: [
+            {
+              account: "bot-a",
+              model: "openai/gpt",
+              options: { reasoningEffort: "high" },
+            },
+            { account: "bot-b", model: "openai/gpt" },
+            { account: "bot-c", model: "openai/gpt" },
+          ],
+        },
+        triage: {
+          agents: [
+            { account: "triage-a", model: "openai/gpt" },
+            { account: "triage-b", model: "openai/gpt" },
+            { account: "triage-c", model: "openai/gpt" },
+          ],
+        },
+      })
+
+      const plugin = await MagiPlugin({
+        client: {
+          config: {
+            providers: async () => ({
+              providers: [{ id: "openai", models: { gpt: {} } }],
+            }),
+          },
+          session: {},
+        },
+        directory,
+      } as never)
+
+      await expect(
+        plugin.tool?.magi_triage.execute(
+          { issues: "1 --sync" } as never,
+          { abort: new AbortController().signal, sessionID: "parent" } as never,
+        ),
+      ).rejects.toThrow("review.agents[0].options is not supported")
     } finally {
       await rm(directory, { force: true, recursive: true })
     }
