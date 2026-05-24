@@ -12,7 +12,6 @@ const config: MagiConfig = {
       {
         model: "anthropic/claude",
         account: "bot-a",
-        options: { thinking: { type: "enabled", budgetTokens: 16000 } },
       },
       { id: "security", model: "anthropic/claude", account: "bot-b" },
       { id: "compat", model: "openai/gpt", account: "bot-c" },

@@ -107,14 +107,16 @@ describe("validateConfig", () => {
 
     expect(result).toMatchObject({ errors: [], ok: true })
     expect(refConfig.agents?.refs).toBeUndefined()
-    expect(refConfig.review?.agents?.[0]).toEqual({
+    expect(refConfig.review?.agents?.[0]).toMatchObject({
       account: "bot-a",
       id: "alpha",
       model: "openai/gpt",
-      options: { reasoningEffort: "high" },
       persona: "Shared persona",
     })
-    expect(refConfig.review?.agents?.[1].options).toEqual({
+    expect(repository.agents.reviewers[0].options).toEqual({
+      reasoningEffort: "high",
+    })
+    expect(repository.agents.reviewers[1].options).toEqual({
       thinking: { type: "enabled" },
     })
     expect(refConfig.review?.agents?.[1].model).toBe("anthropic/claude")
