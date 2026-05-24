@@ -155,6 +155,20 @@ Add the following content to the configuration file.
 
 Entries with `ref` are expanded from `agents.refs`. Fields set alongside `ref` override fields from the preset.
 
+`model` can be a single `provider/model` string or an ordered candidate array. Candidate arrays are resolved during validation against OpenCode's model catalog; the first available model is selected. Put provider-specific options on object candidates, not on the agent role.
+
+```json
+{
+  "model": [
+    "anthropic/claude-sonnet-4-5",
+    {
+      "id": "openai/gpt-5.1",
+      "options": { "reasoningEffort": "high" }
+    }
+  ]
+}
+```
+
 After refs are expanded, `review.agents[].account` is the GitHub account used to post reviews and approvals. Must be authenticated with `gh auth token --user <account>` and must be unique. `merge.editor.account` is used by `/magi:merge` to push fixes, close PRs, and merge PRs.
 
 #### Validate config

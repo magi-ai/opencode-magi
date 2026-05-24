@@ -30,6 +30,8 @@ async function writeConfig(path: string, config: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(config, null, 2)}\n`)
 }
 
+const modelCatalog = { openai: ["gpt"] }
+
 describe("parsePrs", () => {
   test("parses PR numbers and URLs", () => {
     expect(parsePrs("7581 #7582")).toEqual([7581, 7582])
@@ -366,6 +368,7 @@ describe("magi_validate", () => {
 
     const result = await validateMagiConfigFiles(directory, {
       checkAuth: false,
+      modelCatalog,
     })
 
     expect(result).toContain("Magi config validation: failed")
@@ -404,6 +407,7 @@ describe("magi_validate", () => {
 
     const result = await validateMagiConfigFiles(directory, {
       checkAuth: false,
+      modelCatalog,
     })
 
     expect(result).toContain("Magi config validation: passed")
@@ -445,6 +449,7 @@ describe("magi_validate", () => {
 
     const result = await validateMagiConfigFiles(directory, {
       checkAuth: false,
+      modelCatalog,
       exec: async (command) => {
         if (command.startsWith("git config --bool --get")) return "false"
 
@@ -479,6 +484,7 @@ describe("magi_validate", () => {
 
     const result = await validateMagiConfigFiles(directory, {
       checkAuth: false,
+      modelCatalog,
     })
 
     expect(result).toContain("Magi config validation: passed")
@@ -501,6 +507,7 @@ describe("magi_validate", () => {
 
     const result = await validateMagiConfigFiles(directory, {
       checkAuth: false,
+      modelCatalog,
     })
 
     expect(result).toContain("Magi config validation: failed")
@@ -528,6 +535,7 @@ describe("magi_validate", () => {
 
     const result = await validateMagiConfigFiles(directory, {
       checkAuth: false,
+      modelCatalog,
     })
 
     expect(result).toContain(
@@ -535,6 +543,33 @@ describe("magi_validate", () => {
     )
     expect(result).not.toContain("github.owner is required")
     expect(result).not.toContain("github.repo is required")
+  })
+
+  test("reports when the OpenCode model catalog cannot be loaded", async () => {
+    const home = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "magi-home-"))
+    const directory = await mkdtemp(
+      join(process.env.TMPDIR ?? "/tmp", "magi-project-"),
+    )
+    mockState.home = home
+    const globalPath = join(home, ".config", "opencode", "magi.json")
+    const validateMagiConfigFiles = await loadValidateMagiConfigFiles()
+
+    await writeConfig(globalPath, {
+      review: {
+        agents: [
+          { account: "bot-a", model: "openai/gpt" },
+          { account: "bot-b", model: "openai/gpt" },
+          { account: "bot-c", model: "openai/gpt" },
+        ],
+      },
+    })
+
+    const result = await validateMagiConfigFiles(directory, {
+      checkAuth: false,
+    })
+
+    expect(result).toContain("Magi config validation: failed")
+    expect(result).toContain("OpenCode model catalog could not be loaded")
   })
 })
 

@@ -623,6 +623,7 @@ export async function validateMagiConfigFiles(
         : undefined,
       modelCatalog: options.modelCatalog,
       requireGithub: hasProjectConfig && Boolean(mergedConfig.review?.agents),
+      requireModelCatalog: true,
       requireWorktreeConfig: true,
     })
 
@@ -681,6 +682,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
           ?.list({ query: { directory } })
           .then(extractModelCatalog),
       )
+      .catch(() => undefined)
 
     return modelCatalogPromise
   }
@@ -741,6 +743,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
             exec: retryingExec,
             modelCatalog: await modelCatalog(),
             requireEditor: true,
+            requireModelCatalog: true,
           })
 
           if (!validation.ok) return JSON.stringify(validation, null, 2)
@@ -798,6 +801,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
             directory,
             exec: retryingExec,
             modelCatalog: await modelCatalog(),
+            requireModelCatalog: true,
           })
 
           if (!validation.ok) return JSON.stringify(validation, null, 2)
@@ -857,6 +861,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
             exec: retryingExec,
             modelCatalog: await modelCatalog(),
             requireEditor: config.triage?.automation?.merge === true,
+            requireModelCatalog: true,
             requireReview:
               config.triage?.automation?.review === true ||
               config.triage?.automation?.merge === true,

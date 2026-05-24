@@ -60,8 +60,7 @@
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
-        "model": { "type": "string", "minLength": 1 },
-        "options": { "type": "object", "additionalProperties": true },
+        "model": { "$ref": "#/$defs/modelConfig" },
         "account": { "type": "string", "minLength": 1 },
         "author": {
           "type": "object",
@@ -83,8 +82,7 @@
       "properties": {
         "ref": { "type": "string", "minLength": 1 },
         "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
-        "model": { "type": "string", "minLength": 1 },
-        "options": { "type": "object", "additionalProperties": true },
+        "model": { "$ref": "#/$defs/modelConfig" },
         "account": { "type": "string", "minLength": 1 },
         "permissions": { "$ref": "#/$defs/permissions" },
         "persona": { "type": "string" }
@@ -97,8 +95,7 @@
       "additionalProperties": false,
       "properties": {
         "ref": { "type": "string", "minLength": 1 },
-        "model": { "type": "string", "minLength": 1 },
-        "options": { "type": "object", "additionalProperties": true },
+        "model": { "$ref": "#/$defs/modelConfig" },
         "account": { "type": "string", "minLength": 1 },
         "author": {
           "type": "object",
@@ -121,9 +118,8 @@
       "properties": {
         "ref": { "type": "string", "minLength": 1 },
         "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
-        "model": { "type": "string", "minLength": 1 },
+        "model": { "$ref": "#/$defs/modelConfig" },
         "account": { "type": "string", "minLength": 1 },
-        "options": { "type": "object", "additionalProperties": true },
         "permissions": { "$ref": "#/$defs/permissions" },
         "persona": { "type": "string" }
       }
@@ -136,8 +132,7 @@
       "properties": {
         "ref": { "type": "string", "minLength": 1 },
         "account": { "type": "string", "minLength": 1 },
-        "model": { "type": "string", "minLength": 1 },
-        "options": { "type": "object", "additionalProperties": true },
+        "model": { "$ref": "#/$defs/modelConfig" },
         "author": {
           "type": "object",
           "required": ["name", "email"],
@@ -149,6 +144,30 @@
         },
         "permissions": { "$ref": "#/$defs/permissions" },
         "persona": { "type": "string" }
+      }
+    },
+    "modelConfig": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              { "$ref": "#/$defs/modelCandidate" }
+            ]
+          }
+        }
+      ]
+    },
+    "modelCandidate": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "options": { "type": "object", "additionalProperties": true }
       }
     },
     "automation": {
