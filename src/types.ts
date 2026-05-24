@@ -29,7 +29,6 @@ export interface ReviewerConfig {
   account: string
   id?: string
   model: ModelConfig
-  options?: ModelOptions
   permissions?: PermissionConfig
   persona?: string
   ref?: string
@@ -42,7 +41,6 @@ export interface EditorConfig {
     name: string
   }
   model: ModelConfig
-  options?: ModelOptions
   permissions?: PermissionConfig
   persona?: string
   ref?: string
@@ -52,7 +50,6 @@ export interface TriageAgentConfig {
   account: string
   id?: string
   model: ModelConfig
-  options?: ModelOptions
   permissions?: PermissionConfig
   persona?: string
   ref?: string
@@ -65,7 +62,6 @@ export interface TriageCreatorConfig {
     name: string
   }
   model: ModelConfig
-  options?: ModelOptions
   permissions?: PermissionConfig
   persona?: string
   ref?: string
@@ -79,7 +75,6 @@ export interface AgentRefConfig {
   }
   id?: string
   model?: ModelConfig
-  options?: ModelOptions
   permissions?: PermissionConfig
   persona?: string
 }
@@ -267,38 +262,42 @@ export interface MagiConfig {
 
 export interface ResolvedReviewer extends Omit<
   ReviewerConfig,
-  "model" | "permissions"
+  "model" | "options" | "permissions"
 > {
   index: number
   key: string
   model: string
+  options?: ModelOptions
   permission: PermissionConfig
 }
 
 export interface ResolvedEditor extends Omit<
   EditorConfig,
-  "model" | "permissions"
+  "model" | "options" | "permissions"
 > {
   model: string
+  options?: ModelOptions
   permission: PermissionConfig
 }
 
 export interface ResolvedTriageAgent extends Omit<
   TriageAgentConfig,
-  "model" | "permissions"
+  "model" | "options" | "permissions"
 > {
   index: number
   key: string
   model: string
+  options?: ModelOptions
   permission: PermissionConfig
 }
 
 export interface ResolvedTriageCreator extends Omit<
   TriageCreatorConfig,
-  "model" | "permissions"
+  "model" | "options" | "permissions"
 > {
   account: string
   model: string
+  options?: ModelOptions
   permission: PermissionConfig
 }
 
