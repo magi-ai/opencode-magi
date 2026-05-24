@@ -7,19 +7,19 @@
       "melchior": {
         "id": "Melchior",
         "account": "melchior-magi",
-        "model": "opencode/nemotron-3-super-free",
+        "model": "opencode-go/minimax-m2.7",
         "options": { "reasoningEffort": "high" }
       },
       "balthasar": {
         "id": "Balthasar",
         "account": "balthasar-magi",
-        "model": "opencode/deepseek-v4-flash-free",
+        "model": "opencode-go/deepseek-v4-pro",
         "options": { "reasoningEffort": "high" }
       },
       "caspar": {
         "id": "Caspar",
         "account": "caspar-magi",
-        "model": "opencode-go/qwen3.5-plus",
+        "model": "opencode-go/qwen3.6-plus",
         "options": { "thinking": { "type": "enabled", "budgetTokens": 16000 } }
       },
       "hirotomoyamada": {

@@ -23,10 +23,10 @@ jobs:
         with:
           token: ${{ secrets.PAT_TOKEN }}
 
-      - name: Setup Node and PNPM
+      - name: Setup node and pnpm
         uses: ./.github/composite-actions/setup
 
-      - name: Setup Git user
+      - name: Setup git user
         run: |
           git config --global user.email "hirotomo.yamada@avap.co.jp"
           git config --global user.name "hirotomoyamada"
@@ -34,7 +34,7 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Create Release Pull Request or Publish
+      - name: Create release pull request or publish
         id: changesets
         uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1.7.0
         with:
