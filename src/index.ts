@@ -460,34 +460,6 @@ function clearFlag(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined
 }
 
-function clearToolFlag(value: unknown): boolean | undefined {
-  if (value === true || value === "true") return true
-  if (value === "false") return false
-
-  return undefined
-}
-
-function hasBlankSelector(args: { pr?: string; runId?: string }): boolean {
-  return !args.runId?.trim() && !args.pr?.trim()
-}
-
-function hasDefaultedFalseClearFlags(args: {
-  branch?: unknown
-  output?: unknown
-  pr?: string
-  runId?: string
-  session?: unknown
-  worktree?: unknown
-}): boolean {
-  return (
-    hasBlankSelector(args) &&
-    args.branch === "false" &&
-    args.output === "false" &&
-    args.session === "false" &&
-    args.worktree === "false"
-  )
-}
-
 function parseQuestionAnswers(value: string): string[] {
   const trimmed = value.trim()
   if (!trimmed) throw new Error("Specify at least one answer.")
@@ -995,46 +967,22 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
       magi_clear: tool({
         description:
           "Clear all inactive Magi runs by deleting configured sessions, worktrees, branches, and output artifacts.",
-        args: {
-          runId: tool.schema.string().optional(),
-          pr: tool.schema.string().optional(),
-          issue: tool.schema.string().optional(),
-          branch: tool.schema.enum(["true", "false"]).optional(),
-          output: tool.schema.enum(["true", "false"]).optional(),
-          session: tool.schema.enum(["true", "false"]).optional(),
-          worktree: tool.schema.enum(["true", "false"]).optional(),
-        },
-        async execute(args) {
+        args: {},
+        async execute() {
           const loaded = await loadConfig(directory).catch(() => undefined)
           const clear = loaded?.config.clear as ClearConfig | undefined
-          const useConfiguredDefaults = hasDefaultedFalseClearFlags(args)
           const options: ClearConfig = {
-            branch:
-              (useConfiguredDefaults
-                ? undefined
-                : clearToolFlag(args.branch)) ?? clearFlag(clear?.branch),
-            output:
-              (useConfiguredDefaults
-                ? undefined
-                : clearToolFlag(args.output)) ?? clearFlag(clear?.output),
-            session:
-              (useConfiguredDefaults
-                ? undefined
-                : clearToolFlag(args.session)) ?? clearFlag(clear?.session),
-            worktree:
-              (useConfiguredDefaults
-                ? undefined
-                : clearToolFlag(args.worktree)) ?? clearFlag(clear?.worktree),
+            branch: clearFlag(clear?.branch),
+            output: clearFlag(clear?.output),
+            session: clearFlag(clear?.session),
+            worktree: clearFlag(clear?.worktree),
           }
 
           return runManager.clear({
             options,
-            issue: parseOptionalIssue(args.issue),
             outputDir: loaded
               ? outputBaseDirs(directory, loaded.config)
               : undefined,
-            pr: parseOptionalPr(args.pr),
-            runId: args.runId,
             worktreeDir: loaded
               ? worktreeBaseDirs(directory, loaded.config)
               : undefined,
