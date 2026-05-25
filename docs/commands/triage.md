@@ -32,7 +32,7 @@ Triage flags:
 
 `/magi:triage` triages GitHub issues with dedicated `triage.voters`. It does not reuse `review.reviewers`.
 
-Magi fetches bounded issue relationship data, asks triage voters to vote on existing PRs, duplicate issues, category, and acceptance, then posts comments according to the final result unless the run is an already-handled linked PR case or is blocked by a safety gate. `ASK` comments come from each non-empty `ASK` vote body and use that voter's account. Non-question result comments use the selected reason when one is available, otherwise a natural fallback, and are posted by the selected reporter account. Configure `triage.reporter` to choose the reporter by resolved triage voter key; otherwise Magi selects one from the issue number.
+Magi fetches bounded issue relationship data, asks triage voters to vote on existing PRs, duplicate issues, category, and acceptance, then posts comments according to the final result unless the run is an already-handled linked PR case or is blocked by a safety gate. Top-level `mode` controls GitHub posting identity. In `single` mode, every triage voter uses top-level `account`. In `multi` mode, `ASK` comments come from each non-empty `ASK` vote body and use that voter's configured account. Non-question result comments use the selected reason when one is available, otherwise a natural fallback, and are posted by the selected reporter account. Configure `triage.reporter` in multi mode to choose the reporter by resolved triage voter key; otherwise Magi selects one from the issue number. `triage.reporter` is not supported in single mode because all triage mutations use top-level `account`.
 
 ## Flow
 
@@ -67,7 +67,7 @@ Triage results:
 
 ## Outputs
 
-Magi may post issue comments, close issues, close related open PRs, add or remove labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. Question results may post multiple comments through the `ASK`-voting agent accounts. Non-question results may post one natural decision comment through the selected reporter account. Already-handled related PR runs do not post a comment or close the issue or related PRs.
+Magi may post issue comments, close issues, close related open PRs, add or remove labels, create an implementation PR, or start review/merge automation for that PR depending on the final result and automation settings. Question results may post multiple comments through the `ASK`-voting agent accounts in multi mode, or top-level `account` in single mode. Non-question results may post one natural decision comment through the selected reporter account in multi mode, or top-level `account` in single mode. Already-handled related PR runs do not post a comment or close the issue or related PRs.
 
 Triage artifacts are written to the issue run output directory:
 
@@ -89,36 +89,38 @@ Triage artifacts are written to the issue run output directory:
 
 Important settings:
 
-| Setting                                | Purpose                                                                                                 |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `triage.voters`                        | Dedicated issue triage voters. Must be an odd-length array of at least 3 voters.                        |
-| `triage.voters[].account`              | GitHub account used by each triage voter for ASK comments and reporter-owned mutations.                 |
-| `triage.reporter`                      | Optional resolved triage voter key used for non-`ASK` comments and mutations; defaults by issue number. |
-| `triage.creator`                       | Agent used for implementation PR creation when enabled.                                                 |
-| `triage.creator.account`               | Required when `triage.automation.create` is true; pushes branches and opens PRs.                        |
-| `triage.categories`                    | Category IDs and label/type rules that can skip Category Vote. Type rules require GitHub issue types.   |
-| `triage.signals`                       | Optional signal IDs and descriptions for custom cases such as `good_first_issue`.                       |
-| `triage.automation.close`              | Enables closing rejected, invalid, or duplicate issues.                                                 |
-| `triage.automation.create`             | Enables implementation PR creation for accepted issues.                                                 |
-| `triage.automation.review`             | Starts `/magi:review` after implementation PR creation. Requires `triage.automation.create`.            |
-| `triage.automation.merge`              | Starts `/magi:merge` after implementation PR creation. Requires `triage.automation.create`.             |
-| `triage.automation.label`              | Conditional label add/remove rules. Set `[]` to disable label automation.                               |
-| `triage.safety.requiredLabels`         | Labels required before initial triage runs.                                                             |
-| `triage.safety.blockedLabels`          | Labels that prevent triage from running.                                                                |
-| `triage.safety.allowAuthors`           | Allowed issue authors when configured.                                                                  |
-| `triage.safety.allowMentionActors`     | GitHub logins allowed to trigger reconsideration.                                                       |
-| `triage.safety.allowMentionRoles`      | GitHub author associations allowed to trigger reconsideration.                                          |
-| `triage.prompts.existingPr`            | Related-PR voting prompt template.                                                                      |
-| `triage.prompts.duplicate`             | Duplicate issue voting prompt template.                                                                 |
-| `triage.prompts.category`              | Category voting prompt template.                                                                        |
-| `triage.prompts.acceptance`            | Acceptance voting prompt template.                                                                      |
-| `triage.prompts.commentClassification` | Mention reply classification prompt template.                                                           |
-| `triage.prompts.reconsider`            | Reconsideration prompt template.                                                                        |
-| `triage.prompts.create`                | Implementation PR creation prompt template.                                                             |
-| `triage.prompts.createGuidelines`      | Shared PR creation guidance file.                                                                       |
-| `triage.concurrency.runs`              | Maximum issues processed concurrently.                                                                  |
-| `triage.output`                        | Issue triage artifact directory.                                                                        |
-| `triage.worktree`                      | Worktree directory for validation and PR creation.                                                      |
+| Setting                                | Purpose                                                                                                     |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `mode`                                 | `single` or `multi` GitHub posting identity mode. Defaults to `single`.                                     |
+| `account`                              | Shared triage posting account for single mode.                                                              |
+| `triage.voters`                        | Dedicated issue triage voters. Must be an odd-length array of at least 3 voters.                            |
+| `triage.voters[].account`              | GitHub account used by each triage voter in multi mode. Not supported in single mode.                       |
+| `triage.reporter`                      | Multi-mode resolved triage voter key used for non-`ASK` comments and mutations; defaults by issue number.   |
+| `triage.creator`                       | Agent used for implementation PR creation when enabled.                                                     |
+| `triage.creator.account`               | Required in multi mode when `triage.automation.create` is true; top-level `account` is used in single mode. |
+| `triage.categories`                    | Category IDs and label/type rules that can skip Category Vote. Type rules require GitHub issue types.       |
+| `triage.signals`                       | Optional signal IDs and descriptions for custom cases such as `good_first_issue`.                           |
+| `triage.automation.close`              | Enables closing rejected, invalid, or duplicate issues.                                                     |
+| `triage.automation.create`             | Enables implementation PR creation for accepted issues.                                                     |
+| `triage.automation.review`             | Starts `/magi:review` after implementation PR creation. Requires `triage.automation.create`.                |
+| `triage.automation.merge`              | Starts `/magi:merge` after implementation PR creation. Requires `triage.automation.create`.                 |
+| `triage.automation.label`              | Conditional label add/remove rules. Set `[]` to disable label automation.                                   |
+| `triage.safety.requiredLabels`         | Labels required before initial triage runs.                                                                 |
+| `triage.safety.blockedLabels`          | Labels that prevent triage from running.                                                                    |
+| `triage.safety.allowAuthors`           | Allowed issue authors when configured.                                                                      |
+| `triage.safety.allowMentionActors`     | GitHub logins allowed to trigger reconsideration.                                                           |
+| `triage.safety.allowMentionRoles`      | GitHub author associations allowed to trigger reconsideration.                                              |
+| `triage.prompts.existingPr`            | Related-PR voting prompt template.                                                                          |
+| `triage.prompts.duplicate`             | Duplicate issue voting prompt template.                                                                     |
+| `triage.prompts.category`              | Category voting prompt template.                                                                            |
+| `triage.prompts.acceptance`            | Acceptance voting prompt template.                                                                          |
+| `triage.prompts.commentClassification` | Mention reply classification prompt template.                                                               |
+| `triage.prompts.reconsider`            | Reconsideration prompt template.                                                                            |
+| `triage.prompts.create`                | Implementation PR creation prompt template.                                                                 |
+| `triage.prompts.createGuidelines`      | Shared PR creation guidance file.                                                                           |
+| `triage.concurrency.runs`              | Maximum issues processed concurrently.                                                                      |
+| `triage.output`                        | Issue triage artifact directory.                                                                            |
+| `triage.worktree`                      | Worktree directory for validation and PR creation.                                                          |
 
 See [Config](/docs/config.md) for the complete reference.
 
@@ -126,7 +128,7 @@ See [Config](/docs/config.md) for the complete reference.
 
 ### What happens on `ASK`?
 
-Magi posts each non-empty `ASK` vote body as its own question comment through that voting agent's account. The prompt contract asks agents to write the body for the issue author, but Magi does not automatically add or validate an author mention. It does not close the issue or create a PR. A later mention reply can be used for reconsideration when it passes the configured safety rules.
+Magi posts each non-empty `ASK` vote body as its own question comment through that voting agent's account in multi mode, or through top-level `account` in single mode. The prompt contract asks agents to write the body for the issue author, but Magi does not automatically add or validate an author mention. It does not close the issue or create a PR. A later mention reply can be used for reconsideration when it passes the configured safety rules.
 
 ### How are existing related PRs handled?
 
@@ -148,7 +150,9 @@ Reconsideration requires a previous trusted Magi marker and eligible mention rep
 
 ### Which GitHub accounts are used?
 
-`triage.voters[].account` values are used for triage comments and mutations. Each triage voter account must be authenticated with GitHub CLI and able to read the repository. `triage.reporter` names the resolved triage voter key whose account posts non-question result comments, writes markers, mutates labels, and closes issues or related PRs. If `triage.reporter` is unset, Magi selects a stable reporter from `triage.voters` by issue number. Individual `ASK` comments are posted through the accounts of the triage voters that produced them. `triage.creator.account` is required when PR automation is enabled, pushes implementation branches and opens PRs, and must have repository push permission.
+`single` mode is the default and recommended starting point. Top-level `account` is used for triage comments, markers, label mutations, issue or linked-PR closes, and implementation PR creation when enabled. `triage.voters[].account`, `triage.creator.account`, and `triage.reporter` are not supported in single mode.
+
+`multi` mode is for advanced or team setups that need GitHub to see separate triage identities. Each `triage.voters[].account` must be authenticated with GitHub CLI and able to read the repository. `triage.reporter` names the resolved triage voter key whose account posts non-question result comments, writes markers, mutates labels, and closes issues or related PRs. If `triage.reporter` is unset, Magi selects a stable reporter from `triage.voters` by issue number. Individual `ASK` comments are posted through the accounts of the triage voters that produced them. `triage.creator.account` is required when PR automation is enabled in multi mode, pushes implementation branches and opens PRs, and must have repository push permission.
 
 ### What do the automation flags control?
 

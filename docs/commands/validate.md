@@ -18,9 +18,9 @@ It is safe to run after creating or updating `~/.config/opencode/magi.json` or `
 2. Read the project config at `<project>/.opencode/magi.json`.
 3. Report whether each config file is found, missing, or invalid JSON.
 4. Merge existing configs, with project config overriding global config.
-5. Validate known keys, value types, reviewer and triage voter counts, reviewer IDs, duplicate accounts, model IDs, prompts, output settings, worktree settings, check settings, review settings, merge settings, triage settings, automation settings, and clear settings.
+5. Validate known keys, value types, top-level identity mode and account, reviewer and triage voter counts, reviewer IDs, duplicate accounts, model IDs, prompts, output settings, worktree settings, check settings, review settings, merge settings, triage settings, automation settings, and clear settings.
 6. Require `github.owner` and `github.repo` when a project config exists.
-7. Verify GitHub CLI authentication for configured reviewer, editor, triage voter, and triage creator accounts.
+7. Verify GitHub CLI authentication for the top-level single-mode account or configured multi-mode reviewer and triage voter accounts, plus editor and triage creator accounts when configured.
 8. Verify repository permissions when GitHub authentication succeeds.
 9. Print errors and warnings.
 
@@ -42,21 +42,23 @@ It does not modify files, create runs, post to GitHub, or start agents.
 
 `/magi:validate` validates the same settings documented in [Config](/docs/config.md). The most important requirements are:
 
-| Setting                      | Requirement                                                                                 |
-| ---------------------------- | ------------------------------------------------------------------------------------------- |
-| `review.reviewers`           | Required for review/merge, at least 3 reviewers, odd count.                                 |
-| `review.reviewers[].model`   | Required full OpenCode model ID in `provider/model` form.                                   |
-| `review.reviewers[].account` | Required GitHub account, unique across reviewers.                                           |
-| `merge.editor`               | Required by `/magi:merge`, optional for `/magi:review`.                                     |
-| `github.owner`               | Required for PR review/merge runs.                                                          |
-| `github.repo`                | Required for PR review/merge runs.                                                          |
-| `review.prompts.*`           | Must point to readable files when configured.                                               |
-| `merge.prompts.*`            | Must point to readable files when configured.                                               |
-| `triage.voters`              | Required for triage, at least 3 voters, odd count.                                          |
-| `triage.voters[].account`    | Required GitHub account for each triage voter, unique after refs.                           |
-| `triage.reporter`            | Optional resolved triage voter key used for non-`ASK` comments and mutations.               |
-| `triage.creator.*`           | Required creator account, model, and author fields when `triage.automation.create` is true. |
-| `triage.prompts.*`           | Must point to readable files when configured.                                               |
+| Setting                      | Requirement                                                                                                                    |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `mode`                       | Optional `single` or `multi`; defaults to `single`.                                                                            |
+| `account`                    | Required in single mode for reviewer- and triage-originated GitHub mutations.                                                  |
+| `review.reviewers`           | Required for review/merge, at least 3 reviewers, odd count.                                                                    |
+| `review.reviewers[].model`   | Required full OpenCode model ID in `provider/model` form.                                                                      |
+| `review.reviewers[].account` | Required and unique across reviewers in multi mode; optional and ignored for posting in single mode.                           |
+| `merge.editor`               | Required by `/magi:merge`, optional for `/magi:review`.                                                                        |
+| `github.owner`               | Required for PR review/merge runs.                                                                                             |
+| `github.repo`                | Required for PR review/merge runs.                                                                                             |
+| `review.prompts.*`           | Must point to readable files when configured.                                                                                  |
+| `merge.prompts.*`            | Must point to readable files when configured.                                                                                  |
+| `triage.voters`              | Required for triage, at least 3 voters, odd count.                                                                             |
+| `triage.voters[].account`    | Required and unique after refs in multi mode; not supported in single mode.                                                    |
+| `triage.reporter`            | Optional resolved triage voter key in multi mode; not supported in single mode.                                                |
+| `triage.creator.*`           | Creator model and author are required when `triage.automation.create` is true; creator account is required only in multi mode. |
+| `triage.prompts.*`           | Must point to readable files when configured.                                                                                  |
 
 ## FAQ
 
@@ -70,11 +72,11 @@ Project config overrides global config. Object values are deep merged; array val
 
 ### Does it check GitHub authentication?
 
-Yes. The slash command enables auth checks by default and runs `gh auth token --user <account>` for configured reviewer, editor, triage voter, and triage creator accounts.
+Yes. The slash command enables auth checks by default and runs `gh auth token --user <account>` for the top-level single-mode account or configured multi-mode reviewer and triage voter accounts, plus editor and triage creator accounts when configured.
 
 ### Does it check repository permissions?
 
-Yes, after auth succeeds. Reviewer accounts and each triage voter account must be able to read the repository. The editor account must be able to push for editor operations. The triage creator account must be able to push when implementation PR creation is enabled.
+Yes, after auth succeeds. The top-level single-mode account, or reviewer and triage voter accounts in multi mode, must be able to read the repository. The editor account must be able to push for editor operations. The triage creator account in multi mode, or top-level account in single mode, must be able to push when implementation PR creation is enabled.
 
 ### Why can validation pass without an editor?
 
