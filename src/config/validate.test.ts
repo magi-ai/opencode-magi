@@ -643,6 +643,40 @@ describe("validateConfig", () => {
     expect(result.errors).toContain(error)
   })
 
+  test("rejects non-boolean merge conflict automation", async () => {
+    const result = await validateConfig({
+      ...config,
+      merge: {
+        ...config.merge,
+        automation: { conflict: "yes" } as unknown as NonNullable<
+          MagiConfig["merge"]
+        >["automation"],
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain(
+      "merge.automation.conflict must be a boolean",
+    )
+  })
+
+  test("rejects review conflict automation", async () => {
+    const result = await validateConfig({
+      ...config,
+      review: {
+        ...config.review,
+        automation: { conflict: true } as unknown as NonNullable<
+          MagiConfig["review"]
+        >["automation"],
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain(
+      "review.automation.conflict is not supported",
+    )
+  })
+
   test("rejects invalid thread resolution cycle config", async () => {
     const result = await validateConfig({
       ...config,

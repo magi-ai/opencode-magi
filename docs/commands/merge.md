@@ -44,7 +44,7 @@ During a single merge flow, Magi reuses reviewer OpenCode sessions from the init
 2. Run the full [`/magi:review`](review.md) flow.
 3. If every configured reviewer already reviewed the current effective head, reuse those existing verdicts instead of aborting.
 4. If the review decision is `CLOSE`, close the PR when `merge.automation.close` is enabled and stop. Dry runs stop before closing.
-5. If the review decision is `MERGE`, merge the PR when `merge.automation.merge` is enabled and stop. Dry runs stop before merging.
+5. If the review decision is `MERGE`, merge the PR when `merge.automation.merge` is enabled and stop. Dry runs stop before merging. When merge queue mode returns `dequeued` and `merge.automation.conflict` is enabled, Magi may run one conflict recovery attempt before stopping.
 6. If the review majority is `CHANGES_REQUESTED`, start edit and re-review cycles.
 7. Fetch unresolved review threads, or use synthetic dry-run threads from reviewer findings.
 8. Run the editor agent with the edit prompt.
@@ -88,6 +88,9 @@ Merge artifacts are written to the run output directory:
 | `editor.cycle-{cycle}.prompt.txt`                           | Final prompt sent to the editor model.                   |
 | `editor.cycle-{cycle}.raw.txt`                              | Raw editor model output.                                 |
 | `editor.cycle-{cycle}.json`                                 | Parsed editor JSON.                                      |
+| `editor.conflict.prompt.txt`                                | Final merge conflict recovery prompt sent to the editor. |
+| `editor.conflict.raw.txt`                                   | Raw conflict recovery editor model output.               |
+| `editor.conflict.json`                                      | Parsed conflict recovery editor JSON.                    |
 | `{reviewer}.close-reconsideration.cycle-{cycle}.prompt.txt` | Final close reconsideration prompt sent to the reviewer. |
 | `{reviewer}.close-reconsideration.cycle-{cycle}.raw.txt`    | Raw close reconsideration model output.                  |
 | `{reviewer}.close-reconsideration.cycle-{cycle}.json`       | Parsed close reconsideration JSON.                       |
@@ -109,6 +112,7 @@ Important settings for `/magi:merge`:
 | `review.reviewers`                    | Reviewer agents used for initial review and re-review.             |
 | `merge.automation.close`              | Run `gh pr close` after a close decision.                          |
 | `merge.automation.merge`              | Merge or enqueue the PR after approval.                            |
+| `merge.automation.conflict`           | Resolve one merge queue dequeue conflict with the editor.          |
 | `merge.checks.wait`                   | Wait for required PR checks after editor changes.                  |
 | `review.merge.approvalPolicy`         | Decide readiness by `majority` or `unanimous`.                     |
 | `review.merge.auto`                   | Pass `--auto` to `gh pr merge` outside merge queue mode.           |
@@ -149,6 +153,14 @@ When `review.merge.queue` is `false`, Magi uses `gh pr merge` and applies `revie
 When `review.merge.queue` is `true`, Magi does not use `gh pr merge`. It enqueues the PR with GitHub GraphQL `enqueuePullRequest` and polls GraphQL queue state until the PR is merged or removed from the queue. `review.merge.method`, `review.merge.auto`, and `review.merge.deleteBranch` are ignored in this mode; configure merge method and automatic head branch deletion in the repository merge queue and pull request settings instead.
 
 When `review.merge.queue` is `true`, Magi also checks the base branch rules for a `merge_queue` rule. If GitHub reports that merge queue is not enabled, or Magi cannot verify it, the run records a warning.
+
+### How does merge queue conflict recovery work?
+
+`merge.automation.conflict` defaults to `false`. When set to `true`, it only applies after `/magi:merge` reaches `MERGE`, `merge.automation.merge` is enabled, `review.merge.queue` is enabled, and GitHub removes the PR from the queue before merging.
+
+Magi fetches the latest base branch in the temporary PR worktree and attempts a no-commit merge. If there are conflict markers, the editor resolves them, commits locally, and Magi pushes the result, waits for configured post-edit checks, re-runs reviewer re-review, and re-enqueues when reviewers still approve.
+
+Magi attempts this recovery at most once per `/magi:merge` run. If the PR is dequeued again after re-enqueue, the run returns `dequeued`. Dry runs do not attempt conflict recovery because merge queue enqueueing and pushes are skipped.
 
 ### What does `review.merge.approvalPolicy: unanimous` change?
 

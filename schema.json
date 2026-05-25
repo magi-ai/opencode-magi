@@ -179,6 +179,15 @@
         "close": { "type": "boolean" }
       }
     },
+    "mergeAutomation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "merge": { "type": "boolean", "default": true },
+        "close": { "type": "boolean", "default": false },
+        "conflict": { "type": "boolean", "default": false }
+      }
+    },
     "reviewChecks": {
       "type": "object",
       "additionalProperties": false,
@@ -379,7 +388,7 @@
         "editor": { "$ref": "#/$defs/editor" },
         "checks": { "$ref": "#/$defs/mergeChecks" },
         "prompts": { "$ref": "#/$defs/mergePrompts" },
-        "automation": { "$ref": "#/$defs/automation" },
+        "automation": { "$ref": "#/$defs/mergeAutomation" },
         "maxThreadResolutionCycles": {
           "type": "integer",
           "minimum": 0,

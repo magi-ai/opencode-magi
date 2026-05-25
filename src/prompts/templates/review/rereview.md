@@ -13,6 +13,8 @@ Every newFinding must target a valid right-side line in the PR diff.
 If the problem itself does not have an exact changed line, choose the nearest changed line that represents the cause, responsibility, missing implementation, or affected behavior. This includes but is not limited to missing validation, missing wiring, missing requirements, missing tests, missing documentation, affected configuration, or relevant call sites.
 Do not omit line. Do not create file-level or body-only newFindings.
 
+If `<merge_conflict_context>` is present, treat unresolved merge conflicts as review findings. Request changes when a conflict makes the PR unsafe or impossible to merge, and prefer the provided `suggestedLine` when it is present.
+
 {ciFailureContextBlock}
 Do not edit files or perform write operations.
 

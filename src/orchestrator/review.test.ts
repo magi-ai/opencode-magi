@@ -8,6 +8,7 @@ import { describe, expect, test } from "vitest"
 import {
   hasPendingThreadReply,
   inlineCommentTargetsForDiff,
+  mergeConflictContextForDiff,
   runReview,
   reviewOutputFromState,
   resolveReviewMode,
@@ -81,7 +82,10 @@ function graphqlResponse(value: unknown): string {
   return JSON.stringify({ data: { repository: { pullRequest: value } } })
 }
 
-function fakeExec(commands: string[]): Exec {
+function fakeExec(
+  commands: string[],
+  options: { diff?: string; mergeTree?: string } = {},
+): Exec {
   return async (command) => {
     commands.push(command)
 
@@ -169,7 +173,9 @@ function fakeExec(commands: string[]): Exec {
     if (command.startsWith("gh pr checkout ")) return ""
     if (command === "git branch --show-current") return "feature"
     if (command.startsWith("git cat-file -e ")) return ""
-    if (command.startsWith("git diff ")) return ""
+    if (command.startsWith("git diff ")) return options.diff ?? ""
+    if (command.startsWith("git merge-base ")) return "merge-base"
+    if (command.startsWith("git merge-tree ")) return options.mergeTree ?? ""
 
     throw new Error(`Unexpected command: ${command}`)
   }
@@ -428,6 +434,49 @@ describe("review", () => {
     )
   })
 
+  test("builds merge conflict context with an inline target", async () => {
+    const commands: { command: string; cwd?: string }[] = []
+    const context = await mergeConflictContextForDiff({
+      baseSha: "base-sha",
+      exec: async (command, options) => {
+        commands.push({ command, cwd: options?.cwd })
+
+        if (command.startsWith("git merge-base ")) return "merge-base"
+
+        return [
+          "changed in both",
+          "  base   100644 1111111111111111111111111111111111111111 src/app.ts",
+          "  our    100644 2222222222222222222222222222222222222222 src/app.ts",
+          "  their  100644 3333333333333333333333333333333333333333 src/app.ts",
+          "@@ -1 +1,5 @@",
+          "+<<<<<<< .our",
+          " head",
+          "+=======",
+          "+base",
+          "+>>>>>>> .their",
+        ].join("\n")
+      },
+      headSha: "head-sha",
+      inlineCommentTargets: new Map([["src/app.ts", new Set([2, 3])]]),
+      worktreePath: "/tmp/worktree",
+    })
+
+    expect(commands).toEqual([
+      {
+        command: "git merge-base 'base-sha' 'head-sha'",
+        cwd: "/tmp/worktree",
+      },
+      {
+        command: "git merge-tree 'merge-base' 'head-sha' 'base-sha'",
+        cwd: "/tmp/worktree",
+      },
+    ])
+    expect(context).toContain("unresolved merge conflicts")
+    expect(context).toContain("path: src/app.ts")
+    expect(context).toContain("suggestedLine: 2")
+    expect(context).toContain("rightSideDiffLines: 2, 3")
+  })
+
   test("restores legacy inline review findings from the posted review body", () => {
     expect(
       reviewOutputFromState({
@@ -584,6 +633,64 @@ describe("review", () => {
         "bot-a",
       ),
     ).toBe(false)
+  })
+
+  test("includes merge conflict context in reviewer prompts", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-review-test-"))
+    const commands: string[] = []
+    const prompts: string[] = []
+    const outputs = [
+      JSON.stringify({
+        followUps: [],
+        newFindings: [],
+        resolve: [],
+        verdict: "MERGE",
+      }),
+      JSON.stringify({ findings: [], verdict: "MERGE" }),
+      JSON.stringify({ findings: [], verdict: "MERGE" }),
+    ]
+
+    try {
+      await runReview({
+        client: fakeClient(outputs, prompts),
+        config: {
+          review: { output: "runs", worktree: "worktrees" },
+        } satisfies MagiConfig,
+        directory,
+        dryRun: true,
+        exec: fakeExec(commands, {
+          diff: [
+            "diff --git a/src/app.ts b/src/app.ts",
+            "--- a/src/app.ts",
+            "+++ b/src/app.ts",
+            "@@ -1 +1,2 @@",
+            " existing",
+            "+added",
+          ].join("\n"),
+          mergeTree: [
+            "changed in both",
+            "  base   100644 1111111111111111111111111111111111111111 src/app.ts",
+            "  our    100644 2222222222222222222222222222222222222222 src/app.ts",
+            "  their  100644 3333333333333333333333333333333333333333 src/app.ts",
+            "@@ -1 +1,5 @@",
+            "+<<<<<<< .our",
+            " existing",
+            "+=======",
+            "+base",
+            "+>>>>>>> .their",
+          ].join("\n"),
+        }),
+        pr: 1,
+        repository,
+      })
+
+      expect(prompts[0]).toContain("<merge_conflict_context>")
+      expect(prompts[0]).toContain("path: src/app.ts")
+      expect(prompts[0]).toContain("suggestedLine: 1")
+      expect(prompts[0]).toContain("treat unresolved merge conflicts")
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
   })
 
   test("reconsiders minority close verdicts from rereview outputs", async () => {

@@ -67,7 +67,8 @@
     "editor": { "ref": "hirotomoyamada" },
     "prompts": {
       "editGuidelines": ".agents/references/pr-edit-guidelines.md"
-    }
+    },
+    "automation": { "conflict": true }
   },
   "triage": {
     "voters": [

@@ -58,7 +58,11 @@ describe("resolveRepository", () => {
     expect(repo.merge.approvalPolicy).toBe("majority")
     expect(repo.merge.mergeQueue).toBe(false)
     expect(repo.merge.maxThreadResolutionCycles).toBe(5)
-    expect(repo.automation).toEqual({ close: false, merge: true })
+    expect(repo.automation).toEqual({
+      close: false,
+      conflict: false,
+      merge: true,
+    })
     expect(repo.reviewAutomation).toEqual({ close: false, merge: true })
     expect(repo.concurrency).toEqual({ runs: 3, reviewers: 3 })
     expect(repo.checks.exclude).toEqual([])
@@ -179,6 +183,18 @@ describe("resolveRepository", () => {
     })
 
     expect(repo.reviewAutomation).toEqual({ close: false, merge: false })
+  })
+
+  test("resolves merge conflict automation", () => {
+    const repo = resolveRepository({
+      ...config,
+      merge: {
+        ...config.merge,
+        automation: { conflict: true },
+      },
+    })
+
+    expect(repo.automation.conflict).toBe(true)
   })
 
   test("resolves representative default permissions for reviewers and editor", () => {

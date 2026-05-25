@@ -27,6 +27,7 @@ export interface ReviewPromptInput {
   ciFailureContext?: string
   directory: string
   headSha: string
+  mergeConflictContext?: string
   pr: number
   repository: ResolvedRepository
   reviewContext?: string
@@ -48,6 +49,17 @@ export interface EditPromptInput {
   repository: ResolvedRepository
   reviewFindings: string
   unresolvedThreads: string
+  worktreePath: string
+}
+
+export interface MergeConflictPromptInput {
+  baseBranch: string
+  baseSha: string
+  conflictedFiles: string
+  directory: string
+  headSha: string
+  pr: number
+  repository: ResolvedRepository
   worktreePath: string
 }
 
@@ -167,6 +179,7 @@ function repositoryValues(
 
 function reviewValues(input: ReviewPromptInput): Record<string, string> {
   const ciFailureContext = input.ciFailureContext?.trim() ?? ""
+  const mergeConflictContext = input.mergeConflictContext?.trim() ?? ""
 
   return {
     ...repositoryValues(input.repository),
@@ -177,6 +190,10 @@ function reviewValues(input: ReviewPromptInput): Record<string, string> {
       : "",
     headSha: input.headSha,
     jsonEncodedWorktreePath: JSON.stringify(input.worktreePath),
+    mergeConflictContext,
+    mergeConflictContextBlock: mergeConflictContext
+      ? `<merge_conflict_context>\n${mergeConflictContext}\n</merge_conflict_context>`
+      : "",
     pr: String(input.pr),
     reviewContext: input.reviewContext ?? "",
     worktreePath: input.worktreePath,
@@ -199,6 +216,20 @@ function editValues(input: EditPromptInput): Record<string, string> {
     pr: String(input.pr),
     reviewFindings: input.reviewFindings,
     unresolvedThreads: input.unresolvedThreads,
+    worktreePath: input.worktreePath,
+  }
+}
+
+function mergeConflictValues(
+  input: MergeConflictPromptInput,
+): Record<string, string> {
+  return {
+    ...repositoryValues(input.repository),
+    baseBranch: input.baseBranch,
+    baseSha: input.baseSha,
+    conflictedFiles: input.conflictedFiles,
+    headSha: input.headSha,
+    pr: String(input.pr),
     worktreePath: input.worktreePath,
   }
 }
@@ -249,6 +280,14 @@ function previousReviewBlock(previousReview?: string): string {
 
 function reviewContextBlock(reviewContext?: string): string {
   return reviewContext?.trim() ? reviewContext.trim() : ""
+}
+
+function mergeConflictContextBlock(mergeConflictContext?: string): string {
+  const body = mergeConflictContext?.trim()
+
+  return body
+    ? `<merge_conflict_context>\n${body}\n</merge_conflict_context>`
+    : ""
 }
 
 async function reviewGuidelinesBlock(input: {
@@ -325,6 +364,7 @@ export async function composeReviewPrompt(
   return [
     task,
     reviewContextBlock(input.reviewContext),
+    mergeConflictContextBlock(input.mergeConflictContext),
     languageBlock(input.repository.language),
     personaBlock(input.reviewer.persona),
     await reviewGuidelinesBlock({
@@ -352,6 +392,7 @@ export async function composeRereviewPrompt(
   return [
     task,
     reviewContextBlock(input.reviewContext),
+    mergeConflictContextBlock(input.mergeConflictContext),
     input.includeSessionContext === false
       ? ""
       : languageBlock(input.repository.language),
@@ -378,6 +419,32 @@ export async function composeEditPrompt(
   const task = await taskBlock({
     builtin: "merge/edit",
     customPath: input.repository.prompts.edit,
+    directory: input.directory,
+    values,
+  })
+  const persona = input.repository.agents.editor?.persona
+
+  return [
+    task,
+    languageBlock(input.repository.language),
+    personaBlock(persona),
+    await editGuidelinesBlock({
+      directory: input.directory,
+      path: input.repository.prompts.editGuidelines,
+      values,
+    }),
+    editOutputContract,
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+}
+
+export async function composeMergeConflictPrompt(
+  input: MergeConflictPromptInput,
+): Promise<string> {
+  const values = mergeConflictValues(input)
+  const task = await taskBlock({
+    builtin: "merge/conflict",
     directory: input.directory,
     values,
   })
