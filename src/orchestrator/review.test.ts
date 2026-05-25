@@ -1,7 +1,7 @@
 import type { PullRequestMeta, PullRequestReview } from "../github/commands"
 import type { Exec, MagiConfig, ResolvedRepository } from "../types"
 import type { ModelClient } from "./model"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "vitest"
@@ -13,6 +13,7 @@ import {
   formatReviewMarker,
   parseReviewFindingMarkers,
   parseReviewMarkers,
+  postSingleConsensusReview,
   resolveSingleAccountReviewMode,
   assignThreadsByReviewFindingMarker,
   runReview,
@@ -61,6 +62,13 @@ const repository: ResolvedRepository = {
   safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
 }
 
+function singleReviewRepository(): ResolvedRepository {
+  return {
+    ...repository,
+    review: { account: "review-bot", mode: "single" },
+  }
+}
+
 const pullRequestMeta: PullRequestMeta = {
   author: { login: "author" },
   baseRefName: "main",
@@ -88,12 +96,36 @@ function graphqlResponse(value: unknown): string {
   return JSON.stringify({ data: { repository: { pullRequest: value } } })
 }
 
+function reviewPayloadPath(command: string): string {
+  const match = /--input '([^']+)'/.exec(command)
+
+  if (!match?.[1]) throw new Error(`Missing review payload path: ${command}`)
+
+  return match[1]
+}
+
 function fakeExec(
   commands: string[],
-  options: { diff?: string; mergeTree?: string } = {},
+  options: {
+    diff?: string
+    mergeTree?: string
+    postReviewPayloads?: Record<string, unknown>[]
+  } = {},
 ): Exec {
   return async (command) => {
     commands.push(command)
+
+    if (command.startsWith("gh auth token")) return "token"
+
+    if (command.includes("/pulls/1/reviews --method POST")) {
+      options.postReviewPayloads?.push(
+        JSON.parse(
+          await readFile(reviewPayloadPath(command), "utf8"),
+        ) as Record<string, unknown>,
+      )
+
+      return "review-url"
+    }
 
     if (command.startsWith("gh pr view ")) {
       return JSON.stringify({
@@ -207,6 +239,44 @@ function fakeClient(outputs: string[], prompts: string[]): ModelClient {
         return { info: { text } }
       },
     },
+  }
+}
+
+async function runSingleReviewFixture(input: {
+  commands?: string[]
+  dryRun?: boolean
+  outputs: string[]
+  payloads?: Record<string, unknown>[]
+  prompts?: string[]
+}) {
+  const directory = await mkdtemp(join(tmpdir(), "magi-review-test-"))
+  const commands = input.commands ?? []
+  const prompts = input.prompts ?? []
+
+  try {
+    return await runReview({
+      client: fakeClient(input.outputs, prompts),
+      config: {
+        review: { output: "runs", worktree: "worktrees" },
+      } satisfies MagiConfig,
+      directory,
+      dryRun: input.dryRun,
+      exec: fakeExec(commands, {
+        diff: [
+          "diff --git a/src/app.ts b/src/app.ts",
+          "--- a/src/app.ts",
+          "+++ b/src/app.ts",
+          "@@ -1 +1,2 @@",
+          " existing",
+          "+added",
+        ].join("\n"),
+        postReviewPayloads: input.payloads,
+      }),
+      pr: 1,
+      repository: singleReviewRepository(),
+    })
+  } finally {
+    await rm(directory, { force: true, recursive: true })
   }
 }
 
@@ -392,6 +462,127 @@ describe("review", () => {
     })
 
     expectActiveAssignments(mode, ["skip", "rereview", "initial"])
+  })
+
+  test("posts single consensus approval with reviewer markers", async () => {
+    const commands: string[] = []
+    const payloads: Record<string, unknown>[] = []
+
+    const result = await postSingleConsensusReview({
+      exec: fakeExec(commands, { postReviewPayloads: payloads }),
+      headSha: "head",
+      outputs: {
+        general: { findings: [], verdict: "MERGE" },
+        security: { findings: [], verdict: "MERGE" },
+      },
+      pr: 1,
+      repository: singleReviewRepository(),
+      verdict: "MERGE",
+    })
+
+    expect(result).toBe("review-url")
+    expect(commands).toContain(
+      "gh auth token --hostname 'github.example.com' --user 'review-bot'",
+    )
+    expect(payloads).toHaveLength(1)
+    expect(payloads[0]?.event).toBe("APPROVE")
+    expect(String(payloads[0]?.body)).toContain(
+      "Magi single-account review result: MERGE.",
+    )
+    expect(String(payloads[0]?.body)).toContain(
+      formatReviewMarker({
+        head: "head",
+        pr: 1,
+        reviewer: "general",
+        verdict: "MERGE",
+      }),
+    )
+  })
+
+  test("posts single consensus change requests with finding markers", async () => {
+    const commands: string[] = []
+    const payloads: Record<string, unknown>[] = []
+
+    await postSingleConsensusReview({
+      exec: fakeExec(commands, { postReviewPayloads: payloads }),
+      headSha: "head",
+      outputs: {
+        general: {
+          findings: [
+            {
+              fix: "Normalize before indexing.",
+              issue: "Index can point at the wrong line.",
+              line: 42,
+              path: "src/app.ts",
+              startLine: 40,
+            },
+          ],
+          verdict: "CHANGES_REQUESTED",
+        },
+        security: { findings: [], verdict: "MERGE" },
+      },
+      pr: 1,
+      repository: singleReviewRepository(),
+      verdict: "CHANGES_REQUESTED",
+    })
+
+    expect(payloads).toHaveLength(1)
+    expect(payloads[0]?.event).toBe("REQUEST_CHANGES")
+    expect(String(payloads[0]?.body)).toContain(
+      "Magi single-account review result: CHANGES_REQUESTED.",
+    )
+    const comments = payloads[0]?.comments as Record<string, unknown>[]
+    expect(comments).toHaveLength(1)
+    expect(comments[0]).toMatchObject({
+      line: 42,
+      path: "src/app.ts",
+      side: "RIGHT",
+      start_line: 40,
+      start_side: "RIGHT",
+    })
+    expect(String(comments[0]?.body)).toContain(
+      "**Issue:** Index can point at the wrong line.",
+    )
+    expect(String(comments[0]?.body)).toContain("**Reviewer:** general")
+    expect(String(comments[0]?.body)).toContain(
+      formatReviewFindingMarker({
+        finding: 0,
+        head: "head",
+        pr: 1,
+        reviewer: "general",
+      }),
+    )
+  })
+
+  test("posts single consensus close comments with reviewer markers", async () => {
+    const commands: string[] = []
+    const payloads: Record<string, unknown>[] = []
+
+    await postSingleConsensusReview({
+      exec: fakeExec(commands, { postReviewPayloads: payloads }),
+      headSha: "head",
+      outputs: {
+        general: { findings: [], reason: "Out of scope.", verdict: "CLOSE" },
+        security: { findings: [], verdict: "MERGE" },
+      },
+      pr: 1,
+      repository: singleReviewRepository(),
+      verdict: "CLOSE",
+    })
+
+    expect(payloads).toHaveLength(1)
+    expect(payloads[0]?.event).toBe("COMMENT")
+    expect(String(payloads[0]?.body)).toContain(
+      "Magi single-account review result: CLOSE.",
+    )
+    expect(String(payloads[0]?.body)).toContain(
+      formatReviewMarker({
+        head: "head",
+        pr: 1,
+        reviewer: "general",
+        verdict: "CLOSE",
+      }),
+    )
   })
 
   test("assigns single account threads by finding marker with fallback", () => {
@@ -752,6 +943,180 @@ describe("review", () => {
         "bot-a",
       ),
     ).toBe(false)
+  })
+
+  test("posts single-mode approval reviews through the configured account", async () => {
+    const commands: string[] = []
+    const payloads: Record<string, unknown>[] = []
+
+    const result = await runSingleReviewFixture({
+      commands,
+      outputs: [
+        JSON.stringify({ findings: [], verdict: "MERGE" }),
+        JSON.stringify({ findings: [], verdict: "MERGE" }),
+        JSON.stringify({ findings: [], verdict: "MERGE" }),
+      ],
+      payloads,
+    })
+
+    expect(result.verdict).toBe("MERGE")
+    expect(result.posted).toEqual({ consensus: "review-url" })
+    expect(commands).toContain(
+      "gh auth token --hostname 'github.example.com' --user 'review-bot'",
+    )
+    expect(payloads[0]?.event).toBe("APPROVE")
+    expect(String(payloads[0]?.body)).toContain(
+      formatReviewMarker({
+        head: "head",
+        pr: 1,
+        reviewer: "reviewer-1",
+        verdict: "MERGE",
+      }),
+    )
+  })
+
+  test("posts single-mode change requests after majority finding validation", async () => {
+    const payloads: Record<string, unknown>[] = []
+
+    const result = await runSingleReviewFixture({
+      outputs: [
+        JSON.stringify({
+          findings: [
+            {
+              fix: "Keep reviewer one finding.",
+              issue: "Reviewer one found a bug.",
+              line: 2,
+              path: "src/app.ts",
+            },
+          ],
+          verdict: "CHANGES_REQUESTED",
+        }),
+        JSON.stringify({
+          findings: [
+            {
+              fix: "Keep reviewer two finding.",
+              issue: "Reviewer two found a bug.",
+              line: 2,
+              path: "src/app.ts",
+            },
+          ],
+          verdict: "CHANGES_REQUESTED",
+        }),
+        JSON.stringify({ findings: [], verdict: "MERGE" }),
+        JSON.stringify({
+          votes: [{ findingIndex: 0, reviewer: "reviewer-2", vote: "AGREE" }],
+        }),
+        JSON.stringify({
+          votes: [{ findingIndex: 0, reviewer: "reviewer-1", vote: "AGREE" }],
+        }),
+        JSON.stringify({
+          votes: [
+            { findingIndex: 0, reviewer: "reviewer-1", vote: "AGREE" },
+            { findingIndex: 0, reviewer: "reviewer-2", vote: "AGREE" },
+          ],
+        }),
+      ],
+      payloads,
+    })
+
+    expect(result.verdict).toBe("CHANGES_REQUESTED")
+    expect(result.discardedFindings).toEqual([])
+    expect(payloads[0]?.event).toBe("REQUEST_CHANGES")
+    const comments = payloads[0]?.comments as Record<string, unknown>[]
+    expect(comments).toHaveLength(2)
+    expect(comments.map((comment) => comment.path)).toEqual([
+      "src/app.ts",
+      "src/app.ts",
+    ])
+    expect(String(comments[0]?.body)).toContain("**Reviewer:** reviewer-1")
+    expect(String(comments[1]?.body)).toContain("**Reviewer:** reviewer-2")
+  })
+
+  test("posts single-mode close comments through the configured account", async () => {
+    const payloads: Record<string, unknown>[] = []
+
+    const result = await runSingleReviewFixture({
+      outputs: [
+        JSON.stringify({
+          findings: [],
+          reason: "The PR should be closed.",
+          verdict: "CLOSE",
+        }),
+        JSON.stringify({
+          findings: [],
+          reason: "The PR should be closed.",
+          verdict: "CLOSE",
+        }),
+        JSON.stringify({
+          findings: [],
+          reason: "The PR should be closed.",
+          verdict: "CLOSE",
+        }),
+      ],
+      payloads,
+    })
+
+    expect(result.verdict).toBe("CLOSE")
+    expect(payloads[0]?.event).toBe("COMMENT")
+    expect(String(payloads[0]?.body)).toContain(
+      "Magi single-account review result: CLOSE.",
+    )
+  })
+
+  test("skips single-mode review mutations on dry runs", async () => {
+    const commands: string[] = []
+    const payloads: Record<string, unknown>[] = []
+
+    const result = await runSingleReviewFixture({
+      commands,
+      dryRun: true,
+      outputs: [
+        JSON.stringify({ findings: [], verdict: "MERGE" }),
+        JSON.stringify({ findings: [], verdict: "MERGE" }),
+        JSON.stringify({ findings: [], verdict: "MERGE" }),
+      ],
+      payloads,
+    })
+
+    expect(result.posted).toEqual({
+      consensus: "dry-run:would-post-single-review:MERGE",
+    })
+    expect(payloads).toEqual([])
+    expect(
+      commands.some((command) => command.startsWith("gh auth token")),
+    ).toBe(false)
+  })
+
+  test("reconsiders single-mode close minorities before posting", async () => {
+    const prompts: string[] = []
+    const payloads: Record<string, unknown>[] = []
+
+    const result = await runSingleReviewFixture({
+      outputs: [
+        JSON.stringify({
+          findings: [],
+          reason: "Close this PR.",
+          verdict: "CLOSE",
+        }),
+        JSON.stringify({ findings: [], verdict: "MERGE" }),
+        JSON.stringify({ findings: [], verdict: "MERGE" }),
+        JSON.stringify({ findings: [], verdict: "MERGE" }),
+      ],
+      payloads,
+      prompts,
+    })
+
+    expect(result.outputs["reviewer-1"]).toMatchObject({
+      findings: [],
+      verdict: "MERGE",
+    })
+    expect(result.verdict).toBe("MERGE")
+    expect(payloads[0]?.event).toBe("APPROVE")
+    expect(
+      prompts.find((prompt) =>
+        prompt.includes("CLOSE is not allowed in this reconsideration step"),
+      ),
+    ).toContain("Close this PR.")
   })
 
   test("includes merge conflict context in reviewer prompts", async () => {
