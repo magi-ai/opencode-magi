@@ -7,25 +7,43 @@
       "melchior": {
         "id": "Melchior",
         "account": "melchior-magi",
-        "model": "opencode-go/minimax-m2.7",
-        "options": { "reasoningEffort": "high" }
+        "model": [
+          {
+            "id": "opencode-go/minimax-m2.7",
+            "options": { "reasoningEffort": "high" }
+          }
+        ]
       },
       "balthasar": {
         "id": "Balthasar",
         "account": "balthasar-magi",
-        "model": "opencode-go/deepseek-v4-pro",
-        "options": { "reasoningEffort": "high" }
+        "model": [
+          {
+            "id": "opencode-go/deepseek-v4-pro",
+            "options": { "reasoningEffort": "high" }
+          }
+        ]
       },
       "caspar": {
         "id": "Caspar",
         "account": "caspar-magi",
-        "model": "opencode-go/qwen3.6-plus",
-        "options": { "thinking": { "type": "enabled", "budgetTokens": 16000 } }
+        "model": [
+          {
+            "id": "opencode-go/qwen3.6-plus",
+            "options": {
+              "thinking": { "type": "enabled", "budgetTokens": 16000 }
+            }
+          }
+        ]
       },
       "hirotomoyamada": {
         "account": "hirotomoyamada",
-        "model": "openai/gpt-5.5",
-        "options": { "reasoningEffort": "high" },
+        "model": [
+          {
+            "id": "openai/gpt-5.5",
+            "options": { "reasoningEffort": "high" }
+          }
+        ],
         "author": {
           "name": "hirotomoyamada",
           "email": "hirotomo.yamada@avap.co.jp"
