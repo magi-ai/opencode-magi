@@ -471,7 +471,7 @@ async function runRereview(
     worktreePath,
   })
   const artifactDir = outputDir(input)
-  const singleReviewMode = input.repository.review?.mode !== "multi"
+  const singleReviewMode = input.repository.mode !== "multi"
   const reviewerKeys = input.repository.agents.reviewers.map(
     (reviewer) => reviewer.key,
   )
@@ -486,7 +486,7 @@ async function runRereview(
                 input.exec,
                 input.repository,
                 input.pr,
-                input.repository.review?.account ?? "",
+                input.repository.account ?? "",
               )
             : Object.values(options.dryRunThreads).flat(),
       })
@@ -746,7 +746,7 @@ async function runRereview(
       ? { consensus: `dry-run:would-post-single-review:${verdict}` }
       : {
           consensus: await (async () => {
-            const account = input.repository.review?.account ?? ""
+            const account = input.repository.account ?? ""
 
             await Promise.all(
               entries.flatMap((entry) =>

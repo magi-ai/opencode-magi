@@ -480,8 +480,8 @@ describe("magi_validate", () => {
     const validateMagiConfigFiles = await loadValidateMagiConfigFiles()
 
     await writeConfig(globalPath, {
+      mode: "multi",
       review: {
-        mode: "multi",
         reviewers: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },
@@ -562,8 +562,8 @@ describe("magi_validate", () => {
     const validateMagiConfigFiles = await loadValidateMagiConfigFiles()
 
     await writeConfig(globalPath, {
+      mode: "multi",
       review: {
-        mode: "multi",
         reviewers: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },

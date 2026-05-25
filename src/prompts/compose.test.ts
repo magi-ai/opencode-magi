@@ -99,6 +99,7 @@ describe("prompt composer", () => {
         mergeQueue: true,
         maxThreadResolutionCycles: 5,
       },
+      mode: "multi",
       prompts: {
         editGuidelines: editGuidelinesPath,
         review: promptPath,
@@ -343,6 +344,7 @@ describe("prompt composer", () => {
         mergeQueue: false,
         method: "squash",
       },
+      mode: "multi",
       prompts: { ciClassification: promptPath },
       safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
     }
@@ -403,6 +405,7 @@ describe("prompt composer", () => {
         mergeQueue: false,
         method: "squash",
       },
+      mode: "multi",
       prompts: { ciClassificationAfterEdit: promptPath },
       safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
     }
@@ -475,6 +478,7 @@ describe("prompt composer", () => {
         mergeQueue: false,
         method: "squash",
       },
+      mode: "multi",
       prompts: {},
       safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
       triage: {
@@ -560,6 +564,7 @@ describe("prompt composer", () => {
         mergeQueue: false,
         method: "squash",
       },
+      mode: "multi",
       prompts: {},
       safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
       triage: {

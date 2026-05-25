@@ -162,6 +162,7 @@ describe("MagiRunManager notifications", () => {
         mergeQueue: false,
         method: "squash",
       },
+      mode: "multi",
       prompts: {},
       safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
     }

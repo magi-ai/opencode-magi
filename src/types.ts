@@ -195,12 +195,10 @@ export interface OutputConfig {
 }
 
 export interface ReviewConfig {
-  account?: string
   automation?: AutomationConfig
   checks?: ReviewChecksConfig
   concurrency?: ConcurrencyConfig
   merge?: PullRequestMergeConfig
-  mode?: ReviewIdentityMode
   output?: string
   prompts?: ReviewPromptConfig
   reviewers?: ReviewerConfig[]
@@ -279,11 +277,13 @@ export interface MergeConfig {
 
 export interface MagiConfig {
   $schema?: string
+  account?: string
   agents?: AgentsConfig
   clear?: ClearConfig
   github?: GitHubRepoConfig
   language?: string
   merge?: MergeConfig
+  mode?: ReviewIdentityMode
   output?: OutputConfig
   review?: ReviewConfig
   triage?: TriageConfig
@@ -351,16 +351,14 @@ export interface ResolvedRepository extends RepositoryConfig {
   concurrency: Required<ConcurrencyConfig>
   github: Required<GitHubRepoConfig>
   language?: string
+  account?: string
+  mode: ReviewIdentityMode
   merge: Required<Omit<PullRequestMergeConfig, "queue">> & {
     maxThreadResolutionCycles: number
     mergeQueue: boolean
     queue?: boolean
   }
   prompts: PromptConfig
-  review?: {
-    account?: string
-    mode: ReviewIdentityMode
-  }
   reviewAutomation?: Required<AutomationConfig>
   safety: Required<Omit<SafetyConfig, "maxChangedFiles">> & {
     maxChangedFiles?: number

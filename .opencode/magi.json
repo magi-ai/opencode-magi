@@ -1,6 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/magi-ai/opencode-magi/main/schema.json",
   "language": "en",
+  "mode": "multi",
   "github": { "owner": "magi-ai", "repo": "opencode-magi" },
   "agents": {
     "refs": {
@@ -53,7 +54,6 @@
     "permissions": { "webfetch": "allow", "websearch": "allow" }
   },
   "review": {
-    "mode": "multi",
     "reviewers": [
       { "ref": "melchior" },
       { "ref": "balthasar" },

@@ -56,11 +56,13 @@ const TRIAGE_CATEGORY_ID_PATTERN = /^[A-Za-z0-9_-]+$/
 const RESERVED_TRIAGE_CATEGORY_IDS = new Set(["ASK", "none"])
 const CONFIG_KEYS = new Set([
   "$schema",
+  "account",
   "agents",
   "clear",
   "github",
   "language",
   "merge",
+  "mode",
   "output",
   "review",
   "triage",
@@ -97,12 +99,10 @@ const TRIAGE_CREATOR_KEYS = new Set([
 const AUTHOR_KEYS = new Set(["email", "name"])
 const GITHUB_KEYS = new Set(["apiRetryAttempts", "host", "owner", "repo"])
 const REVIEW_KEYS = new Set([
-  "account",
   "automation",
   "checks",
   "concurrency",
   "merge",
-  "mode",
   "output",
   "prompts",
   "reviewers",
@@ -682,20 +682,18 @@ function validateResolvedReviewers(
 }
 
 function reviewMode(config: MagiConfig): "multi" | "single" {
-  return config.review?.mode === "multi" ? "multi" : "single"
+  return config.mode === "multi" ? "multi" : "single"
 }
 
 function validateReviewIdentity(config: MagiConfig, errors: string[]): void {
-  const mode = config.review?.mode
+  const mode = config.mode
 
   if (mode != null && mode !== "multi" && mode !== "single") {
-    errors.push("review.mode must be multi or single")
+    errors.push("mode must be multi or single")
   }
 
-  validateString(config.review?.account, "review.account", errors)
-
-  if ((mode == null || mode === "single") && !config.review?.account) {
-    errors.push("review.account is required when review.mode is single")
+  if ((mode == null || mode === "single") && !config.account) {
+    errors.push("account is required when mode is single")
   }
 }
 
@@ -1361,7 +1359,7 @@ async function validateAuth(
   const agents = resolveAgents(config)
 
   if (reviewMode(config) === "single") {
-    if (config.review?.account) accounts.add(config.review.account)
+    if (config.account) accounts.add(config.account)
   } else {
     for (const reviewer of agents.reviewers) accounts.add(reviewer.account)
   }
@@ -1446,8 +1444,8 @@ async function validateRepositoryPermissions(
   const agents = resolveAgents(config)
   const reviewAccounts =
     reviewMode(config) === "single"
-      ? config.review?.account
-        ? [config.review.account]
+      ? config.account
+        ? [config.account]
         : []
       : agents.reviewers.map((reviewer) => reviewer.account)
 
@@ -1548,6 +1546,7 @@ export async function validateConfig(
 
   validateKnownKeys(config, "config", CONFIG_KEYS, errors)
   validateString(config.$schema, "$schema", errors)
+  validateString(config.account, "account", errors)
   validateString(config.language, "language", errors)
 
   if (config.agents != null && !isPlainObject(config.agents)) {

@@ -12,8 +12,8 @@ const config: MagiConfig = {
   },
   github: { owner: "owner", repo: "repo" },
   language: "en",
+  mode: "multi",
   review: {
-    mode: "multi",
     reviewers: [
       {
         model: "anthropic/claude",
@@ -69,8 +69,8 @@ describe("validateConfig", () => {
         },
       },
       github: { owner: "owner", repo: "repo" },
+      mode: "multi",
       review: {
-        mode: "multi",
         reviewers: [
           { ref: "shared", id: "alpha", account: "bot-a" },
           {
@@ -143,8 +143,8 @@ describe("validateConfig", () => {
     const refConfig = {
       agents: { refs: { shared: { model: "openai/gpt" } } },
       github: { owner: "owner", repo: "repo" },
+      mode: "multi",
       review: {
-        mode: "multi",
         reviewers: [
           { ref: "missing", account: "bot-a" },
           { ref: 1, account: "bot-b" },
@@ -172,8 +172,8 @@ describe("validateConfig", () => {
         },
       },
       github: { owner: "owner", repo: "repo" },
+      mode: "multi",
       review: {
-        mode: "multi",
         reviewers: [
           { model: "openai/gpt", account: "bot-a" },
           { model: "openai/gpt", account: "bot-b" },
@@ -199,8 +199,8 @@ describe("validateConfig", () => {
         },
       },
       github: { owner: "owner", repo: "repo" },
+      mode: "multi",
       review: {
-        mode: "multi",
         reviewers: [
           { ref: "creator", account: "bot-a" },
           { model: "openai/gpt", account: "bot-b" },
@@ -253,7 +253,8 @@ describe("validateConfig", () => {
 
   test("allows global config without github", async () => {
     const globalConfig: MagiConfig = {
-      review: { mode: "multi", reviewers },
+      mode: "multi",
+      review: { reviewers },
     }
 
     await expect(
@@ -591,6 +592,7 @@ describe("validateConfig", () => {
   test("defaults to single mode account validation", async () => {
     const result = await validateConfig({
       ...config,
+      mode: undefined,
       review: {
         prompts: config.review?.prompts,
         reviewers: [
@@ -601,9 +603,7 @@ describe("validateConfig", () => {
       },
     })
 
-    expect(result.errors).toContain(
-      "review.account is required when review.mode is single",
-    )
+    expect(result.errors).toContain("account is required when mode is single")
   })
 
   test("enforces reviewer accounts in multi mode", async () => {
@@ -641,9 +641,9 @@ describe("validateConfig", () => {
   test("allows single mode reviewers without accounts", async () => {
     const result = await validateConfig({
       ...config,
+      account: "review-bot",
+      mode: "single",
       review: {
-        account: "review-bot",
-        mode: "single",
         reviewers: [
           { id: "general", model: "openai/gpt" },
           { id: "security", model: "openai/gpt" },
@@ -658,8 +658,8 @@ describe("validateConfig", () => {
   test("requires review account in single mode", async () => {
     const result = await validateConfig({
       ...config,
+      mode: "single",
       review: {
-        mode: "single",
         reviewers: [
           { id: "general", model: "openai/gpt" },
           { id: "security", model: "openai/gpt" },
@@ -668,17 +668,15 @@ describe("validateConfig", () => {
       },
     })
 
-    expect(result.errors).toContain(
-      "review.account is required when review.mode is single",
-    )
+    expect(result.errors).toContain("account is required when mode is single")
   })
 
   test("keeps reviewer count validation in single mode", async () => {
     const result = await validateConfig({
       ...config,
+      account: "review-bot",
+      mode: "single",
       review: {
-        account: "review-bot",
-        mode: "single",
         reviewers: [
           { id: "general", model: "openai/gpt" },
           { id: "security", model: "openai/gpt" },
@@ -827,12 +825,19 @@ describe("validateConfig", () => {
       ...config,
       extra: true,
       github: { ...config.github, unknown: true },
-      review: { ...config.review, unknown: true },
+      review: {
+        ...config.review,
+        account: "review-bot",
+        mode: "single",
+        unknown: true,
+      },
     } as unknown as MagiConfig)
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain("config.extra is not supported")
     expect(result.errors).toContain("github.unknown is not supported")
+    expect(result.errors).toContain("review.account is not supported")
+    expect(result.errors).toContain("review.mode is not supported")
     expect(result.errors).toContain("review.unknown is not supported")
   })
 
@@ -963,7 +968,6 @@ describe("validateConfig", () => {
         },
       },
       review: {
-        mode: "multi",
         reviewers: [
           { ref: "shared" },
           { account: "bot-b", model: ["missing/model", "openai/gpt"] },
@@ -1043,7 +1047,6 @@ describe("validateConfig", () => {
         },
       },
       review: {
-        mode: "multi",
         reviewers: [
           { ref: "shared" },
           {
@@ -1348,9 +1351,9 @@ describe("validateConfig", () => {
     const result = await validateConfig(
       {
         ...config,
+        account: "review-bot",
+        mode: "single",
         review: {
-          account: "review-bot",
-          mode: "single",
           reviewers: [
             { id: "general", model: "openai/gpt" },
             { id: "security", model: "openai/gpt" },

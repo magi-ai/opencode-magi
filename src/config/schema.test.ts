@@ -3,8 +3,8 @@ import { describe, expect, test } from "vitest"
 import schema from "../../schema.json" with { type: "json" }
 
 describe("schema", () => {
-  test("declares single as the default review mode", () => {
-    expect(schema.$defs.review.properties.mode.default).toBe("single")
+  test("declares single as the default identity mode", () => {
+    expect(schema.properties.mode.default).toBe("single")
   })
 
   test("accepts merge conflict automation", () => {
@@ -26,9 +26,9 @@ describe("schema", () => {
     expect(
       validate({
         github: { owner: "owner", repo: "repo" },
+        account: "review-bot",
+        mode: "single",
         review: {
-          account: "review-bot",
-          mode: "single",
           reviewers: [
             { id: "general", model: "openai/gpt" },
             { id: "security", model: "openai/gpt" },
@@ -39,14 +39,26 @@ describe("schema", () => {
     ).toBe(true)
   })
 
-  test("rejects unsupported review mode", () => {
+  test("rejects unsupported identity mode", () => {
     const ajv = new Ajv2020()
     const validate = ajv.compile(schema)
 
     expect(
       validate({
         github: { owner: "owner", repo: "repo" },
-        review: { mode: "solo" },
+        mode: "solo",
+      }),
+    ).toBe(false)
+  })
+
+  test("rejects legacy review identity keys", () => {
+    const ajv = new Ajv2020()
+    const validate = ajv.compile(schema)
+
+    expect(
+      validate({
+        github: { owner: "owner", repo: "repo" },
+        review: { account: "review-bot", mode: "single" },
       }),
     ).toBe(false)
   })
