@@ -2,7 +2,9 @@ name: Merge
 
 on:
   pull_request:
-    types: [opened, ready_for_review]
+    types: [opened, ready_for_review, synchronize]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: write
@@ -11,11 +13,11 @@ permissions:
   actions: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}
 
 jobs:
   merge:
-    if: ${{ github.event.pull_request.user.login == 'hirotomoyamada' && !github.event.pull_request.draft }}
+    if: ${{(github.event_name == 'pull_request' && github.actor == 'hirotomoyamada' && github.event.pull_request.user.login == 'hirotomoyamada' && !github.event.pull_request.draft && !contains(github.event.pull_request.labels.*.name, 'magi:merge')) || (github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.issue.user.login == 'hirotomoyamada' && github.event.comment.user.login == 'hirotomoyamada' && !contains(github.event.issue.labels.*.name, 'magi:merge'))}}
     name: Merge
     runs-on: ubuntu-latest
     steps:
@@ -46,8 +48,19 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Add label
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: gh pr edit "${{ github.event.pull_request.number || github.event.issue.number }}" --add-label "magi:merge"
+
       - name: Merge pull request
         env:
           OPENCODE_AUTH_CONTENT: ${{ secrets.OPENCODE_AUTH_CONTENT }}
         run: |
-          opencode run --dir "$GITHUB_WORKSPACE" --model "openai/gpt-5.5" --command "magi:merge" "${{ github.event.pull_request.number }} --sync"
+          opencode run --dir "$GITHUB_WORKSPACE" --model "openai/gpt-5.5" --command "magi:merge" "${{ github.event.pull_request.number || github.event.issue.number }} --sync"
+
+      - name: Remove label
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: gh pr edit "${{ github.event.pull_request.number || github.event.issue.number }}" --remove-label "magi:merge"
