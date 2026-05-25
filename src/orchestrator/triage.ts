@@ -177,6 +177,7 @@ type VoteRunOutput<T extends string> = TriageVoteOutput<T> & {
 
 interface PhaseVoteResult<T extends string> {
   outputs: VoteRunOutput<T>[]
+  reason?: string
   vote?: T
 }
 
@@ -383,6 +384,7 @@ async function runVote<
   parse: (text: string) => O
   phase: string
   prompt: TriagePromptComposer
+  promptText?: string
   repository: ResolvedRepository
   run: TriageRunInput
   schemaName: string
@@ -390,13 +392,15 @@ async function runVote<
 }): Promise<
   O & { promptText: string; raw: string; sessionId: string; voter: string }
 > {
-  const prompt = await input.prompt({
-    context: input.context,
-    directory: input.directory,
-    issue: input.issue,
-    repository: input.repository,
-    voter: input.agent,
-  })
+  const prompt =
+    input.promptText ??
+    (await input.prompt({
+      context: input.context,
+      directory: input.directory,
+      issue: input.issue,
+      repository: input.repository,
+      voter: input.agent,
+    }))
   await emitProgress(input.run, {
     phase: input.phase,
     type: "triage_agent_started",
@@ -577,8 +581,20 @@ async function runPhaseVote<T extends string>(input: {
   if (!agents?.length) throw new Error("triage.agents is required")
   await emitProgress(input.input, { phase: input.phase, type: "phase" })
 
-  const outputs = await Promise.all(
+  const promptTexts = await Promise.all(
     agents.map((agent) =>
+      input.prompt({
+        context: input.context,
+        directory: input.input.directory,
+        issue: input.input.issue,
+        repository: input.input.repository,
+        voter: agent,
+      }),
+    ),
+  )
+
+  const outputs = await Promise.all(
+    agents.map((agent, index) =>
       runVote<T>({
         agent,
         client: input.input.client,
@@ -588,6 +604,7 @@ async function runPhaseVote<T extends string>(input: {
         parse: input.parse,
         phase: input.phase,
         prompt: input.prompt,
+        promptText: promptTexts[index],
         repository: input.input.repository,
         run: input.input,
         schemaName: input.schemaName,
@@ -619,7 +636,16 @@ async function runPhaseVote<T extends string>(input: {
     majority,
   )
 
-  return { outputs, vote: majority.vote }
+  return {
+    outputs,
+    reason: chooseDecisionReason({
+      outputs,
+      threshold: majority.threshold,
+      vote: majority.vote,
+      voters: majority.vote ? majority.voters[majority.vote] : undefined,
+    }),
+    vote: majority.vote,
+  }
 }
 
 async function relationshipScan(input: TriageRunInput, issue: IssueMeta) {
@@ -978,18 +1004,19 @@ function askOutputs<T extends string>(
 
 function chooseDecisionReason(input: {
   outputs?: VoteRunOutput<string>[]
-  reporter: ResolvedTriageAgent
-  vote: string
+  threshold: number
+  vote?: string
+  voters?: string[]
 }): string | undefined {
+  if (!input.vote) return undefined
+  const canonicalVoter = input.voters?.[input.threshold - 1]
+  const canonicalReason = input.outputs?.find(
+    (output) => output.voter === canonicalVoter && output.vote === input.vote,
+  )
+
   return (
-    input.outputs?.find(
-      (output) =>
-        output.voter === input.reporter.key &&
-        output.vote === input.vote &&
-        output.reason,
-    )?.reason ??
-    input.outputs?.find((output) => output.vote === input.vote)?.reason ??
-    input.outputs?.find((output) => output.voter === input.reporter.key)?.reason
+    canonicalReason?.reason ??
+    input.outputs?.find((output) => output.vote === input.vote)?.reason
   )
 }
 
@@ -1627,12 +1654,7 @@ export async function runTriage(
         input,
         outputDir,
       })
-      const reporter = triageReporter(input.repository, issue.number)
-      commentReason = chooseDecisionReason({
-        outputs: reconsideration.outputs,
-        reporter,
-        vote: reconsideration.vote ?? "ASK",
-      })
+      commentReason = reconsideration.reason
       result =
         reconsideration.vote === "YES"
           ? { category: previous.category, disposition: "accepted" }
@@ -1679,11 +1701,7 @@ export async function runTriage(
           postComment: true,
         }
         return finishWithResult({
-          commentReason: chooseDecisionReason({
-            outputs: existingPr.outputs,
-            reporter: triageReporter(input.repository, issue.number),
-            vote: "RELATED_PR_HANDLES_ISSUE",
-          }),
+          commentReason: existingPr.reason,
           context,
           input,
           issue,
@@ -1778,12 +1796,7 @@ export async function runTriage(
         schemaName: "triage acceptance",
         votes: BINARY_VOTES,
       })
-      const reporter = triageReporter(input.repository, issue.number)
-      commentReason = chooseDecisionReason({
-        outputs: acceptance.outputs,
-        reporter,
-        vote: acceptance.vote ?? "ASK",
-      })
+      commentReason = acceptance.reason
       result =
         acceptance.vote === "YES"
           ? { category, disposition: "accepted" }
