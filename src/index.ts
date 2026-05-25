@@ -17,7 +17,11 @@ import { loadConfig, mergeMagiConfig } from "./config/load"
 import { outputBaseDirs } from "./config/output"
 import { worktreeBaseDirs } from "./config/worktree"
 import { resolveRepository } from "./config/resolve"
-import { type ModelCatalog, validateConfig } from "./config/validate"
+import {
+  type ModelCatalog,
+  type ValidationResult,
+  validateConfig,
+} from "./config/validate"
 import { withGitHubApiRetry } from "./github/retry"
 import { mapPool } from "./orchestrator/pool"
 import { MagiRunManager, type MagiRunState } from "./orchestrator/run-manager"
@@ -507,6 +511,10 @@ function issueMarkdownLink(
   return `[#${issue}](${url})`
 }
 
+function validationError(validation: ValidationResult): Error {
+  return new Error(JSON.stringify(validation, null, 2))
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
@@ -719,7 +727,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
             requireModelCatalog: true,
           })
 
-          if (!validation.ok) return JSON.stringify(validation, null, 2)
+          if (!validation.ok) throw validationError(validation)
 
           const repository = resolveRepository(config)
           const sync = parsed.sync || args.sync === true
@@ -777,7 +785,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
             requireModelCatalog: true,
           })
 
-          if (!validation.ok) return JSON.stringify(validation, null, 2)
+          if (!validation.ok) throw validationError(validation)
 
           const repository = resolveRepository(config)
           const sync = parsed.sync || args.sync === true
@@ -841,7 +849,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
             requireTriage: true,
           })
 
-          if (!validation.ok) return JSON.stringify(validation, null, 2)
+          if (!validation.ok) throw validationError(validation)
 
           const repository = resolveRepository(config)
           if (!repository.triage)
