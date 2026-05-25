@@ -183,6 +183,8 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
   const creator = config.triage?.creator
   const singleReviewAccount =
     config.review && config.mode !== "multi" ? config.account : undefined
+  const singleTriageAccount =
+    config.triage && config.mode !== "multi" ? config.account : undefined
 
   return {
     editor: editor
@@ -205,6 +207,7 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
     triage: (config.triage?.voters ?? []).map<ResolvedTriageAgent>(
       (agent, index) => ({
         ...agent,
+        account: singleTriageAccount ?? agent.account ?? "",
         key: triageAgentKey(agent, index),
         index,
         model: normalizedModel(agent.model),
@@ -214,7 +217,7 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
     triageCreator: creator
       ? {
           ...creator,
-          account: creator.account ?? "",
+          account: singleTriageAccount ?? creator.account ?? "",
           model: normalizedModel(creator.model),
           permission: resolveTriageCreatorPermission(agents, creator),
         }

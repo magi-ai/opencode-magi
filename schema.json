@@ -115,7 +115,7 @@
     "triageAgent": {
       "type": "object",
       "if": { "not": { "required": ["ref"] } },
-      "then": { "required": ["model", "account"] },
+      "then": { "required": ["model"] },
       "additionalProperties": false,
       "properties": {
         "ref": { "type": "string", "minLength": 1 },

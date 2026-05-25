@@ -266,6 +266,7 @@ describe("validateConfig", () => {
     const result = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
+        mode: "multi",
         triage: {
           voters: [
             { account: "triage-a", model: "openai/gpt" },
@@ -280,10 +281,81 @@ describe("validateConfig", () => {
     expect(result).toMatchObject({ errors: [], ok: true })
   })
 
+  test("accepts single mode triage voters without per-agent accounts", async () => {
+    const result = await validateConfig(
+      {
+        account: "magi-bot",
+        github: { owner: "owner", repo: "repo" },
+        mode: "single",
+        triage: {
+          voters: [
+            { id: "product", model: "openai/gpt" },
+            { id: "maintainer", model: "anthropic/claude" },
+            { id: "support", model: "google/gemini" },
+          ],
+          automation: { create: true },
+          creator: {
+            author: { email: "magi@example.com", name: "Magi Bot" },
+            model: "openai/gpt",
+          },
+        },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+
+    expect(result).toMatchObject({ errors: [], ok: true })
+  })
+
+  test("rejects triage account fields in single mode after agent ref expansion", async () => {
+    const result = await validateConfig(
+      {
+        account: "magi-bot",
+        agents: {
+          refs: {
+            creator: {
+              account: "creator-bot",
+              author: { email: "creator@example.com", name: "Creator Bot" },
+              model: "openai/gpt",
+            },
+            voter: { account: "triage-bot", model: "openai/gpt" },
+          },
+        },
+        github: { owner: "owner", repo: "repo" },
+        mode: "single",
+        triage: {
+          voters: [
+            { ref: "voter", id: "product" },
+            { id: "maintainer", model: "anthropic/claude" },
+            { account: "support-bot", id: "support", model: "google/gemini" },
+          ],
+          reporter: "product",
+          automation: { create: true },
+          creator: { ref: "creator" },
+        },
+      } as unknown as MagiConfig,
+      { requireReview: false, requireTriage: true },
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain(
+      "triage.voters[0].account is not supported in single mode",
+    )
+    expect(result.errors).toContain(
+      "triage.voters[2].account is not supported in single mode",
+    )
+    expect(result.errors).toContain(
+      "triage.creator.account is not supported in single mode",
+    )
+    expect(result.errors).toContain(
+      "triage.reporter is not supported in single mode",
+    )
+  })
+
   test("validates triage reporter against resolved triage voter keys", async () => {
     const result = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
+        mode: "multi",
         triage: {
           voters: [
             { account: "triage-a", model: "openai/gpt" },
@@ -298,6 +370,7 @@ describe("validateConfig", () => {
     const generated = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
+        mode: "multi",
         triage: { voters: triageVoters, reporter: "voter-1" },
       },
       { requireReview: false, requireTriage: true },
@@ -305,6 +378,7 @@ describe("validateConfig", () => {
     const invalid = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
+        mode: "multi",
         triage: { voters: triageVoters, reporter: "missing" },
       },
       { requireReview: false, requireTriage: true },
@@ -322,6 +396,7 @@ describe("validateConfig", () => {
     const result = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
+        mode: "multi",
         triage: {
           voters: triageVoters,
           automation: { create: true },
@@ -340,6 +415,7 @@ describe("validateConfig", () => {
     const result = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
+        mode: "multi",
         triage: {
           voters: triageVoters,
           automation: { merge: true, review: true },
@@ -361,6 +437,7 @@ describe("validateConfig", () => {
     const result = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
+        mode: "multi",
         triage: {
           voters: triageVoters,
           automation: { pr: true } as unknown as NonNullable<
@@ -379,6 +456,7 @@ describe("validateConfig", () => {
     const valid = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
+        mode: "multi",
         triage: {
           voters: triageVoters,
           automation: {
@@ -407,6 +485,7 @@ describe("validateConfig", () => {
     const emptyWhen = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
+        mode: "multi",
         triage: {
           voters: triageVoters,
           automation: { label: [{ when: {} }] },
@@ -426,6 +505,7 @@ describe("validateConfig", () => {
     const result = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
+        mode: "multi",
         triage: {
           voters: triageVoters,
           automation: { clear: ["triage"] } as unknown as NonNullable<
@@ -444,6 +524,7 @@ describe("validateConfig", () => {
     const result = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
+        mode: "multi",
         triage: {
           voters: triageVoters,
           prompts: {
@@ -462,6 +543,7 @@ describe("validateConfig", () => {
     const result = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
+        mode: "multi",
         triage: {
           voters: triageVoters,
           prompts: {
@@ -482,6 +564,7 @@ describe("validateConfig", () => {
       const result = await validateConfig(
         {
           github: { owner: "owner", repo: "repo" },
+          mode: "multi",
           triage: {
             voters: triageVoters,
             prompts: {
@@ -526,6 +609,7 @@ describe("validateConfig", () => {
       const result = await validateConfig(
         {
           github: { owner: "owner", repo: "repo" },
+          mode: "multi",
           triage: {
             voters: triageVoters,
             categories,
@@ -546,6 +630,7 @@ describe("validateConfig", () => {
     const result = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
+        mode: "multi",
         triage: {
           voters: triageVoters,
           categories: [{ id }],
@@ -562,6 +647,7 @@ describe("validateConfig", () => {
     const result = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
+        mode: "multi",
         triage: {
           voters: triageVoters,
           categories: {} as NonNullable<MagiConfig["triage"]>["categories"],
@@ -1437,6 +1523,7 @@ describe("validateConfig", () => {
     const result = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
+        mode: "multi",
         triage: {
           voters: triageVoters,
           automation: { create: true },
