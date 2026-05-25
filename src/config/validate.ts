@@ -95,13 +95,13 @@ const TRIAGE_CREATOR_KEYS = new Set([
 const AUTHOR_KEYS = new Set(["email", "name"])
 const GITHUB_KEYS = new Set(["apiRetryAttempts", "host", "owner", "repo"])
 const REVIEW_KEYS = new Set([
-  "agents",
   "automation",
   "checks",
   "concurrency",
   "merge",
   "output",
   "prompts",
+  "reviewers",
   "safety",
   "worktree",
 ])
@@ -113,7 +113,6 @@ const MERGE_KEYS = new Set([
   "prompts",
 ])
 const TRIAGE_KEYS = new Set([
-  "agents",
   "automation",
   "categories",
   "concurrency",
@@ -122,6 +121,7 @@ const TRIAGE_KEYS = new Set([
   "prompts",
   "reporter",
   "safety",
+  "voters",
   "worktree",
 ])
 const REVIEW_MERGE_KEYS = new Set([
@@ -252,15 +252,16 @@ function expandAgentRefs(config: MagiConfig, errors: string[]): void {
   const refsInvalid = refsValue != null && !isPlainObject(refsValue)
   const refs = isPlainObject(refsValue) ? refsValue : undefined
 
-  if (Array.isArray(magiConfig.review?.agents)) {
-    magiConfig.review.agents = magiConfig.review.agents.map((agent, index) =>
-      expandAgentRefUse(
-        agent,
-        `review.agents[${index}]`,
-        refs,
-        refsInvalid,
-        errors,
-      ),
+  if (Array.isArray(magiConfig.review?.reviewers)) {
+    magiConfig.review.reviewers = magiConfig.review.reviewers.map(
+      (agent, index) =>
+        expandAgentRefUse(
+          agent,
+          `review.reviewers[${index}]`,
+          refs,
+          refsInvalid,
+          errors,
+        ),
     ) as ReviewerConfig[]
   }
 
@@ -274,11 +275,11 @@ function expandAgentRefs(config: MagiConfig, errors: string[]): void {
     ) as EditorConfig
   }
 
-  if (Array.isArray(magiConfig.triage?.agents)) {
-    magiConfig.triage.agents = magiConfig.triage.agents.map((agent, index) =>
+  if (Array.isArray(magiConfig.triage?.voters)) {
+    magiConfig.triage.voters = magiConfig.triage.voters.map((agent, index) =>
       expandAgentRefUse(
         agent,
-        `triage.agents[${index}]`,
+        `triage.voters[${index}]`,
         refs,
         refsInvalid,
         errors,
@@ -567,22 +568,22 @@ function validateReviewerList(
 }
 
 function validateTriageAgentList(
-  agents: TriageAgentConfig[] | undefined,
+  voters: TriageAgentConfig[] | undefined,
   path: string,
   errors: string[],
   catalog?: ModelCatalog,
 ): void {
-  if (agents == null) return
-  if (!Array.isArray(agents)) {
+  if (voters == null) return
+  if (!Array.isArray(voters)) {
     errors.push(`${path} must be an array`)
     return
   }
 
-  if (agents.length < 3) errors.push(`${path} must contain at least 3 agents`)
-  if (agents.length % 2 === 0)
-    errors.push(`${path} must contain an odd number of agents`)
+  if (voters.length < 3) errors.push(`${path} must contain at least 3 voters`)
+  if (voters.length % 2 === 0)
+    errors.push(`${path} must contain an odd number of voters`)
 
-  agents.forEach((agent, index) => {
+  voters.forEach((agent, index) => {
     if (!agent || typeof agent !== "object") {
       errors.push(`${path}[${index}] must be an object`)
       return
@@ -1038,15 +1039,15 @@ function validateTriage(
     typeof triage.reporter === "string" ? triage.reporter : undefined
   const safety = triage.safety as TriageSafetyConfig | undefined
 
-  if (!triage.agents) errors.push("triage.agents is required")
+  if (!triage.voters) errors.push("triage.voters is required")
   validateTriageAgentList(
-    triage.agents as TriageAgentConfig[] | undefined,
-    "triage.agents",
+    triage.voters as TriageAgentConfig[] | undefined,
+    "triage.voters",
     errors,
     options.modelCatalog,
   )
-  if (Array.isArray(triage.agents)) {
-    const resolvedTriageAgents = triage.agents.map((agent, index) => ({
+  if (Array.isArray(triage.voters)) {
+    const resolvedTriageAgents = triage.voters.map((agent, index) => ({
       account:
         agent && typeof agent === "object" && typeof agent.account === "string"
           ? agent.account
@@ -1063,7 +1064,7 @@ function validateTriage(
       reporter != null &&
       !resolvedTriageAgents.some((agent) => agent.key === reporter)
     ) {
-      errors.push(`triage.reporter must match a triage agent key: ${reporter}`)
+      errors.push(`triage.reporter must match a triage voter key: ${reporter}`)
     }
   }
   validateString(triage.reporter, "triage.reporter", errors)
@@ -1412,16 +1413,16 @@ export async function validateConfig(
     } else {
       validateKnownKeys(config.review, "review", REVIEW_KEYS, errors)
     }
-    if (!config.review.agents) errors.push("review.agents is required")
+    if (!config.review.reviewers) errors.push("review.reviewers is required")
     validateReviewerList(
-      config.review.agents as ReviewerConfig[] | undefined,
-      "review.agents",
+      config.review.reviewers as ReviewerConfig[] | undefined,
+      "review.reviewers",
       errors,
       options.modelCatalog,
     )
-    if (Array.isArray(config.review.agents)) {
+    if (Array.isArray(config.review.reviewers)) {
       validateResolvedReviewers(
-        config.review.agents.map((reviewer, index) => ({
+        config.review.reviewers.map((reviewer, index) => ({
           account:
             reviewer &&
             typeof reviewer === "object" &&
@@ -1433,7 +1434,7 @@ export async function validateConfig(
               ? reviewerKey(reviewer, index)
               : "",
         })),
-        "review.resolvedAgents",
+        "review.resolvedReviewers",
         errors,
       )
     }

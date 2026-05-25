@@ -66,7 +66,7 @@ The final prompt has this shape:
 </language>
 
 <persona>
-...optional reviewer/editor/triage agent persona...
+...optional reviewer/editor/triage voter persona...
 </persona>
 
 <review_guidelines>

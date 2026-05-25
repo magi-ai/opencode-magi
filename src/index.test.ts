@@ -393,7 +393,7 @@ describe("magi_validate", () => {
 
     await writeConfig(globalPath, {
       review: {
-        agents: [
+        reviewers: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },
           { account: "bot-c", model: "openai/gpt" },
@@ -436,7 +436,7 @@ describe("magi_validate", () => {
         },
       },
       review: {
-        agents: [
+        reviewers: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },
           { account: "bot-c", model: "openai/gpt" },
@@ -474,7 +474,7 @@ describe("magi_validate", () => {
 
     await writeConfig(globalPath, {
       review: {
-        agents: [
+        reviewers: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },
           { account: "bot-c", model: "openai/gpt" },
@@ -526,7 +526,7 @@ describe("magi_validate", () => {
 
     await writeConfig(globalPath, {
       review: {
-        agents: [
+        reviewers: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },
         ],
@@ -539,7 +539,7 @@ describe("magi_validate", () => {
     })
 
     expect(result).toContain(
-      "review.agents must contain an odd number of reviewers",
+      "review.reviewers must contain an odd number of reviewers",
     )
     expect(result).not.toContain("github.owner is required")
     expect(result).not.toContain("github.repo is required")
@@ -556,7 +556,7 @@ describe("magi_validate", () => {
 
     await writeConfig(globalPath, {
       review: {
-        agents: [
+        reviewers: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },
           { account: "bot-c", model: "openai/gpt" },

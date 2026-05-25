@@ -594,7 +594,8 @@ export async function validateMagiConfigFiles(
           )
         : undefined,
       modelCatalog: options.modelCatalog,
-      requireGithub: hasProjectConfig && Boolean(mergedConfig.review?.agents),
+      requireGithub:
+        hasProjectConfig && Boolean(mergedConfig.review?.reviewers),
       requireModelCatalog: true,
       requireWorktreeConfig: true,
     })
@@ -807,7 +808,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
       }),
       magi_triage: tool({
         description:
-          "Triage one or more GitHub issues with configured Magi triage agents.",
+          "Triage one or more GitHub issues with configured Magi triage voters.",
         args: {
           issues: tool.schema.string(),
           dryRun: tool.schema.boolean().optional(),

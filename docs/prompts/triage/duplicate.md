@@ -1,6 +1,6 @@
 # Duplicate
 
-Used when triage agents decide whether an issue duplicates one of the provided duplicate candidates.
+Used when triage voters decide whether an issue duplicates one of the provided duplicate candidates.
 
 Config key: `triage.prompts.duplicate`
 

@@ -7,7 +7,7 @@ const config: MagiConfig = {
   github: { owner: "owner", repo: "repo" },
   language: "en",
   review: {
-    agents: [
+    reviewers: [
       {
         model: "anthropic/claude",
         account: "bot-a",
@@ -25,7 +25,7 @@ const config: MagiConfig = {
     },
   },
 }
-const reviewers = config.review?.agents ?? []
+const reviewers = config.review?.reviewers ?? []
 
 describe("resolveRepository", () => {
   test("uses index reviewer keys unless id is configured", () => {
@@ -33,7 +33,7 @@ describe("resolveRepository", () => {
     expect(reviewerKey({ id: "security" }, 1)).toBe("security")
   })
 
-  test("uses voter triage agent keys unless id is configured", () => {
+  test("uses voter triage keys unless id is configured", () => {
     expect(triageAgentKey({}, 0)).toBe("voter-1")
     expect(triageAgentKey({ id: "product" }, 1)).toBe("product")
   })
@@ -66,7 +66,7 @@ describe("resolveRepository", () => {
   test("resolves default triage categories", () => {
     const repo = resolveRepository({
       github: { owner: "owner", repo: "repo" },
-      triage: { agents: [] },
+      triage: { voters: [] },
     })
 
     expect(repo.triage?.categories).toEqual([
@@ -102,7 +102,7 @@ describe("resolveRepository", () => {
     const repo = resolveRepository({
       github: { owner: "owner", repo: "repo" },
       triage: {
-        agents: [],
+        voters: [],
         automation: { create: true, merge: true, review: true },
       },
     })
@@ -118,7 +118,7 @@ describe("resolveRepository", () => {
     const repo = resolveRepository({
       github: { owner: "owner", repo: "repo" },
       triage: {
-        agents: [],
+        voters: [],
         categories: [{ id: "question" }],
       },
     })
@@ -195,7 +195,7 @@ describe("resolveRepository", () => {
       },
       review: {
         ...config.review,
-        agents: [
+        reviewers: [
           {
             ...(reviewers[0] as NonNullable<(typeof reviewers)[number]>),
             permissions: { bash: { "git push*": "deny" }, webfetch: "deny" },

@@ -13,7 +13,7 @@ const config: MagiConfig = {
   github: { owner: "owner", repo: "repo" },
   language: "en",
   review: {
-    agents: [
+    reviewers: [
       {
         model: "anthropic/claude",
         account: "bot-a",
@@ -31,8 +31,8 @@ const config: MagiConfig = {
     },
   },
 }
-const reviewers = config.review?.agents ?? []
-const triageAgents = [
+const reviewers = config.review?.reviewers ?? []
+const triageVoters = [
   { account: "triage-a", model: "openai/gpt" },
   { account: "triage-b", model: "anthropic/claude" },
   { account: "triage-c", model: "google/gemini" },
@@ -69,7 +69,7 @@ describe("validateConfig", () => {
       },
       github: { owner: "owner", repo: "repo" },
       review: {
-        agents: [
+        reviewers: [
           { ref: "shared", id: "alpha", account: "bot-a" },
           {
             ref: "shared",
@@ -90,7 +90,7 @@ describe("validateConfig", () => {
         editor: { ref: "editor", persona: "Edit carefully" },
       },
       triage: {
-        agents: [
+        voters: [
           { ref: "shared", account: "triage-a", id: "first" },
           { ref: "shared", account: "triage-b", id: "second" },
           { ref: "shared", account: "triage-c", id: "third" },
@@ -107,7 +107,7 @@ describe("validateConfig", () => {
 
     expect(result).toMatchObject({ errors: [], ok: true })
     expect(refConfig.agents?.refs).toBeUndefined()
-    expect(refConfig.review?.agents?.[0]).toMatchObject({
+    expect(refConfig.review?.reviewers?.[0]).toMatchObject({
       account: "bot-a",
       id: "alpha",
       model: "openai/gpt",
@@ -119,8 +119,8 @@ describe("validateConfig", () => {
     expect(repository.agents.reviewers[1].options).toEqual({
       thinking: { type: "enabled" },
     })
-    expect(refConfig.review?.agents?.[1].model).toBe("anthropic/claude")
-    expect(refConfig.review?.agents?.[0]).not.toHaveProperty("ref")
+    expect(refConfig.review?.reviewers?.[1].model).toBe("anthropic/claude")
+    expect(refConfig.review?.reviewers?.[0]).not.toHaveProperty("ref")
     expect(repository.agents.reviewers[0]).toMatchObject({
       account: "bot-a",
       key: "alpha",
@@ -142,7 +142,7 @@ describe("validateConfig", () => {
       agents: { refs: { shared: { model: "openai/gpt" } } },
       github: { owner: "owner", repo: "repo" },
       review: {
-        agents: [
+        reviewers: [
           { ref: "missing", account: "bot-a" },
           { ref: 1, account: "bot-b" },
           { ref: "shared", account: "bot-c" },
@@ -154,11 +154,11 @@ describe("validateConfig", () => {
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "review.agents[0].ref references unknown agents.refs preset: missing",
+      "review.reviewers[0].ref references unknown agents.refs preset: missing",
     )
-    expect(result.errors).toContain("review.agents[1].ref must be a string")
+    expect(result.errors).toContain("review.reviewers[1].ref must be a string")
     expect(refConfig.agents?.refs).toBeUndefined()
-    expect(refConfig.review?.agents?.[0]).not.toHaveProperty("ref")
+    expect(refConfig.review?.reviewers?.[0]).not.toHaveProperty("ref")
   })
 
   test("does not validate unused agent refs", async () => {
@@ -170,7 +170,7 @@ describe("validateConfig", () => {
       },
       github: { owner: "owner", repo: "repo" },
       review: {
-        agents: [
+        reviewers: [
           { model: "openai/gpt", account: "bot-a" },
           { model: "openai/gpt", account: "bot-b" },
           { model: "openai/gpt", account: "bot-c" },
@@ -196,7 +196,7 @@ describe("validateConfig", () => {
       },
       github: { owner: "owner", repo: "repo" },
       review: {
-        agents: [
+        reviewers: [
           { ref: "creator", account: "bot-a" },
           { model: "openai/gpt", account: "bot-b" },
           { model: "openai/gpt", account: "bot-c" },
@@ -207,7 +207,9 @@ describe("validateConfig", () => {
     const result = await validateConfig(refConfig)
 
     expect(result.ok).toBe(false)
-    expect(result.errors).toContain("review.agents[0].author is not supported")
+    expect(result.errors).toContain(
+      "review.reviewers[0].author is not supported",
+    )
   })
 
   test("allows missing editor unless merge validation requires it", async () => {
@@ -246,7 +248,7 @@ describe("validateConfig", () => {
 
   test("allows global config without github", async () => {
     const globalConfig: MagiConfig = {
-      review: { agents: reviewers },
+      review: { reviewers },
     }
 
     await expect(
@@ -259,7 +261,7 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          agents: [
+          voters: [
             { account: "triage-a", model: "openai/gpt" },
             { account: "triage-b", id: "product", model: "anthropic/claude" },
             { account: "triage-c", id: "maintainer", model: "google/gemini" },
@@ -272,12 +274,12 @@ describe("validateConfig", () => {
     expect(result).toMatchObject({ errors: [], ok: true })
   })
 
-  test("validates triage reporter against resolved triage agent keys", async () => {
+  test("validates triage reporter against resolved triage voter keys", async () => {
     const result = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          agents: [
+          voters: [
             { account: "triage-a", model: "openai/gpt" },
             { account: "triage-b", id: "product", model: "anthropic/claude" },
             { account: "triage-c", model: "google/gemini" },
@@ -290,14 +292,14 @@ describe("validateConfig", () => {
     const generated = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
-        triage: { agents: triageAgents, reporter: "voter-1" },
+        triage: { voters: triageVoters, reporter: "voter-1" },
       },
       { requireReview: false, requireTriage: true },
     )
     const invalid = await validateConfig(
       {
         github: { owner: "owner", repo: "repo" },
-        triage: { agents: triageAgents, reporter: "missing" },
+        triage: { voters: triageVoters, reporter: "missing" },
       },
       { requireReview: false, requireTriage: true },
     )
@@ -306,7 +308,7 @@ describe("validateConfig", () => {
     expect(generated).toMatchObject({ errors: [], ok: true })
     expect(invalid.ok).toBe(false)
     expect(invalid.errors).toContain(
-      "triage.reporter must match a triage agent key: missing",
+      "triage.reporter must match a triage voter key: missing",
     )
   })
 
@@ -315,7 +317,7 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          agents: triageAgents,
+          voters: triageVoters,
           automation: { create: true },
         },
       },
@@ -333,7 +335,7 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          agents: triageAgents,
+          voters: triageVoters,
           automation: { merge: true, review: true },
         },
       },
@@ -354,7 +356,7 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          agents: triageAgents,
+          voters: triageVoters,
           automation: { pr: true } as unknown as NonNullable<
             MagiConfig["triage"]
           >["automation"],
@@ -372,7 +374,7 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          agents: triageAgents,
+          voters: triageVoters,
           prompts: {
             createPr: "triage-create.md",
           } as unknown as NonNullable<MagiConfig["triage"]>["prompts"],
@@ -390,7 +392,7 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          agents: triageAgents,
+          voters: triageVoters,
           prompts: {
             action: "triage-action.md",
           } as unknown as NonNullable<MagiConfig["triage"]>["prompts"],
@@ -410,7 +412,7 @@ describe("validateConfig", () => {
         {
           github: { owner: "owner", repo: "repo" },
           triage: {
-            agents: triageAgents,
+            voters: triageVoters,
             prompts: {
               [promptKey]: `triage-${promptKey}.md`,
             } as unknown as NonNullable<MagiConfig["triage"]>["prompts"],
@@ -454,7 +456,7 @@ describe("validateConfig", () => {
         {
           github: { owner: "owner", repo: "repo" },
           triage: {
-            agents: triageAgents,
+            voters: triageVoters,
             categories,
           },
         },
@@ -474,7 +476,7 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          agents: triageAgents,
+          voters: triageVoters,
           categories: [{ id }],
         },
       },
@@ -490,7 +492,7 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          agents: triageAgents,
+          voters: triageVoters,
           categories: {} as NonNullable<MagiConfig["triage"]>["categories"],
         },
       },
@@ -506,13 +508,13 @@ describe("validateConfig", () => {
       ...config,
       review: {
         ...config.review,
-        agents: [...reviewers, { account: "bot-d", model: "google/gemini" }],
+        reviewers: [...reviewers, { account: "bot-d", model: "google/gemini" }],
       },
     })
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "review.agents must contain an odd number of reviewers",
+      "review.reviewers must contain an odd number of reviewers",
     )
   })
 
@@ -653,7 +655,7 @@ describe("validateConfig", () => {
           },
         },
         triage: {
-          agents: triageAgents,
+          voters: triageVoters,
           prompts: { createGuidelines: "create-guide.txt" },
         },
       },
@@ -751,7 +753,7 @@ describe("validateConfig", () => {
         },
       },
       review: {
-        agents: [
+        reviewers: [
           { ref: "shared" },
           { account: "bot-b", model: ["missing/model", "openai/gpt"] },
           {
@@ -773,7 +775,7 @@ describe("validateConfig", () => {
         },
       },
       triage: {
-        agents: [
+        voters: [
           { account: "triage-a", model: ["missing/model", "openai/gpt"] },
           { account: "triage-b", model: ["anthropic/claude"] },
           { account: "triage-c", model: ["google/gemini"] },
@@ -801,14 +803,14 @@ describe("validateConfig", () => {
     })
 
     expect(result).toMatchObject({ errors: [], ok: true })
-    expect(candidateConfig.review?.agents?.[0]).toMatchObject({
+    expect(candidateConfig.review?.reviewers?.[0]).toMatchObject({
       model: "anthropic/claude",
       options: { thinking: { budget_tokens: 12000, type: "enabled" } },
     })
-    expect(candidateConfig.review?.agents?.[1]).toMatchObject({
+    expect(candidateConfig.review?.reviewers?.[1]).toMatchObject({
       model: "openai/gpt",
     })
-    expect(candidateConfig.review?.agents?.[1]).not.toHaveProperty("options")
+    expect(candidateConfig.review?.reviewers?.[1]).not.toHaveProperty("options")
     expect(candidateConfig.triage?.creator).toMatchObject({
       model: "openai/gpt",
       options: { reasoningEffort: "low" },
@@ -821,7 +823,7 @@ describe("validateConfig", () => {
         ...config,
         review: {
           ...config.review,
-          agents: [
+          reviewers: [
             { account: "bot-a", model: ["missing/model"] },
             { account: "bot-b", model: "openai/gpt" },
             { account: "bot-c", model: "openai/gpt" },
@@ -833,7 +835,7 @@ describe("validateConfig", () => {
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "review.agents[0].model must contain at least one usable OpenCode model candidate (review.agents[0].model[0] uses unknown OpenCode provider: missing)",
+      "review.reviewers[0].model must contain at least one usable OpenCode model candidate (review.reviewers[0].model[0] uses unknown OpenCode provider: missing)",
     )
   })
 
@@ -842,16 +844,18 @@ describe("validateConfig", () => {
       ...config,
       review: {
         ...config.review,
-        agents: [
+        reviewers: [
           { account: "bot-a", model: "openai/gpt", options: "high" },
           { account: "bot-b", model: "openai/gpt" },
           { account: "bot-c", model: "openai/gpt" },
-        ] as NonNullable<MagiConfig["review"]>["agents"],
+        ] as NonNullable<MagiConfig["review"]>["reviewers"],
       },
     })
 
     expect(result.ok).toBe(false)
-    expect(result.errors).toContain("review.agents[0].options is not supported")
+    expect(result.errors).toContain(
+      "review.reviewers[0].options is not supported",
+    )
   })
 
   test("rejects non-object model candidate options", async () => {
@@ -860,7 +864,7 @@ describe("validateConfig", () => {
         ...config,
         review: {
           ...config.review,
-          agents: [
+          reviewers: [
             {
               account: "bot-a",
               model: [{ id: "openai/gpt", options: "high" }],
@@ -875,7 +879,7 @@ describe("validateConfig", () => {
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "review.agents[0].model[0].options must be an object",
+      "review.reviewers[0].model[0].options must be an object",
     )
   })
 
@@ -888,7 +892,7 @@ describe("validateConfig", () => {
       },
       review: {
         ...config.review,
-        agents: [
+        reviewers: [
           {
             ...(reviewers[0] as NonNullable<(typeof reviewers)[number]>),
             permissions: { webfetch: "allow" },
@@ -919,7 +923,7 @@ describe("validateConfig", () => {
       },
       review: {
         ...config.review,
-        agents: [
+        reviewers: [
           {
             ...(reviewers[0] as NonNullable<(typeof reviewers)[number]>),
             permissions: { webfetch: "maybe" },
@@ -934,7 +938,7 @@ describe("validateConfig", () => {
       "agents.permissions.bash.git status* must be allow, ask, or deny",
     )
     expect(result.errors).toContain(
-      "review.agents[0].permissions.webfetch must be allow, ask, deny, or an object",
+      "review.reviewers[0].permissions.webfetch must be allow, ask, deny, or an object",
     )
   })
 
@@ -943,7 +947,7 @@ describe("validateConfig", () => {
       ...config,
       review: {
         ...config.review,
-        agents: [
+        reviewers: [
           { account: "bot-a", model: "gpt" },
           { account: "bot-b", model: "openai/gpt" },
           { account: "bot-c", model: "openai/gpt" },
@@ -953,7 +957,7 @@ describe("validateConfig", () => {
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "review.agents[0].model must be a full OpenCode model ID in provider/model form",
+      "review.reviewers[0].model must be a full OpenCode model ID in provider/model form",
     )
   })
 
@@ -967,7 +971,7 @@ describe("validateConfig", () => {
 
     expect(result.ok).toBe(false)
     expect(result.errors).toContain(
-      "review.agents[2].model uses unknown OpenCode model: openai/gpt",
+      "review.reviewers[2].model uses unknown OpenCode model: openai/gpt",
     )
     expect(result.errors).toContain(
       "merge.editor.model uses unknown OpenCode model: openai/gpt",
@@ -1077,7 +1081,7 @@ describe("validateConfig", () => {
       {
         github: { owner: "owner", repo: "repo" },
         triage: {
-          agents: triageAgents,
+          voters: triageVoters,
           automation: { create: true },
           creator: {
             account: "creator-bot",

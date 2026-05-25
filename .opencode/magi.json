@@ -35,7 +35,7 @@
     "permissions": { "webfetch": "allow", "websearch": "allow" }
   },
   "review": {
-    "agents": [
+    "reviewers": [
       { "ref": "melchior" },
       { "ref": "balthasar" },
       { "ref": "caspar" }
@@ -52,7 +52,7 @@
     }
   },
   "triage": {
-    "agents": [
+    "voters": [
       { "ref": "melchior" },
       { "ref": "balthasar" },
       { "ref": "caspar" }

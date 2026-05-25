@@ -163,7 +163,7 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
           permission: resolveEditorPermission(agents, editor),
         }
       : undefined,
-    reviewers: (config.review?.agents ?? []).map<ResolvedReviewer>(
+    reviewers: (config.review?.reviewers ?? []).map<ResolvedReviewer>(
       (reviewer, index) => ({
         ...reviewer,
         key: reviewerKey(reviewer, index),
@@ -172,7 +172,7 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
         permission: resolveReviewerPermission(agents, reviewer),
       }),
     ),
-    triage: (config.triage?.agents ?? []).map<ResolvedTriageAgent>(
+    triage: (config.triage?.voters ?? []).map<ResolvedTriageAgent>(
       (agent, index) => ({
         ...agent,
         key: triageAgentKey(agent, index),

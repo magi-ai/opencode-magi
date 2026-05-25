@@ -2331,28 +2331,28 @@ export class MagiRunManager {
     if (progress.type === "triage_agent_started") {
       await this.notify(
         state,
-        `**Triage agent ${progress.voter}** started ${progress.phase} for ${issue}.`,
+        `**Triage voter ${progress.voter}** started ${progress.phase} for ${issue}.`,
       )
     }
 
     if (progress.type === "triage_agent_repair") {
       await this.notify(
         state,
-        `**Triage agent ${progress.voter}** started JSON regeneration for ${issue}.`,
+        `**Triage voter ${progress.voter}** started JSON regeneration for ${issue}.`,
       )
     }
 
     if (progress.type === "triage_agent_completed") {
       await this.notify(
         state,
-        `**Triage agent ${progress.voter}** completed ${progress.phase} for ${issue}: ${progress.vote}.`,
+        `**Triage voter ${progress.voter}** completed ${progress.phase} for ${issue}: ${progress.vote}.`,
       )
     }
 
     if (progress.type === "triage_agent_failed") {
       await this.notify(
         state,
-        `**Triage agent ${progress.voter}** failed ${progress.phase} for ${issue}: ${redactSecrets(progress.error)}`,
+        `**Triage voter ${progress.voter}** failed ${progress.phase} for ${issue}: ${redactSecrets(progress.error)}`,
       )
     }
 
