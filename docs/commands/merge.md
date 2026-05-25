@@ -38,6 +38,8 @@ Merge flags:
 
 During a single merge flow, Magi reuses reviewer OpenCode sessions from the initial review when asking the same reviewers to re-review editor changes or replies. This keeps reviewer conversations continuous while still writing session IDs to artifacts for auditability.
 
+`review.mode` applies to the review and re-review phases. In `single` mode, reviewer-originated posts, follow-up replies, and thread resolutions use `review.account`, while editor replies, pushes, merge operations, and merge-flow PR close operations still use `merge.editor.account`.
+
 ## Flow
 
 1. Stop before agent execution when `review.safety.requiredLabels`, `review.safety.blockedPaths`, `review.safety.maxChangedFiles`, or `review.safety.allowAuthors` blocks the PR.
@@ -56,7 +58,7 @@ During a single merge flow, Magi reuses reviewer OpenCode sessions from the init
 14. Fetch each reviewer's unresolved threads, or use synthetic dry-run threads from reviewer findings.
 15. Run every reviewer agent with the re-review prompt.
 16. Parse each re-review response as the fixed re-review JSON schema.
-17. Resolve threads, post follow-up replies, post new findings, post close comments, or approve according to each reviewer output, unless `--dry-run` is set.
+17. Resolve threads, post follow-up replies, post new findings, post close comments, or approve according to reviewer outputs, unless `--dry-run` is set. Single mode posts reviewer-originated re-review mutations through `review.account` with logical reviewer attribution.
 18. Aggregate re-review verdicts and apply `review.merge.approvalPolicy`.
 19. If the re-review decision is `MERGE`, merge the PR when `merge.automation.merge` is enabled and stop. Dry runs stop before merging.
 20. If the re-review decision is `CLOSE`, close the PR when `merge.automation.close` is enabled and stop. Dry runs stop before closing.
@@ -109,6 +111,8 @@ Important settings for `/magi:merge`:
 | Setting                               | Purpose                                                            |
 | ------------------------------------- | ------------------------------------------------------------------ |
 | `merge.editor`                        | Editor agent, model, persona, permissions, GitHub account, author. |
+| `review.mode`                         | `multi` or `single` GitHub posting identity mode for reviewers.    |
+| `review.account`                      | Shared reviewer posting account for single mode.                   |
 | `review.reviewers`                    | Reviewer agents used for initial review and re-review.             |
 | `merge.automation.close`              | Run `gh pr close` after a close decision.                          |
 | `merge.automation.merge`              | Merge or enqueue the PR after approval.                            |
@@ -179,6 +183,8 @@ Optional pending checks do not block post-edit CI gating. `merge.checks.wait` wa
 ### Which GitHub account pushes and merges?
 
 The editor account configured at `merge.editor.account` posts fixes, pushes commits, closes PRs, and merges PRs. It must be authenticated with GitHub CLI and able to push to the repository.
+
+In `single` review mode, `review.account` handles reviewer approvals, change requests, close comments, reviewer follow-up replies, and reviewer thread resolutions. This preserves Magi consensus but still counts as one GitHub account for branch protection approvals.
 
 ### Can child agents request permissions?
 

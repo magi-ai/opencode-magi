@@ -583,6 +583,94 @@ describe("validateConfig", () => {
     )
   })
 
+  test("defaults to multi mode account validation", async () => {
+    const missingAccount = await validateConfig({
+      ...config,
+      review: {
+        ...config.review,
+        reviewers: [
+          { model: "openai/gpt" },
+          { account: "bot-b", model: "openai/gpt" },
+          { account: "bot-c", model: "openai/gpt" },
+        ],
+      },
+    })
+    const duplicateAccount = await validateConfig({
+      ...config,
+      review: {
+        ...config.review,
+        reviewers: [
+          { account: "bot-a", model: "openai/gpt" },
+          { account: "bot-a", model: "openai/gpt" },
+          { account: "bot-c", model: "openai/gpt" },
+        ],
+      },
+    })
+
+    expect(missingAccount.errors).toContain(
+      "review.reviewers[0].account is required",
+    )
+    expect(duplicateAccount.errors).toContain(
+      "review.resolvedReviewers has duplicate reviewer account: bot-a",
+    )
+  })
+
+  test("allows single mode reviewers without accounts", async () => {
+    const result = await validateConfig({
+      ...config,
+      review: {
+        account: "review-bot",
+        mode: "single",
+        reviewers: [
+          { id: "general", model: "openai/gpt" },
+          { id: "security", model: "openai/gpt" },
+          { id: "compat", model: "openai/gpt" },
+        ],
+      },
+    })
+
+    expect(result).toMatchObject({ errors: [], ok: true })
+  })
+
+  test("requires review account in single mode", async () => {
+    const result = await validateConfig({
+      ...config,
+      review: {
+        mode: "single",
+        reviewers: [
+          { id: "general", model: "openai/gpt" },
+          { id: "security", model: "openai/gpt" },
+          { id: "compat", model: "openai/gpt" },
+        ],
+      },
+    })
+
+    expect(result.errors).toContain(
+      "review.account is required when review.mode is single",
+    )
+  })
+
+  test("keeps reviewer count validation in single mode", async () => {
+    const result = await validateConfig({
+      ...config,
+      review: {
+        account: "review-bot",
+        mode: "single",
+        reviewers: [
+          { id: "general", model: "openai/gpt" },
+          { id: "security", model: "openai/gpt" },
+        ],
+      },
+    })
+
+    expect(result.errors).toContain(
+      "review.reviewers must contain at least 3 reviewers",
+    )
+    expect(result.errors).toContain(
+      "review.reviewers must contain an odd number of reviewers",
+    )
+  })
+
   test.each([
     {
       name: "run concurrency",
@@ -1227,6 +1315,47 @@ describe("validateConfig", () => {
     )
     expect(result.errors).toContain(
       "GitHub account cannot push to repository for editor operations: bot-c",
+    )
+  })
+
+  test("checks single review account auth and permissions", async () => {
+    const commands: string[] = []
+    const result = await validateConfig(
+      {
+        ...config,
+        review: {
+          account: "review-bot",
+          mode: "single",
+          reviewers: [
+            { id: "general", model: "openai/gpt" },
+            { id: "security", model: "openai/gpt" },
+            { id: "compat", model: "openai/gpt" },
+          ],
+        },
+      },
+      {
+        checkAuth: true,
+        exec: async (command, options) => {
+          commands.push(command)
+          if (command.startsWith("git config --bool --get")) return "true"
+          if (command.startsWith("gh auth token")) return "token"
+          if (command.includes("gh api repos/owner/repo")) {
+            if (options?.env?.GH_TOKEN === "token") {
+              return JSON.stringify({ pull: false, push: true })
+            }
+          }
+
+          throw new Error(`unexpected command: ${command}`)
+        },
+      },
+    )
+
+    expect(
+      commands.filter((command) => command.includes("review-bot")),
+    ).toHaveLength(2)
+    expect(commands.some((command) => command.includes("bot-a"))).toBe(false)
+    expect(result.errors).toContain(
+      "GitHub account cannot read repository for PR review: review-bot",
     )
   })
 

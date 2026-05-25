@@ -9,6 +9,12 @@ import {
   hasPendingThreadReply,
   inlineCommentTargetsForDiff,
   mergeConflictContextForDiff,
+  formatReviewFindingMarker,
+  formatReviewMarker,
+  parseReviewFindingMarkers,
+  parseReviewMarkers,
+  resolveSingleAccountReviewMode,
+  assignThreadsByReviewFindingMarker,
   runReview,
   reviewOutputFromState,
   resolveReviewMode,
@@ -314,6 +320,119 @@ describe("review", () => {
     )
 
     expect(mode.type).toBe("already_reviewed")
+  })
+
+  test("formats and parses supported single mode review markers", () => {
+    const marker = formatReviewMarker({
+      head: "abc123",
+      pr: 52,
+      reviewer: "security",
+      verdict: "CHANGES_REQUESTED",
+    })
+    const findingMarker = formatReviewFindingMarker({
+      finding: 0,
+      head: "abc123",
+      pr: 52,
+      reviewer: "security",
+    })
+
+    expect(parseReviewMarkers(marker)).toEqual([
+      {
+        head: "abc123",
+        pr: 52,
+        reviewer: "security",
+        verdict: "CHANGES_REQUESTED",
+      },
+    ])
+    expect(parseReviewFindingMarkers(findingMarker)).toEqual([
+      { finding: 0, head: "abc123", pr: 52, reviewer: "security" },
+    ])
+  })
+
+  test("ignores malformed and unsupported review markers", () => {
+    expect(
+      parseReviewMarkers(
+        [
+          "<!-- opencode-magi:review v=2 mode=single pr=52 reviewer=a verdict=MERGE head=abc -->",
+          "<!-- opencode-magi:review v=1 mode=single pr=x reviewer=a verdict=MERGE head=abc -->",
+          "<!-- opencode-magi:review v=1 mode=single pr=52 reviewer=a verdict=UNKNOWN head=abc -->",
+        ].join("\n"),
+      ),
+    ).toEqual([])
+  })
+
+  test("assigns single account review markers to logical reviewers", () => {
+    const mode = resolveSingleAccountReviewMode({
+      account: "review-bot",
+      current: { headSha: "head", type: "head" },
+      pr: 7,
+      reviewerKeys: ["general", "security", "compat"],
+      reviews: [
+        {
+          author: { login: "review-bot" },
+          body: [
+            formatReviewMarker({
+              head: "head",
+              pr: 7,
+              reviewer: "general",
+              verdict: "MERGE",
+            }),
+            formatReviewMarker({
+              head: "old",
+              pr: 7,
+              reviewer: "security",
+              verdict: "CHANGES_REQUESTED",
+            }),
+          ].join("\n"),
+          commit: { oid: "head" },
+          state: "COMMENTED",
+          submittedAt: "2026-01-01T00:00:00Z",
+        },
+      ],
+    })
+
+    expectActiveAssignments(mode, ["skip", "rereview", "initial"])
+  })
+
+  test("assigns single account threads by finding marker with fallback", () => {
+    const marked = {
+      body: [
+        "**Issue:** Bug",
+        "",
+        "**Fix:** Fix it",
+        "",
+        formatReviewFindingMarker({
+          finding: 0,
+          head: "head",
+          pr: 7,
+          reviewer: "security",
+        }),
+      ].join("\n"),
+      commentId: 1,
+      comments: [],
+      line: 10,
+      path: "src/app.ts",
+      threadId: "thread-1",
+    }
+    const unmarked = {
+      body: "Unmarked thread",
+      commentId: 2,
+      comments: [],
+      line: 11,
+      path: "src/app.ts",
+      threadId: "thread-2",
+    }
+    const assigned = assignThreadsByReviewFindingMarker({
+      fallbackReviewerKeys: ["general", "security", "compat"],
+      headSha: "head",
+      pr: 7,
+      reviewerKeys: ["general", "security", "compat"],
+      threads: [marked, unmarked],
+    })
+
+    expect(assigned.security).toEqual([marked, unmarked])
+    expect(assigned.general).toEqual([unmarked])
+    expect(assigned.compat).toEqual([unmarked])
   })
 
   test("builds inline targets from the prompted three-dot diff range", async () => {

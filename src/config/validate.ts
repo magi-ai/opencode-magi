@@ -97,10 +97,12 @@ const TRIAGE_CREATOR_KEYS = new Set([
 const AUTHOR_KEYS = new Set(["email", "name"])
 const GITHUB_KEYS = new Set(["apiRetryAttempts", "host", "owner", "repo"])
 const REVIEW_KEYS = new Set([
+  "account",
   "automation",
   "checks",
   "concurrency",
   "merge",
+  "mode",
   "output",
   "prompts",
   "reviewers",
@@ -556,6 +558,7 @@ function validateReviewerList(
   path: string,
   errors: string[],
   catalog?: ModelCatalog,
+  mode = "multi",
 ): void {
   if (reviewers == null) return
   if (!Array.isArray(reviewers)) {
@@ -582,7 +585,8 @@ function validateReviewerList(
       errors,
       catalog,
     )
-    if (!reviewer.account) errors.push(`${path}[${index}].account is required`)
+    if (mode === "multi" && !reviewer.account)
+      errors.push(`${path}[${index}].account is required`)
     validateString(reviewer.account, `${path}[${index}].account`, errors)
     validateString(reviewer.persona, `${path}[${index}].persona`, errors)
     validatePermissionConfig(
@@ -661,6 +665,7 @@ function validateResolvedReviewers(
   reviewers: { account: string; key: string }[],
   path: string,
   errors: string[],
+  mode = "multi",
 ): void {
   const keys = new Set<string>()
   const accounts = new Set<string>()
@@ -670,9 +675,27 @@ function validateResolvedReviewers(
       errors.push(`${path} has duplicate reviewer key: ${reviewer.key}`)
     keys.add(reviewer.key)
 
-    if (accounts.has(reviewer.account))
+    if (mode === "multi" && accounts.has(reviewer.account))
       errors.push(`${path} has duplicate reviewer account: ${reviewer.account}`)
     accounts.add(reviewer.account)
+  }
+}
+
+function reviewMode(config: MagiConfig): "multi" | "single" {
+  return config.review?.mode === "single" ? "single" : "multi"
+}
+
+function validateReviewIdentity(config: MagiConfig, errors: string[]): void {
+  const mode = config.review?.mode
+
+  if (mode != null && mode !== "multi" && mode !== "single") {
+    errors.push("review.mode must be multi or single")
+  }
+
+  validateString(config.review?.account, "review.account", errors)
+
+  if (mode === "single" && !config.review?.account) {
+    errors.push("review.account is required when review.mode is single")
   }
 }
 
@@ -1337,7 +1360,11 @@ async function validateAuth(
   const accounts = new Set<string>()
   const agents = resolveAgents(config)
 
-  for (const reviewer of agents.reviewers) accounts.add(reviewer.account)
+  if (reviewMode(config) === "single") {
+    if (config.review?.account) accounts.add(config.review.account)
+  } else {
+    for (const reviewer of agents.reviewers) accounts.add(reviewer.account)
+  }
   for (const agent of agents.triage ?? []) accounts.add(agent.account)
   if (agents.editor) accounts.add(agents.editor.account)
   if (agents.triageCreator?.account) accounts.add(agents.triageCreator.account)
@@ -1417,24 +1444,26 @@ async function validateRepositoryPermissions(
   if (!config.github?.owner || !config.github.repo) return
 
   const agents = resolveAgents(config)
+  const reviewAccounts =
+    reviewMode(config) === "single"
+      ? config.review?.account
+        ? [config.review.account]
+        : []
+      : agents.reviewers.map((reviewer) => reviewer.account)
 
   await Promise.all(
-    agents.reviewers.map(async (reviewer) => {
+    reviewAccounts.map(async (account) => {
       try {
-        const permissions = await fetchPermissions(
-          config,
-          exec,
-          reviewer.account,
-        )
+        const permissions = await fetchPermissions(config, exec, account)
 
         if (!permissions.pull) {
           errors.push(
-            `GitHub account cannot read repository for PR review: ${reviewer.account}`,
+            `GitHub account cannot read repository for PR review: ${account}`,
           )
         }
       } catch (error) {
         warnings.push(
-          `Could not validate repository permissions for GitHub account: ${reviewer.account} (${(error as Error).message})`,
+          `Could not validate repository permissions for GitHub account: ${account} (${(error as Error).message})`,
         )
       }
     }),
@@ -1535,17 +1564,21 @@ export async function validateConfig(
   if ((options.requireReview ?? true) && !config.review) {
     errors.push("review is required")
   } else if (config.review) {
+    const mode = reviewMode(config)
+
     if (!isPlainObject(config.review)) {
       errors.push("review must be an object")
     } else {
       validateKnownKeys(config.review, "review", REVIEW_KEYS, errors)
     }
+    validateReviewIdentity(config, errors)
     if (!config.review.reviewers) errors.push("review.reviewers is required")
     validateReviewerList(
       config.review.reviewers as ReviewerConfig[] | undefined,
       "review.reviewers",
       errors,
       options.modelCatalog,
+      mode,
     )
     if (Array.isArray(config.review.reviewers)) {
       validateResolvedReviewers(
@@ -1563,6 +1596,7 @@ export async function validateConfig(
         })),
         "review.resolvedReviewers",
         errors,
+        mode,
       )
     }
   }

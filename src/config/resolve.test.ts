@@ -64,12 +64,35 @@ describe("resolveRepository", () => {
       merge: true,
     })
     expect(repo.reviewAutomation).toEqual({ close: false, merge: true })
+    expect(repo.review).toEqual({ account: undefined, mode: "multi" })
     expect(repo.concurrency).toEqual({ runs: 3, reviewers: 3 })
     expect(repo.checks.exclude).toEqual([])
     expect(repo.checks.waitAfterEdit).toBe(true)
     expect(repo.checks.retryFailedJobs).toBe(3)
     expect(repo.language).toBe("en")
     expect(repo.prompts.review).toBe("global-review.md")
+  })
+
+  test("resolves single review account as reviewer posting account", () => {
+    const repo = resolveRepository({
+      github: { owner: "owner", repo: "repo" },
+      review: {
+        account: "review-bot",
+        mode: "single",
+        reviewers: [
+          { id: "general", model: "openai/gpt" },
+          { id: "security", model: "openai/gpt" },
+          { id: "compat", model: "openai/gpt" },
+        ],
+      },
+    })
+
+    expect(repo.review).toEqual({ account: "review-bot", mode: "single" })
+    expect(repo.agents.reviewers.map((reviewer) => reviewer.account)).toEqual([
+      "review-bot",
+      "review-bot",
+      "review-bot",
+    ])
   })
 
   test("resolves default triage categories", () => {
