@@ -143,7 +143,6 @@ Add the following content to the configuration file.
     "editor": { "ref": "account-4" }
   },
   "triage": {
-    "account": "account-5",
     "agents": [
       { "ref": "account-1" },
       { "ref": "account-2" },
