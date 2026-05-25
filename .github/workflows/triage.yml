@@ -6,20 +6,56 @@ on:
   issue_comment:
     types: [created]
 
-permissions:
-  contents: write
-  issues: write
-  pull-requests: write
-  actions: write
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.issue.number }}
 
 jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - name: Check
+        id: check
+        run: |
+          run=false
+
+          case "${{ github.event_name }}" in
+            issues)
+              author=$(jq -r '.issue.user.login' "$GITHUB_EVENT_PATH")
+              has_triage_label=$(jq -r '.issue.labels | any(.name == "magi:triage")' "$GITHUB_EVENT_PATH")
+
+              if [[ "$author" == "hirotomoyamada" && "$has_triage_label" == "false" ]]; then
+                run=true
+              fi
+              ;;
+            issue_comment)
+              author=$(jq -r '.issue.user.login' "$GITHUB_EVENT_PATH")
+              commenter=$(jq -r '.comment.user.login' "$GITHUB_EVENT_PATH")
+              comment_body=$(jq -r '.comment.body' "$GITHUB_EVENT_PATH")
+              has_triage_label=$(jq -r '.issue.labels | any(.name == "magi:triage")' "$GITHUB_EVENT_PATH")
+
+              if [[ "$author" == "hirotomoyamada" && "$commenter" == "hirotomoyamada" && "$comment_body" == "/triage" && "$has_triage_label" == "false" ]]; then
+                run=true
+              fi
+              ;;
+          esac
+
+          printf 'run=%s\n' "$run" >> "$GITHUB_OUTPUT"
+
   triage:
-    if: ${{ github.event.issue.user.login == 'hirotomoyamada' && !contains(github.event.issue.labels.*.name, 'magi:triage') && (github.event_name != 'issue_comment' || github.event.comment.user.login == 'hirotomoyamada') }}
+    needs: check
+    if: ${{ needs.check.outputs.run == 'true' }}
     name: Triage
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -48,10 +84,7 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Mark triage running
-        id: mark_triage
-        env:
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+      - name: Add label
         run: gh issue edit "${{ github.event.issue.number }}" --add-label "magi:triage"
 
       - name: Triage issue
@@ -60,8 +93,6 @@ jobs:
         run: |
           opencode run --dir "$GITHUB_WORKSPACE" --model "openai/gpt-5.5" --command "magi:triage" "${{ github.event.issue.number }} --sync"
 
-      - name: Unmark triage running
-        if: ${{ always() && steps.mark_triage.outcome == 'success' }}
-        env:
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+      - name: Remove label
+        if: ${{ always() }}
         run: gh issue edit "${{ github.event.issue.number }}" --remove-label "magi:triage"
