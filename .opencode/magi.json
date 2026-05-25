@@ -53,6 +53,7 @@
     "permissions": { "webfetch": "allow", "websearch": "allow" }
   },
   "review": {
+    "mode": "multi",
     "reviewers": [
       { "ref": "melchior" },
       { "ref": "balthasar" },
