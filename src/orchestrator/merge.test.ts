@@ -930,6 +930,157 @@ describe("merge", () => {
     expect(prompts.join("\n")).toContain("Pass findings to the editor.")
   })
 
+  test("uses review account threads for single-mode merge rereview", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-merge-test-"))
+    const reviewers = [
+      {
+        account: "alpha-bot",
+        index: 0,
+        key: "alpha",
+        model: "test/model",
+        permission: "allow" as const,
+      },
+    ]
+    const mergeRepository: ResolvedRepository = {
+      ...editorRepository,
+      agents: {
+        editor: editorRepository.agents.editor,
+        reviewers,
+      },
+      automation: { ...editorRepository.automation, merge: false },
+      review: { account: "review-bot", mode: "single" },
+    }
+    let rereviewThreads: unknown
+    const marker = (author: string) =>
+      `<!-- opencode-magi:review-finding v=1 mode=single pr=162 reviewer=alpha finding=0 head=review-head -->\n${author}`
+    const exec: Exec = async (command) => {
+      if (command.startsWith("gh pr view")) {
+        return JSON.stringify(
+          prMeta({
+            headRefOid: "edited-head",
+            number: 162,
+          }),
+        )
+      }
+      if (command.startsWith("gh auth token")) return "token"
+      if (command.startsWith("git config ")) return ""
+      if (command.startsWith("git push ")) return ""
+      if (command.startsWith("git cat-file -e ")) return ""
+      if (command.startsWith("git diff ")) {
+        return [
+          "diff --git a/file.ts b/file.ts",
+          "--- a/file.ts",
+          "+++ b/file.ts",
+          "@@ -1 +1,2 @@",
+          " existing",
+          "+added",
+        ].join("\n")
+      }
+      if (command.includes("reviewThreads(first:")) {
+        return JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                reviewThreads: {
+                  nodes: [
+                    {
+                      comments: {
+                        nodes: [
+                          {
+                            author: { login: "review-bot" },
+                            body: marker("review-bot"),
+                            createdAt: "2026-01-01T00:00:00Z",
+                            databaseId: 1,
+                            line: 1,
+                            path: "file.ts",
+                          },
+                        ],
+                        pageInfo: { hasNextPage: false },
+                      },
+                      id: "thread-review-bot",
+                      isResolved: false,
+                    },
+                    {
+                      comments: {
+                        nodes: [
+                          {
+                            author: { login: "editor-bot" },
+                            body: marker("editor-bot"),
+                            createdAt: "2026-01-01T00:00:01Z",
+                            databaseId: 2,
+                            line: 2,
+                            path: "file.ts",
+                          },
+                        ],
+                        pageInfo: { hasNextPage: false },
+                      },
+                      id: "thread-editor-bot",
+                      isResolved: false,
+                    },
+                  ],
+                  pageInfo: { hasNextPage: false },
+                },
+              },
+            },
+          },
+        })
+      }
+
+      return ""
+    }
+
+    runReviewMock.mockResolvedValueOnce({
+      baseSha: "base-sha",
+      ciReports: [],
+      discardedFindings: [],
+      headSha: "review-head",
+      outputs: {
+        alpha: {
+          findings: [
+            {
+              fix: "Fix the bug.",
+              issue: "Bug remains.",
+              line: 1,
+              path: "file.ts",
+            },
+          ],
+          verdict: "CHANGES_REQUESTED",
+        },
+      },
+      posted: {},
+      pr: 162,
+      report: "review report",
+      sessionIds: {},
+      verdict: "CHANGES_REQUESTED",
+      worktreePath: directory,
+    } satisfies ReviewRunResult)
+    runModelWithRepairMock.mockResolvedValueOnce({
+      raw: "{}",
+      sessionId: "editor-session",
+      value: editOutput(),
+    })
+    composeRereviewPromptMock.mockImplementationOnce(async (input) => {
+      rereviewThreads = JSON.parse(input.unresolvedThreads)
+      throw new Error("stop after rereview prompt")
+    })
+
+    await expect(
+      runMerge({
+        client: { session: { create: vi.fn(), prompt: vi.fn() } },
+        config: {},
+        directory,
+        exec,
+        pr: 162,
+        repository: mergeRepository,
+      }),
+    ).rejects.toThrow("stop after rereview prompt")
+
+    expect(rereviewThreads).toMatchObject([{ threadId: "thread-review-bot" }])
+    expect(rereviewThreads).not.toMatchObject([
+      { threadId: "thread-editor-bot" },
+    ])
+  })
+
   test("treats scope-in CI failures as merge blocking", () => {
     expect(
       hasBlockingCiReports([

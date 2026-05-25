@@ -531,6 +531,9 @@ describe("review", () => {
     expect(String(payloads[0]?.body)).toContain(
       "Magi single-account review result: CHANGES_REQUESTED.",
     )
+    expect(String(payloads[0]?.body)).toContain(
+      "Accepted change requests:\n- general #1 src/app.ts:40-42: Index can point at the wrong line. Fix: Normalize before indexing.",
+    )
     const comments = payloads[0]?.comments as Record<string, unknown>[]
     expect(comments).toHaveLength(1)
     expect(comments[0]).toMatchObject({
@@ -574,6 +577,9 @@ describe("review", () => {
     expect(payloads[0]?.event).toBe("COMMENT")
     expect(String(payloads[0]?.body)).toContain(
       "Magi single-account review result: CLOSE.",
+    )
+    expect(String(payloads[0]?.body)).toContain(
+      "Close reasons:\n- general: Out of scope.",
     )
     expect(String(payloads[0]?.body)).toContain(
       formatReviewMarker({
@@ -624,6 +630,201 @@ describe("review", () => {
     expect(assigned.security).toEqual([marked, unmarked])
     expect(assigned.general).toEqual([unmarked])
     expect(assigned.compat).toEqual([unmarked])
+  })
+
+  test("routes single-mode rereview threads by logical finding markers", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-review-test-"))
+    const prompts: string[] = []
+    const oldHead = "old-head"
+    const markerFor = (reviewer: string) =>
+      formatReviewFindingMarker({
+        finding: 0,
+        head: oldHead,
+        pr: 1,
+        reviewer,
+      })
+    const exec: Exec = async (command) => {
+      if (command.startsWith("gh pr view ")) {
+        return JSON.stringify({
+          author: { login: "author" },
+          baseRefName: "main",
+          baseRefOid: "base",
+          body: "Review this PR.",
+          changedFiles: 1,
+          headRefName: "feature",
+          headRefOid: "head",
+          isDraft: false,
+          number: 1,
+          state: "OPEN",
+          title: "Feature",
+          url: "https://github.com/owner/repo/pull/1",
+        })
+      }
+
+      if (command.includes("reviews(first: 100")) {
+        return graphqlResponse({
+          reviews: {
+            nodes: [
+              {
+                author: { login: "review-bot" },
+                body: [
+                  formatReviewMarker({
+                    head: oldHead,
+                    pr: 1,
+                    reviewer: "reviewer-1",
+                    verdict: "CHANGES_REQUESTED",
+                  }),
+                  formatReviewMarker({
+                    head: oldHead,
+                    pr: 1,
+                    reviewer: "reviewer-2",
+                    verdict: "CHANGES_REQUESTED",
+                  }),
+                  formatReviewMarker({
+                    head: oldHead,
+                    pr: 1,
+                    reviewer: "reviewer-3",
+                    verdict: "CHANGES_REQUESTED",
+                  }),
+                ].join("\n"),
+                comments: { nodes: [] },
+                commit: { oid: oldHead },
+                state: "COMMENTED",
+                submittedAt: "2026-01-01T00:00:00Z",
+              },
+            ],
+            pageInfo: { hasNextPage: false },
+          },
+        })
+      }
+
+      if (command.includes("commits(first: 100")) {
+        return graphqlResponse({
+          commits: {
+            nodes: [
+              {
+                commit: {
+                  committedDate: "2026-01-02T00:00:00Z",
+                  oid: "head",
+                  parents: { totalCount: 1 },
+                },
+              },
+            ],
+            pageInfo: { hasNextPage: false },
+          },
+        })
+      }
+
+      if (command.includes("reviewThreads(first:")) {
+        return graphqlResponse({
+          reviewThreads: {
+            nodes: ["reviewer-1", "reviewer-2", "reviewer-3"].map(
+              (reviewer, index) => ({
+                comments: {
+                  nodes: [
+                    {
+                      author: { login: "review-bot" },
+                      body: markerFor(reviewer),
+                      createdAt: `2026-01-01T00:00:0${index}Z`,
+                      databaseId: index + 1,
+                      line: index + 1,
+                      path: `src/${reviewer}.ts`,
+                    },
+                  ],
+                  pageInfo: { hasNextPage: false },
+                },
+                id: `thread-${reviewer}`,
+                isResolved: false,
+              }),
+            ),
+            pageInfo: { hasNextPage: false },
+          },
+        })
+      }
+
+      if (command.includes("comments(last:")) {
+        return graphqlResponse({ comments: { nodes: [], totalCount: 0 } })
+      }
+      if (command.includes("changedFiles labels")) {
+        return graphqlResponse({
+          author: { login: "author" },
+          changedFiles: 1,
+          files: {
+            nodes: [{ path: "src/app.ts" }],
+            pageInfo: { hasNextPage: false },
+          },
+          labels: { nodes: [] },
+        })
+      }
+      if (command.includes("closingIssuesReferences")) {
+        return graphqlResponse({ closingIssuesReferences: { nodes: [] } })
+      }
+
+      if (command.startsWith("gh pr checks ")) return "[]"
+      if (command.startsWith("git worktree add ")) return ""
+      if (command.startsWith("gh pr checkout ")) return ""
+      if (command === "git branch --show-current") return "feature"
+      if (command.startsWith("git cat-file -e ")) return ""
+      if (command.startsWith("git diff ")) {
+        return [
+          "diff --git a/src/app.ts b/src/app.ts",
+          "--- a/src/app.ts",
+          "+++ b/src/app.ts",
+          "@@ -1 +1,2 @@",
+          " existing",
+          "+added",
+        ].join("\n")
+      }
+      if (command.startsWith("git merge-base ")) return "merge-base"
+      if (command.startsWith("git merge-tree ")) return ""
+
+      throw new Error(`Unexpected command: ${command}`)
+    }
+
+    try {
+      await runReview({
+        client: fakeClient(
+          [
+            JSON.stringify({
+              followUps: [],
+              newFindings: [],
+              resolve: [],
+              verdict: "MERGE",
+            }),
+            JSON.stringify({
+              followUps: [],
+              newFindings: [],
+              resolve: [],
+              verdict: "MERGE",
+            }),
+            JSON.stringify({
+              followUps: [],
+              newFindings: [],
+              resolve: [],
+              verdict: "MERGE",
+            }),
+          ],
+          prompts,
+        ),
+        config: {
+          review: { output: "runs", worktree: "worktrees" },
+        } satisfies MagiConfig,
+        directory,
+        dryRun: true,
+        exec,
+        pr: 1,
+        repository: singleReviewRepository(),
+      })
+
+      expect(prompts[0]).toContain('"threadId": "thread-reviewer-1"')
+      expect(prompts[0]).not.toContain('"threadId": "thread-reviewer-2"')
+      expect(prompts[1]).toContain('"threadId": "thread-reviewer-2"')
+      expect(prompts[1]).not.toContain('"threadId": "thread-reviewer-3"')
+      expect(prompts[2]).toContain('"threadId": "thread-reviewer-3"')
+      expect(prompts[2]).not.toContain('"threadId": "thread-reviewer-1"')
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
   })
 
   test("builds inline targets from the prompted three-dot diff range", async () => {

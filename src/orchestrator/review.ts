@@ -982,15 +982,37 @@ function singleReviewBody(input: {
   pr: number
   verdict: "CHANGES_REQUESTED" | "CLOSE" | "MERGE"
 }): string {
+  const outputs = Object.entries(input.outputs).sort(([a], [b]) =>
+    a.localeCompare(b),
+  )
+  const closeReasons = outputs.flatMap(([reviewer, output]) =>
+    output.verdict === "CLOSE"
+      ? [`- ${reviewer}: ${output.reason ?? "Close requested."}`]
+      : [],
+  )
+  const acceptedFindings = outputs.flatMap(([reviewer, output]) =>
+    outputFindings(reviewer, output).map(({ finding, index }) => {
+      const line =
+        finding.startLine == null || finding.startLine === finding.line
+          ? String(finding.line)
+          : `${finding.startLine}-${finding.line}`
+
+      return `- ${reviewer} #${index + 1} ${finding.path}:${line}: ${finding.issue} Fix: ${finding.fix}`
+    }),
+  )
   const lines = [
     `Magi single-account review result: ${input.verdict}.`,
     "",
     "Logical reviewer verdicts:",
-    ...Object.entries(input.outputs).map(
-      ([reviewer, output]) => `- ${reviewer}: ${output.verdict}`,
-    ),
+    ...outputs.map(([reviewer, output]) => `- ${reviewer}: ${output.verdict}`),
+    ...(input.verdict === "CLOSE" && closeReasons.length
+      ? ["", "Close reasons:", ...closeReasons]
+      : []),
+    ...(input.verdict === "CHANGES_REQUESTED" && acceptedFindings.length
+      ? ["", "Accepted change requests:", ...acceptedFindings]
+      : []),
     "",
-    ...Object.entries(input.outputs).map(([reviewer, output]) =>
+    ...outputs.map(([reviewer, output]) =>
       formatReviewMarker({
         head: input.headSha,
         pr: input.pr,
@@ -1599,7 +1621,7 @@ export async function runReview(
     },
   )
 
-  if (singleReviewMode && skippedReviewers.length) {
+  if (singleReviewMode) {
     const account = input.repository.review?.account ?? ""
     const threads = await fetchUnresolvedThreads(
       exec,
@@ -1609,16 +1631,19 @@ export async function runReview(
     )
     const assigned = assignThreadsByReviewFindingMarker({
       fallbackReviewerKeys: reviewerKeys,
-      headSha: meta.headRefOid,
       pr: input.pr,
       reviewerKeys,
       threads,
     })
 
-    for (const reviewer of skippedReviewers) {
+    for (const reviewer of input.repository.agents.reviewers) {
       const reviewerThreads = assigned[reviewer.key] ?? []
 
       unresolvedThreadsByReviewer.set(reviewer.key, reviewerThreads)
+      if (preliminaryMode.assignments.get(reviewer.key)?.type !== "skip") {
+        continue
+      }
+
       if (hasPendingThreadReply(reviewerThreads, account)) {
         pendingThreadReplyReviewers.add(reviewer.key)
       }

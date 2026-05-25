@@ -478,7 +478,6 @@ async function runRereview(
   const singleModeThreads = singleReviewMode
     ? assignThreadsByReviewFindingMarker({
         fallbackReviewerKeys: reviewerKeys,
-        headSha,
         pr: input.pr,
         reviewerKeys,
         threads:
