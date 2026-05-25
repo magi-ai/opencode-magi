@@ -471,8 +471,24 @@ function validateAndNormalizeModel(
     return
   }
 
+  if (isPlainObject(model)) {
+    const candidate = readModelCandidate(model, path, errors)
+
+    if (
+      candidate &&
+      validateModelId(candidate.id, `${path}.id`, errors, catalog)
+    ) {
+      target.model = candidate.id
+      if (candidate.options) target.options = candidate.options
+      else delete target.options
+    }
+
+    return
+  }
+
   if (!Array.isArray(model)) {
-    if (model != null) errors.push(`${path} must be a string or an array`)
+    if (model != null)
+      errors.push(`${path} must be a string, an object, or an array`)
     return
   }
 

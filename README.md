@@ -154,17 +154,14 @@ Add the following content to the configuration file.
 
 Entries with `ref` are expanded from `agents.refs`. Fields set alongside `ref` override fields from the preset.
 
-`model` can be a single `provider/model` string or an ordered candidate array. Candidate arrays are resolved during validation against OpenCode's model catalog; the first available model is selected. Put provider-specific options on object candidates, not on the agent role.
+`model` can be a single `provider/model` string, a single object with `id` and `options`, or an ordered candidate array. Candidate arrays are resolved during validation against OpenCode's model catalog; the first available model is selected. Put provider-specific options on model objects, not on the agent role.
 
 ```json
 {
-  "model": [
-    "anthropic/claude-sonnet-4-5",
-    {
-      "id": "openai/gpt-5.1",
-      "options": { "reasoningEffort": "high" }
-    }
-  ]
+  "model": {
+    "id": "openai/gpt-5.1",
+    "options": { "reasoningEffort": "high" }
+  }
 }
 ```
 
