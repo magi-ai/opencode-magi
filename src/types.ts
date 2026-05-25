@@ -186,13 +186,13 @@ export interface OutputConfig {
 }
 
 export interface ReviewConfig {
-  agents?: ReviewerConfig[]
   automation?: AutomationConfig
   checks?: ReviewChecksConfig
   concurrency?: ConcurrencyConfig
   merge?: PullRequestMergeConfig
   output?: string
   prompts?: ReviewPromptConfig
+  reviewers?: ReviewerConfig[]
   safety?: SafetyConfig
   worktree?: string
 }
@@ -221,7 +221,6 @@ export interface TriageSafetyConfig {
 }
 
 export interface TriageConfig {
-  agents?: TriageAgentConfig[]
   automation?: TriageAutomationConfig
   categories?: TriageCategoryConfig[]
   concurrency?: TriageConcurrencyConfig
@@ -230,6 +229,7 @@ export interface TriageConfig {
   prompts?: TriagePromptConfig
   reporter?: string
   safety?: TriageSafetyConfig
+  voters?: TriageAgentConfig[]
   worktree?: string
 }
 

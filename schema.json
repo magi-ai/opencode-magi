@@ -316,7 +316,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "agents": {
+        "reviewers": {
           "type": "array",
           "minItems": 3,
           "items": { "$ref": "#/$defs/reviewer" }
@@ -351,7 +351,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "agents": {
+        "voters": {
           "type": "array",
           "minItems": 3,
           "items": { "$ref": "#/$defs/triageAgent" }

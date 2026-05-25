@@ -1,6 +1,6 @@
 # Existing PR
 
-Used when triage agents decide whether a related PR already handles an issue.
+Used when triage voters decide whether a related PR already handles an issue.
 
 Config key: `triage.prompts.existingPr`
 

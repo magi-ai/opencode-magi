@@ -372,12 +372,12 @@ describe("magi run tools", () => {
     [
       "magi_review",
       { prs: "1 --sync" },
-      "review.agents[0].options is not supported",
+      "review.reviewers[0].options is not supported",
     ],
     [
       "magi_triage",
       { issues: "1 --sync" },
-      "review.agents[0].options is not supported",
+      "review.reviewers[0].options is not supported",
     ],
   ] as const)(
     "%s throws when config validation fails",
@@ -390,7 +390,7 @@ describe("magi run tools", () => {
         await writeConfig(join(directory, ".opencode", "magi.json"), {
           github: { owner: "owner", repo: "repo" },
           review: {
-            agents: [
+            reviewers: [
               {
                 account: "bot-a",
                 model: "openai/gpt",
@@ -401,7 +401,7 @@ describe("magi run tools", () => {
             ],
           },
           triage: {
-            agents: [
+            voters: [
               { account: "triage-a", model: "openai/gpt" },
               { account: "triage-b", model: "openai/gpt" },
               { account: "triage-c", model: "openai/gpt" },
@@ -481,7 +481,7 @@ describe("magi_validate", () => {
 
     await writeConfig(globalPath, {
       review: {
-        agents: [
+        reviewers: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },
           { account: "bot-c", model: "openai/gpt" },
@@ -524,7 +524,7 @@ describe("magi_validate", () => {
         },
       },
       review: {
-        agents: [
+        reviewers: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },
           { account: "bot-c", model: "openai/gpt" },
@@ -562,7 +562,7 @@ describe("magi_validate", () => {
 
     await writeConfig(globalPath, {
       review: {
-        agents: [
+        reviewers: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },
           { account: "bot-c", model: "openai/gpt" },
@@ -614,7 +614,7 @@ describe("magi_validate", () => {
 
     await writeConfig(globalPath, {
       review: {
-        agents: [
+        reviewers: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },
         ],
@@ -627,7 +627,7 @@ describe("magi_validate", () => {
     })
 
     expect(result).toContain(
-      "review.agents must contain an odd number of reviewers",
+      "review.reviewers must contain an odd number of reviewers",
     )
     expect(result).not.toContain("github.owner is required")
     expect(result).not.toContain("github.repo is required")
@@ -644,7 +644,7 @@ describe("magi_validate", () => {
 
     await writeConfig(globalPath, {
       review: {
-        agents: [
+        reviewers: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },
           { account: "bot-c", model: "openai/gpt" },

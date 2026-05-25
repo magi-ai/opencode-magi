@@ -42,7 +42,7 @@ It skips reviewer accounts that already reviewed the current effective head. If 
 1. Fetch PR metadata with `gh pr view`.
 2. Abort if the PR is a draft.
 3. Stop before agent execution when `review.safety.requiredLabels`, `review.safety.blockedPaths`, `review.safety.maxChangedFiles`, or `review.safety.allowAuthors` blocks the PR.
-4. Fetch existing PR reviews for configured `review.agents[].account` values.
+4. Fetch existing PR reviews for configured `review.reviewers[].account` values.
 5. Determine review freshness against the latest non-merge PR commit.
 6. Skip current reviewers, use re-review mode for stale reviewers, and use initial review mode for reviewers with no prior review.
 7. Fetch and write review context for the PR, related issues, PR comments, and review discussion.
@@ -105,7 +105,7 @@ Important settings for `/magi:review`:
 
 | Setting                               | Purpose                                                       |
 | ------------------------------------- | ------------------------------------------------------------- |
-| `review.agents`                       | Reviewer agents, models, personas, permissions, and accounts. |
+| `review.reviewers`                    | Reviewer agents, models, personas, permissions, and accounts. |
 | `review.checks.wait`                  | Wait for required PR checks before review.                    |
 | `review.checks.exclude`               | Ignore matching failed checks.                                |
 | `review.checks.retryFailedJobs`       | Retry scope-outside GitHub Actions jobs.                      |
@@ -166,4 +166,4 @@ Review context comment bodies are truncated after 4000 characters. Very large PR
 
 ### Which GitHub accounts are used?
 
-Each reviewer posts with its configured `review.agents[].account`. Each account must be authenticated with GitHub CLI and able to read the repository and post PR reviews or comments. Review automation uses the first configured reviewer account for PR merge or close actions.
+Each reviewer posts with its configured `review.reviewers[].account`. Each account must be authenticated with GitHub CLI and able to read the repository and post PR reviews or comments. Review automation uses the first configured reviewer account for PR merge or close actions.

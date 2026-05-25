@@ -508,7 +508,7 @@ async function runDuplicateVote(input: {
   outputDir: string
 }): Promise<TriageDuplicateOutput | undefined> {
   const agents = input.input.repository.agents.triage
-  if (!agents?.length) throw new Error("triage.agents is required")
+  if (!agents?.length) throw new Error("triage.voters is required")
   await emitProgress(input.input, { phase: "duplicate", type: "phase" })
 
   const outputs = await Promise.all(
@@ -578,7 +578,7 @@ async function runPhaseVote<T extends string>(input: {
   votes: readonly T[]
 }): Promise<PhaseVoteResult<T>> {
   const agents = input.input.repository.agents.triage
-  if (!agents?.length) throw new Error("triage.agents is required")
+  if (!agents?.length) throw new Error("triage.voters is required")
   await emitProgress(input.input, { phase: input.phase, type: "phase" })
 
   const promptTexts = await Promise.all(
@@ -938,7 +938,7 @@ function triageReporter(
   issue: number,
 ): ResolvedTriageAgent {
   const agents = repository.agents.triage ?? []
-  if (!agents.length) throw new Error("triage.agents is required")
+  if (!agents.length) throw new Error("triage.voters is required")
   const configured = repository.triage?.reporter
   const reporter = configured
     ? agents.find((agent) => agent.key === configured)
@@ -991,7 +991,7 @@ function agentForKey(
   key: string,
 ): ResolvedTriageAgent {
   const agent = repository.agents.triage?.find((item) => item.key === key)
-  if (!agent) throw new Error(`Unknown triage agent: ${key}`)
+  if (!agent) throw new Error(`Unknown triage voter: ${key}`)
 
   return agent
 }
@@ -1511,7 +1511,7 @@ export async function runTriage(
   const triage = input.repository.triage
   if (!triage) throw new Error("triage configuration is required")
   const agents = input.repository.agents.triage
-  if (!agents?.length) throw new Error("triage.agents is required")
+  if (!agents?.length) throw new Error("triage.voters is required")
 
   const runId = input.runId ?? `run-${Date.now().toString(36)}`
   const outputDir = issueRunOutputDir({

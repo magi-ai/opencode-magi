@@ -78,7 +78,7 @@ Add the following content to the configuration file.
     }
   },
   "review": {
-    "agents": [
+    "reviewers": [
       { "ref": "account-1" },
       { "ref": "account-2" },
       { "ref": "account-3" }
@@ -87,7 +87,7 @@ Add the following content to the configuration file.
 }
 ```
 
-After refs are expanded, `review.agents[].account` is the GitHub account used to post reviews and approvals. Must be authenticated with `gh auth token --user <account>` and must be unique.
+After refs are expanded, `review.reviewers[].account` is the GitHub account used to post reviews and approvals. Must be authenticated with `gh auth token --user <account>` and must be unique.
 
 #### Set project config
 
@@ -133,7 +133,7 @@ Add the following content to the configuration file.
     }
   },
   "review": {
-    "agents": [
+    "reviewers": [
       { "ref": "account-1" },
       { "ref": "account-2" },
       { "ref": "account-3" }
@@ -143,7 +143,7 @@ Add the following content to the configuration file.
     "editor": { "ref": "account-4" }
   },
   "triage": {
-    "agents": [
+    "voters": [
       { "ref": "account-1" },
       { "ref": "account-2" },
       { "ref": "account-3" }
@@ -168,7 +168,7 @@ Entries with `ref` are expanded from `agents.refs`. Fields set alongside `ref` o
 }
 ```
 
-After refs are expanded, `review.agents[].account` is the GitHub account used to post reviews and approvals. Must be authenticated with `gh auth token --user <account>` and must be unique. `merge.editor.account` is used by `/magi:merge` to push fixes, close PRs, and merge PRs.
+After refs are expanded, `review.reviewers[].account` is the GitHub account used to post reviews and approvals. Must be authenticated with `gh auth token --user <account>` and must be unique. `merge.editor.account` is used by `/magi:merge` to push fixes, close PRs, and merge PRs.
 
 #### Validate config
 

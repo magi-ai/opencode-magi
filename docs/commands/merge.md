@@ -106,7 +106,7 @@ Important settings for `/magi:merge`:
 | Setting                               | Purpose                                                            |
 | ------------------------------------- | ------------------------------------------------------------------ |
 | `merge.editor`                        | Editor agent, model, persona, permissions, GitHub account, author. |
-| `review.agents`                       | Reviewer agents used for initial review and re-review.             |
+| `review.reviewers`                    | Reviewer agents used for initial review and re-review.             |
 | `merge.automation.close`              | Run `gh pr close` after a close decision.                          |
 | `merge.automation.merge`              | Merge or enqueue the PR after approval.                            |
 | `merge.checks.wait`                   | Wait for required PR checks after editor changes.                  |

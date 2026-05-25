@@ -7,7 +7,7 @@ Config files are merged by OpenCode Magi, not by OpenCode. Priority, lowest to h
 1. `~/.config/opencode/magi.json` - global defaults.
 2. `<project>/.opencode/magi.json` - project overrides.
 
-Object values are deep merged. Array values are replaced, so setting `review.agents` in the project config replaces the global reviewer list.
+Object values are deep merged. Array values are replaced, so setting `review.reviewers` in the project config replaces the global reviewer list.
 
 ## Validate
 
@@ -42,7 +42,7 @@ If at least one config exists, Magi validates the merged effective config and re
     }
   },
   "review": {
-    "agents": [
+    "reviewers": [
       { "ref": "account-1" },
       { "ref": "account-2" },
       { "ref": "account-3" }
@@ -85,7 +85,7 @@ If at least one config exists, Magi validates the merged effective config and re
     }
   },
   "review": {
-    "agents": [
+    "reviewers": [
       { "ref": "account-1" },
       { "ref": "account-2" },
       { "ref": "account-3" }
@@ -96,7 +96,7 @@ If at least one config exists, Magi validates the merged effective config and re
   },
   "triage": {
     "reporter": "product",
-    "agents": [
+    "voters": [
       { "ref": "account-1", "id": "product" },
       { "ref": "account-2", "id": "maintainer" },
       { "ref": "account-3", "id": "support" }
@@ -125,12 +125,12 @@ Agent model fields accept either a single `provider/model` string or an ordered 
 | `output`                               | Both    | No                               | -                                                    | Output parsing and repair configuration.                                                                                                                      |
 | `output.repairAttempts`                | Both    | No                               | `3`                                                  | Number of times to ask a model to repair invalid structured output.                                                                                           |
 | `review`                               | Both    | Yes                              | -                                                    | PR review configuration used by `/magi:review` and the review phase of `/magi:merge`.                                                                         |
-| `review.agents`                        | Both    | Yes                              | -                                                    | Odd-length array of at least 3 reviewer agents.                                                                                                               |
-| `review.agents[].id`                   | Both    | No                               | `reviewer-1`, ...                                    | Reviewer key used for run state, output files, and session tracking.                                                                                          |
-| `review.agents[].model`                | Both    | Yes                              | -                                                    | Single `provider/model` string or ordered candidate array used by the reviewer.                                                                               |
-| `review.agents[].account`              | Both    | Yes                              | -                                                    | GitHub account used to post reviews and approvals.                                                                                                            |
-| `review.agents[].permissions`          | Both    | No                               | -                                                    | OpenCode permission overrides for this reviewer and this reviewer's CI classifier sessions.                                                                   |
-| `review.agents[].persona`              | Both    | No                               | -                                                    | Reviewer-specific additional perspective.                                                                                                                     |
+| `review.reviewers`                     | Both    | Yes                              | -                                                    | Odd-length array of at least 3 reviewer agents.                                                                                                               |
+| `review.reviewers[].id`                | Both    | No                               | `reviewer-1`, ...                                    | Reviewer key used for run state, output files, and session tracking.                                                                                          |
+| `review.reviewers[].model`             | Both    | Yes                              | -                                                    | Single `provider/model` string or ordered candidate array used by the reviewer.                                                                               |
+| `review.reviewers[].account`           | Both    | Yes                              | -                                                    | GitHub account used to post reviews and approvals.                                                                                                            |
+| `review.reviewers[].permissions`       | Both    | No                               | -                                                    | OpenCode permission overrides for this reviewer and this reviewer's CI classifier sessions.                                                                   |
+| `review.reviewers[].persona`           | Both    | No                               | -                                                    | Reviewer-specific additional perspective.                                                                                                                     |
 | `review.prompts`                       | Both    | No                               | -                                                    | Review prompt template and guideline file path overrides.                                                                                                     |
 | `review.prompts.review`                | Both    | No                               | [md](/docs/prompts/review/review.md)                 | Task template override for initial review.                                                                                                                    |
 | `review.prompts.rereview`              | Both    | No                               | [md](/docs/prompts/review/rereview.md)               | Task template override for re-review after edits.                                                                                                             |
@@ -162,13 +162,13 @@ Agent model fields accept either a single `provider/model` string or an ordered 
 | `review.output`                        | Both    | No                               | `.magi/runs/pr`                                      | Directory for PR run artifacts. PR #123 is stored under `<dir>/123/<runId>`.                                                                                  |
 | `review.worktree`                      | Both    | No                               | `.magi/worktrees/pr`                                 | Directory for temporary PR worktrees. PR #123 is stored under `<dir>/pr-123`.                                                                                 |
 | `triage`                               | Both    | Yes (`/magi:triage`)             | -                                                    | Issue triage configuration.                                                                                                                                   |
-| `triage.agents`                        | Both    | Yes (`/magi:triage`)             | -                                                    | Dedicated issue triage agents. Odd-length array of at least 3 agents.                                                                                         |
-| `triage.agents[].id`                   | Both    | No                               | `voter-1`, ...                                       | Triage agent key used for output files and session tracking.                                                                                                  |
-| `triage.agents[].model`                | Both    | Yes                              | -                                                    | Single `provider/model` string or ordered candidate array used by the triage agent.                                                                           |
-| `triage.agents[].account`              | Both    | Yes                              | -                                                    | GitHub account used by this triage agent for ASK comments and, when selected as reporter, triage mutations.                                                   |
-| `triage.agents[].permissions`          | Both    | No                               | [json](/src/permissions/common.json)                 | OpenCode permission overrides for this triage agent.                                                                                                          |
-| `triage.agents[].persona`              | Both    | No                               | -                                                    | Triage vote perspective for this agent.                                                                                                                       |
-| `triage.reporter`                      | Both    | No                               | Selected from issue number                           | Resolved triage agent key used for comments and triage mutations.                                                                                             |
+| `triage.voters`                        | Both    | Yes (`/magi:triage`)             | -                                                    | Dedicated issue triage voters. Odd-length array of at least 3 voters.                                                                                         |
+| `triage.voters[].id`                   | Both    | No                               | `voter-1`, ...                                       | Triage voter key used for output files and session tracking.                                                                                                  |
+| `triage.voters[].model`                | Both    | Yes                              | -                                                    | Single `provider/model` string or ordered candidate array used by the triage voter.                                                                           |
+| `triage.voters[].account`              | Both    | Yes                              | -                                                    | GitHub account used by this triage voter for ASK comments and, when selected as reporter, triage mutations.                                                   |
+| `triage.voters[].permissions`          | Both    | No                               | [json](/src/permissions/common.json)                 | OpenCode permission overrides for this triage voter.                                                                                                          |
+| `triage.voters[].persona`              | Both    | No                               | -                                                    | Triage vote perspective for this voter.                                                                                                                       |
+| `triage.reporter`                      | Both    | No                               | Selected from issue number                           | Resolved triage voter key used for comments and triage mutations.                                                                                             |
 | `triage.creator`                       | Both    | Yes (`triage.automation.create`) | -                                                    | Agent used to create implementation PRs from accepted issues.                                                                                                 |
 | `triage.creator.account`               | Both    | Yes (`triage.automation.create`) | -                                                    | GitHub account used to push implementation branches and open PRs.                                                                                             |
 | `triage.creator.model`                 | Both    | Yes (`triage.automation.create`) | -                                                    | Single `provider/model` string or ordered candidate array used by the PR creator agent.                                                                       |
@@ -189,8 +189,8 @@ Agent model fields accept either a single `provider/model` string or an ordered 
 | `triage.safety.requiredLabels`         | Both    | No                               | `["triage"]`                                         | Labels required before initial triage runs.                                                                                                                   |
 | `triage.safety.blockedLabels`          | Both    | No                               | `[]`                                                 | Labels that prevent triage from running.                                                                                                                      |
 | `triage.safety.allowAuthors`           | Both    | No                               | `[]`                                                 | If set, only issues created by these GitHub logins can be triaged.                                                                                            |
-| `triage.safety.allowMentionActors`     | Both    | No                               | `[]`                                                 | GitHub logins allowed to trigger reconsideration by mentioning the reporter triage agent account.                                                             |
-| `triage.safety.allowMentionRoles`      | Both    | No                               | `["AUTHOR", "OWNER", "MEMBER", "COLLABORATOR"]`      | GitHub author associations allowed to trigger reconsideration by mentioning the reporter triage agent account.                                                |
+| `triage.safety.allowMentionActors`     | Both    | No                               | `[]`                                                 | GitHub logins allowed to trigger reconsideration by mentioning the reporter triage voter account.                                                             |
+| `triage.safety.allowMentionRoles`      | Both    | No                               | `["AUTHOR", "OWNER", "MEMBER", "COLLABORATOR"]`      | GitHub author associations allowed to trigger reconsideration by mentioning the reporter triage voter account.                                                |
 | `triage.concurrency.runs`              | Both    | No                               | `3`                                                  | Maximum issues processed concurrently.                                                                                                                        |
 | `triage.prompts`                       | Both    | No                               | -                                                    | Triage prompt template file path overrides.                                                                                                                   |
 | `triage.prompts.existingPr`            | Both    | No                               | [md](/docs/prompts/triage/existing-pr.md)            | Task template override for checking whether related pull requests handle the issue.                                                                           |
@@ -230,7 +230,7 @@ Agent model fields accept either a single `provider/model` string or an ordered 
 
 ## Agent Permissions
 
-Magi passes resolved OpenCode permission rules to every child session. `agents.permissions` is the common base for all Magi agents, and `review.agents[].permissions` or `merge.editor.permissions` override that base for one agent.
+Magi passes resolved OpenCode permission rules to every child session. `agents.permissions` is the common base for all Magi agents, and `review.reviewers[].permissions` or `merge.editor.permissions` override that base for one agent.
 
 Permission values follow OpenCode's permission shape:
 
@@ -248,7 +248,7 @@ Permission values follow OpenCode's permission shape:
     }
   },
   "review": {
-    "agents": [
+    "reviewers": [
       {
         "id": "security",
         "model": "anthropic/claude-opus-4-7",
@@ -269,10 +269,10 @@ Supported actions are `allow`, `ask`, and `deny`. Pattern objects are order-sens
 - Reviewers must be an odd number of at least 3.
 - Reviewer keys must be unique. The key is `id` when provided, otherwise `reviewer-1`, `reviewer-2`, and so on.
 - Reviewer `account` values must be unique.
-- Triage agents must be an odd number of at least 3.
-- Triage agent keys must be unique after ref expansion. The key is `id` when provided, otherwise `voter-1`, `voter-2`, and so on.
-- Triage agent `account` values must be unique after ref expansion.
-- `triage.reporter`, when configured, must match a resolved triage agent key. If unset, Magi picks a stable fallback reporter from `triage.agents` by issue number.
+- Triage voters must be an odd number of at least 3.
+- Triage voter keys must be unique after ref expansion. The key is `id` when provided, otherwise `voter-1`, `voter-2`, and so on.
+- Triage voter `account` values must be unique after ref expansion.
+- `triage.reporter`, when configured, must match a resolved triage voter key. If unset, Magi picks a stable fallback reporter from `triage.voters` by issue number.
 - Each configured account must be logged in for GitHub CLI: `gh auth token --user <account>`.
 - `merge.editor` is required when running `/magi:merge`, but not when running only `/magi:review`.
 - `triage.creator` and `triage.creator.account` are required when `triage.automation.create` is `true`.
@@ -280,12 +280,12 @@ Supported actions are `allow`, `ask`, and `deny`. Pattern objects are order-sens
 
 ## GitHub Permissions
 
-Each reviewer account must be able to read the target repository and post PR reviews or comments. Each triage agent account must be able to read the target repository; the reporter triage agent account is also used for triage comments and issue or linked-PR mutations. Each editor account must be able to reply to comments, resolve review threads, push to the PR branch, and merge or close the PR when `/magi:merge` reaches that step. The triage creator account must be able to push when implementation PR creation automation is enabled.
+Each reviewer account must be able to read the target repository and post PR reviews or comments. Each triage voter account must be able to read the target repository; the reporter triage voter account is also used for triage comments and issue or linked-PR mutations. Each editor account must be able to reply to comments, resolve review threads, push to the PR branch, and merge or close the PR when `/magi:merge` reaches that step. The triage creator account must be able to push when implementation PR creation automation is enabled.
 
 When auth validation runs, Magi checks repository-level permissions through GitHub's repository API:
 
 - Reviewer accounts must have `.permissions.pull`.
-- Triage agent accounts must have `.permissions.pull`.
+- Triage voter accounts must have `.permissions.pull`.
 - Editor accounts must have `.permissions.push`.
 - Triage creator accounts must have `.permissions.push`.
 

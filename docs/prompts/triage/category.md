@@ -1,6 +1,6 @@
 # Category
 
-Used when triage agents choose one configured issue category or ask for more information.
+Used when triage voters choose one configured issue category or ask for more information.
 
 Config key: `triage.prompts.category`
 

@@ -8,7 +8,7 @@ const config: MagiConfig = {
   github: { owner: "owner", repo: "repo" },
   language: "en",
   review: {
-    agents: [
+    reviewers: [
       {
         model: "anthropic/claude",
         account: "bot-a",
@@ -59,7 +59,7 @@ describe("mergeMagiConfig", () => {
       config as unknown as Record<string, unknown>,
       {
         review: {
-          agents: [
+          reviewers: [
             { id: "a", model: "openai/gpt", account: "bot-1" },
             { id: "b", model: "openai/gpt", account: "bot-2" },
             { id: "c", model: "openai/gpt", account: "bot-3" },
@@ -68,11 +68,9 @@ describe("mergeMagiConfig", () => {
       },
     ) as unknown as MagiConfig
 
-    expect(merged.review?.agents!.map((reviewer) => reviewer.account)).toEqual([
-      "bot-1",
-      "bot-2",
-      "bot-3",
-    ])
+    expect(
+      merged.review?.reviewers!.map((reviewer) => reviewer.account),
+    ).toEqual(["bot-1", "bot-2", "bot-3"])
     expect(merged.merge?.editor).toEqual(config.merge?.editor)
   })
 })
