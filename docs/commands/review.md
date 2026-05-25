@@ -33,16 +33,16 @@ Review flags:
 
 ## What It Does
 
-`/magi:review` reviews pull requests with the configured reviewer agents and posts the result to GitHub.
+`/magi:review` reviews pull requests with the configured reviewer agents and posts the result to GitHub. `review.mode` controls only the GitHub posting identity; Magi still runs multiple logical reviewers and reaches decisions by consensus.
 
-It skips reviewer accounts that already reviewed the current effective head. If a reviewer reviewed an older effective head, Magi runs that reviewer in re-review mode. If every configured reviewer account already reviewed the current effective head, the command aborts instead of posting duplicate reviews.
+In `multi` mode, it skips reviewer accounts that already reviewed the current effective head. In `single` mode, it uses hidden review markers posted by `review.account` to recover current logical reviewer verdicts. If a reviewer reviewed an older effective head, Magi runs that reviewer in re-review mode. If every configured reviewer already reviewed the current effective head, the command aborts instead of posting duplicate reviews.
 
 ## Flow
 
 1. Fetch PR metadata with `gh pr view`.
 2. Abort if the PR is a draft.
 3. Stop before agent execution when `review.safety.requiredLabels`, `review.safety.blockedPaths`, `review.safety.maxChangedFiles`, or `review.safety.allowAuthors` blocks the PR.
-4. Fetch existing PR reviews for configured `review.reviewers[].account` values.
+4. Fetch existing PR reviews for configured `review.reviewers[].account` values in multi mode, or for `review.account` and hidden logical reviewer markers in single mode.
 5. Determine review freshness against the latest non-merge PR commit.
 6. Skip current reviewers, use re-review mode for stale reviewers, and use initial review mode for reviewers with no prior review.
 7. Fetch and write review context for the PR, related issues, PR comments, and review discussion.
@@ -56,7 +56,7 @@ It skips reviewer accounts that already reviewed the current effective head. If 
 15. Keep only findings that reach finding-level majority.
 16. Reconsider any minority `CLOSE` verdict before posting.
 17. Aggregate active reviewer verdicts plus skipped reviewer verdicts from existing GitHub review state by majority vote.
-18. Post each active reviewer result to GitHub with that reviewer's configured account, unless `--dry-run` is set.
+18. Post each active reviewer result to GitHub with that reviewer's configured account in multi mode, or post one marker-backed consensus review through `review.account` in single mode, unless `--dry-run` is set.
 19. If configured, merge or close the PR according to `review.automation`.
 20. Remove the temporary worktree and recorded worktree branch.
 
@@ -72,7 +72,7 @@ The majority result can be `MERGE`, `CHANGES_REQUESTED`, or `CLOSE`. Reviewer co
 
 ## Outputs
 
-Magi posts GitHub reviews and comments from each active reviewer account.
+Magi posts GitHub reviews and comments from each active reviewer account in multi mode. In single mode, Magi posts reviewer-originated reviews, approvals, change requests, close comments, reviewer replies, and reviewer thread resolutions through `review.account` while visibly attributing logical reviewers and writing hidden markers for recovery.
 
 Review artifacts are written to the run output directory:
 
@@ -107,6 +107,8 @@ Important settings for `/magi:review`:
 | Setting                               | Purpose                                                       |
 | ------------------------------------- | ------------------------------------------------------------- |
 | `review.reviewers`                    | Reviewer agents, models, personas, permissions, and accounts. |
+| `review.mode`                         | `multi` or `single` GitHub posting identity mode.             |
+| `review.account`                      | Shared reviewer posting account for single mode.              |
 | `review.checks.wait`                  | Wait for required PR checks before review.                    |
 | `review.checks.exclude`               | Ignore matching failed checks.                                |
 | `review.checks.retryFailedJobs`       | Retry scope-outside GitHub Actions jobs.                      |
@@ -169,4 +171,6 @@ Review context comment bodies are truncated after 4000 characters. Very large PR
 
 ### Which GitHub accounts are used?
 
-Each reviewer posts with its configured `review.reviewers[].account`. Each account must be authenticated with GitHub CLI and able to read the repository and post PR reviews or comments. Review automation uses the first configured reviewer account for PR merge or close actions.
+`multi` mode is the default and recommended when multiple GitHub accounts are available. Each reviewer posts with its configured `review.reviewers[].account`, and review automation uses the first configured reviewer account for PR merge or close actions.
+
+`single` mode uses `review.account` for reviewer-originated review posts, approvals, change requests, close comments, review-command merge or close automation, reviewer replies, and reviewer thread resolutions. It preserves Magi internal consensus but counts as one GitHub account for branch protection, so it cannot satisfy rules requiring multiple distinct approving accounts.

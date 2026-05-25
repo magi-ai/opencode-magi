@@ -1412,8 +1412,27 @@ export async function postApproval(
   repository: ResolvedRepository,
   pr: number,
   account: string,
+  body?: string,
 ): Promise<string> {
   const token = await ghToken(exec, repository, account)
+
+  if (body != null) {
+    const payloadPath = join(
+      tmpdir(),
+      `magi-approve-${process.pid}-${Date.now()}.json`,
+    )
+
+    await writeFile(payloadPath, JSON.stringify({ body, event: "APPROVE" }))
+
+    try {
+      return await exec(
+        `gh api${ghHostOption(repository)} repos/${repository.github.owner}/${repository.github.repo}/pulls/${pr}/reviews --method POST --input ${shellQuote(payloadPath)} --jq .html_url`,
+        ghTokenEnv(token),
+      )
+    } finally {
+      await rm(payloadPath, { force: true })
+    }
+  }
 
   return exec(
     `gh pr review ${pr} --repo ${shellQuote(repoSpecifier(repository))} --approve`,
@@ -1446,9 +1465,12 @@ export async function postCloseComment(
   }
 }
 
-function findingComment(finding: Finding): Record<string, unknown> {
+function findingComment(
+  finding: Finding,
+  body?: string,
+): Record<string, unknown> {
   const comment: Record<string, unknown> = {
-    body: `**Issue:** ${finding.issue}\n\n**Fix:** ${finding.fix}`,
+    body: body ?? `**Issue:** ${finding.issue}\n\n**Fix:** ${finding.fix}`,
     line: finding.line,
     path: finding.path,
     side: "RIGHT",
@@ -1474,19 +1496,22 @@ export async function postChangesRequested(
   pr: number,
   account: string,
   findings: Finding[],
+  options: { body?: string; commentBodies?: string[] } = {},
 ): Promise<string> {
   const token = await ghToken(exec, repository, account)
   const payloadPath = join(
     tmpdir(),
     `magi-review-${process.pid}-${Date.now()}.json`,
   )
-  const body = changesRequestedBody(findings)
+  const body = options.body ?? changesRequestedBody(findings)
 
   await writeFile(
     payloadPath,
     JSON.stringify({
       body,
-      comments: findings.map(findingComment),
+      comments: findings.map((finding, index) =>
+        findingComment(finding, options.commentBodies?.[index]),
+      ),
       event: "REQUEST_CHANGES",
     }),
   )

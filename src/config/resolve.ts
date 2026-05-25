@@ -181,6 +181,8 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
   const agents = config.agents ?? {}
   const editor = config.merge?.editor
   const creator = config.triage?.creator
+  const singleReviewAccount =
+    config.review?.mode === "single" ? config.review.account : undefined
 
   return {
     editor: editor
@@ -193,6 +195,7 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
     reviewers: (config.review?.reviewers ?? []).map<ResolvedReviewer>(
       (reviewer, index) => ({
         ...reviewer,
+        account: singleReviewAccount ?? reviewer.account ?? "",
         key: reviewerKey(reviewer, index),
         index,
         model: normalizedModel(reviewer.model),
@@ -279,6 +282,10 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
       rereview: config.review?.prompts?.rereview,
       review: config.review?.prompts?.review,
       reviewGuidelines: config.review?.prompts?.reviewGuidelines,
+    },
+    review: {
+      account: config.review?.account,
+      mode: config.review?.mode ?? "multi",
     },
     reviewAutomation: {
       close: config.review?.automation?.close ?? false,

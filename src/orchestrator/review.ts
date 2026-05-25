@@ -28,6 +28,7 @@ import {
   type PullRequestReview,
   type PullRequestCommit,
   type PullRequestCommitRequirement,
+  type ReviewThread,
   removeWorktree,
   resolveThread,
   shellQuote,
@@ -173,6 +174,136 @@ type ActiveReviewer = {
   reviewer: ResolvedRepository["agents"]["reviewers"][number]
 }
 
+export interface ReviewMarker {
+  head: string
+  pr: number
+  reviewer: string
+  verdict: "CHANGES_REQUESTED" | "CLOSE" | "MERGE"
+}
+
+export interface ReviewFindingMarker {
+  finding: number
+  head: string
+  pr: number
+  reviewer: string
+}
+
+function resolvedReviewMode(
+  repository: ResolvedRepository,
+): "multi" | "single" {
+  return repository.review?.mode === "single" ? "single" : "multi"
+}
+
+export function reviewPostingAccount(
+  repository: ResolvedRepository,
+  reviewer: ResolvedRepository["agents"]["reviewers"][number],
+): string {
+  return resolvedReviewMode(repository) === "single"
+    ? (repository.review?.account ?? reviewer.account)
+    : reviewer.account
+}
+
+function reviewAssignmentKey(
+  repository: ResolvedRepository,
+  reviewer: ResolvedRepository["agents"]["reviewers"][number],
+): string {
+  return resolvedReviewMode(repository) === "single"
+    ? reviewer.key
+    : reviewer.account
+}
+
+function parseMarkerFields(text: string): Record<string, string> | undefined {
+  const fields = Object.fromEntries(
+    text
+      .trim()
+      .split(/\s+/)
+      .flatMap((part) => {
+        const index = part.indexOf("=")
+
+        return index > 0 ? [[part.slice(0, index), part.slice(index + 1)]] : []
+      }),
+  )
+
+  return fields.v === "1" && fields.mode === "single" ? fields : undefined
+}
+
+function isMarkerVerdict(
+  value: string | undefined,
+): value is ReviewMarker["verdict"] {
+  return value === "CHANGES_REQUESTED" || value === "CLOSE" || value === "MERGE"
+}
+
+export function formatReviewMarker(marker: ReviewMarker): string {
+  return `<!-- opencode-magi:review v=1 mode=single pr=${marker.pr} reviewer=${marker.reviewer} verdict=${marker.verdict} head=${marker.head} -->`
+}
+
+export function parseReviewMarkers(body: string | undefined): ReviewMarker[] {
+  const markers: ReviewMarker[] = []
+  const regex = /<!--\s*opencode-magi:review\s+([^>]*)-->/g
+
+  for (const match of body?.matchAll(regex) ?? []) {
+    const fields = parseMarkerFields(match[1] ?? "")
+    const pr = Number(fields?.pr)
+
+    if (
+      !fields ||
+      !Number.isInteger(pr) ||
+      !fields.reviewer ||
+      !fields.head ||
+      !isMarkerVerdict(fields.verdict)
+    ) {
+      continue
+    }
+
+    markers.push({
+      head: fields.head,
+      pr,
+      reviewer: fields.reviewer,
+      verdict: fields.verdict,
+    })
+  }
+
+  return markers
+}
+
+export function formatReviewFindingMarker(marker: ReviewFindingMarker): string {
+  return `<!-- opencode-magi:review-finding v=1 mode=single pr=${marker.pr} reviewer=${marker.reviewer} finding=${marker.finding} head=${marker.head} -->`
+}
+
+export function parseReviewFindingMarkers(
+  body: string | undefined,
+): ReviewFindingMarker[] {
+  const markers: ReviewFindingMarker[] = []
+  const regex = /<!--\s*opencode-magi:review-finding\s+([^>]*)-->/g
+
+  for (const match of body?.matchAll(regex) ?? []) {
+    const fields = parseMarkerFields(match[1] ?? "")
+    const pr = Number(fields?.pr)
+    const finding = Number(fields?.finding)
+
+    if (
+      !fields ||
+      !Number.isInteger(pr) ||
+      !Number.isInteger(finding) ||
+      !fields.reviewer ||
+      !fields.head
+    ) {
+      continue
+    }
+
+    markers.push({ finding, head: fields.head, pr, reviewer: fields.reviewer })
+  }
+
+  return markers
+}
+
+function markerReviewState(verdict: ReviewMarker["verdict"]): string {
+  if (verdict === "MERGE") return "APPROVED"
+  if (verdict === "CHANGES_REQUESTED") return "CHANGES_REQUESTED"
+
+  return "CLOSE"
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -204,21 +335,17 @@ async function postReviewOutput(
   )
 
   if (!reviewer) throw new Error(`Unknown reviewer: ${reviewerKey}`)
+  const account = reviewPostingAccount(input.repository, reviewer)
 
   if (output.verdict === "MERGE")
-    return postApproval(
-      input.exec,
-      input.repository,
-      input.pr,
-      reviewer.account,
-    )
+    return postApproval(input.exec, input.repository, input.pr, account)
 
   if (output.verdict === "CLOSE")
     return postCloseComment(
       input.exec,
       input.repository,
       input.pr,
-      reviewer.account,
+      account,
       output.reason ?? "Close requested.",
     )
 
@@ -226,7 +353,7 @@ async function postReviewOutput(
     input.exec,
     input.repository,
     input.pr,
-    reviewer.account,
+    account,
     output.findings,
   )
 }
@@ -302,6 +429,84 @@ export function resolveReviewMode(
   return { assignments, type: "active" }
 }
 
+export function resolveSingleAccountReviewMode(input: {
+  account: string
+  current: ReviewFreshnessTarget
+  pendingReviewers?: ReadonlySet<string>
+  pr: number
+  reviewerKeys: string[]
+  reviews: PullRequestReview[]
+}): ReviewMode {
+  const reviewerKeySet = new Set(input.reviewerKeys)
+  const pendingReviewers = input.pendingReviewers ?? new Set<string>()
+  const latest = new Map<string, PullRequestReview>()
+
+  for (const review of input.reviews) {
+    if (review.author.login !== input.account) continue
+    if (review.state === "DISMISSED") continue
+
+    for (const marker of parseReviewMarkers(review.body)) {
+      if (marker.pr !== input.pr || !reviewerKeySet.has(marker.reviewer)) {
+        continue
+      }
+
+      const synthetic = {
+        ...review,
+        commit: { oid: marker.head },
+        comments: (review.comments ?? []).filter((comment) =>
+          parseReviewFindingMarkers(comment.body).some(
+            (findingMarker) =>
+              findingMarker.pr === input.pr &&
+              findingMarker.reviewer === marker.reviewer &&
+              findingMarker.head === marker.head,
+          ),
+        ),
+        state: markerReviewState(marker.verdict),
+      }
+      const current = latest.get(marker.reviewer)
+
+      if (
+        !current ||
+        current.submittedAt.localeCompare(review.submittedAt) < 0
+      ) {
+        latest.set(marker.reviewer, synthetic)
+      }
+    }
+  }
+
+  const reviewedHead = input.reviewerKeys.every((reviewer) => {
+    return (
+      isReviewCurrent(latest.get(reviewer), input.current) &&
+      !pendingReviewers.has(reviewer)
+    )
+  })
+  const assignments = new Map<string, ReviewerAssignment>()
+
+  for (const reviewer of input.reviewerKeys) {
+    const review = latest.get(reviewer)
+
+    if (!review) {
+      assignments.set(reviewer, { type: "initial" })
+      continue
+    }
+
+    if (
+      isReviewCurrent(review, input.current) &&
+      !pendingReviewers.has(reviewer)
+    ) {
+      assignments.set(reviewer, { review, type: "skip" })
+      continue
+    }
+
+    assignments.set(reviewer, { review, type: "rereview" })
+  }
+
+  if (latest.size && reviewedHead)
+    return { assignments, type: "already_reviewed" }
+
+  return { assignments, type: "active" }
+}
+
 export type ReviewFreshnessTarget =
   | { headSha: string; type: "head" }
   | { committedAt: string; fallbackHeadSha: string; type: "timestamp" }
@@ -341,6 +546,7 @@ function reviewStateToVerdict(
 ): "CHANGES_REQUESTED" | "CLOSE" | "MERGE" {
   if (state === "APPROVED") return "MERGE"
   if (state === "CHANGES_REQUESTED") return "CHANGES_REQUESTED"
+  if (state === "CLOSE") return "CLOSE"
 
   throw new Error(`Unsupported GitHub review state: ${state}`)
 }
@@ -627,9 +833,12 @@ function reviewFindingsFromBody(
 function parsePostedFindingComment(
   body: string,
 ): Pick<Finding, "fix" | "issue"> | undefined {
+  const visibleBody = body
+    .replace(/<!--\s*opencode-magi:review-finding\s+[^>]*-->/g, "")
+    .trim()
   const match =
-    /^\*\*Issue:\*\*\s*([\s\S]*?)\s*\r?\n\r?\n\*\*Fix:\*\*\s*([\s\S]+?)\s*$/.exec(
-      body,
+    /^\*\*Issue:\*\*\s*([\s\S]*?)\s*\r?\n\r?\n\*\*Fix:\*\*\s*([\s\S]*?)(?:\s*\r?\n\r?\n\*\*Reviewer:\*\*[\s\S]*)?\s*$/.exec(
+      visibleBody,
     )
 
   if (!match) return undefined
@@ -704,6 +913,173 @@ export function hasPendingThreadReply(
   })
 }
 
+export function assignThreadsByReviewFindingMarker(input: {
+  fallbackReviewerKeys: string[]
+  headSha?: string
+  pr: number
+  reviewerKeys: string[]
+  threads: ReviewThread[]
+}): Record<string, ReviewThread[]> {
+  const reviewerKeys = new Set(input.reviewerKeys)
+  const assigned = Object.fromEntries(
+    input.reviewerKeys.map((reviewer) => [reviewer, [] as ReviewThread[]]),
+  )
+
+  for (const thread of input.threads) {
+    const markers = [
+      thread.body,
+      thread.latestBody,
+      ...thread.comments.map((comment) => comment.body),
+    ]
+      .flatMap(parseReviewFindingMarkers)
+      .filter((marker) => {
+        return (
+          marker.pr === input.pr &&
+          reviewerKeys.has(marker.reviewer) &&
+          (!input.headSha || marker.head === input.headSha)
+        )
+      })
+    const reviewers = markers.length
+      ? [...new Set(markers.map((marker) => marker.reviewer))]
+      : input.fallbackReviewerKeys
+
+    for (const reviewer of reviewers) assigned[reviewer]?.push(thread)
+  }
+
+  return assigned
+}
+
+function outputFindings(
+  reviewer: string,
+  output: RereviewOutput | ReviewOutput,
+): Array<{ finding: Finding; index: number; reviewer: string }> {
+  if (output.verdict !== "CHANGES_REQUESTED") return []
+
+  if ("findings" in output) {
+    return output.findings.map((finding, index) => ({
+      finding,
+      index,
+      reviewer,
+    }))
+  }
+
+  return output.newFindings.map((finding, index) => ({
+    finding: {
+      fix: "Please address this before merging.",
+      issue: finding.body,
+      line: finding.line,
+      path: finding.path,
+      startLine: finding.startLine,
+    },
+    index,
+    reviewer,
+  }))
+}
+
+function singleReviewBody(input: {
+  headSha: string
+  outputs: Record<string, RereviewOutput | ReviewOutput>
+  pr: number
+  verdict: "CHANGES_REQUESTED" | "CLOSE" | "MERGE"
+}): string {
+  const lines = [
+    `Magi single-account review result: ${input.verdict}.`,
+    "",
+    "Logical reviewer verdicts:",
+    ...Object.entries(input.outputs).map(
+      ([reviewer, output]) => `- ${reviewer}: ${output.verdict}`,
+    ),
+    "",
+    ...Object.entries(input.outputs).map(([reviewer, output]) =>
+      formatReviewMarker({
+        head: input.headSha,
+        pr: input.pr,
+        reviewer,
+        verdict: output.verdict,
+      }),
+    ),
+  ]
+
+  return lines.join("\n")
+}
+
+function singleFindingBody(input: {
+  finding: Finding
+  headSha: string
+  index: number
+  pr: number
+  reviewer: string
+}): string {
+  return [
+    `**Issue:** ${input.finding.issue}`,
+    "",
+    `**Fix:** ${input.finding.fix}`,
+    "",
+    `**Reviewer:** ${input.reviewer}`,
+    "",
+    formatReviewFindingMarker({
+      finding: input.index,
+      head: input.headSha,
+      pr: input.pr,
+      reviewer: input.reviewer,
+    }),
+  ].join("\n")
+}
+
+export async function postSingleConsensusReview(input: {
+  exec: Exec
+  headSha: string
+  outputs: Record<string, RereviewOutput | ReviewOutput>
+  pr: number
+  repository: ResolvedRepository
+  verdict: "CHANGES_REQUESTED" | "CLOSE" | "MERGE"
+}): Promise<string> {
+  const account = input.repository.review?.account
+
+  if (!account)
+    throw new Error("review.account is required for single review mode")
+
+  const body = singleReviewBody(input)
+
+  if (input.verdict === "MERGE") {
+    return postApproval(input.exec, input.repository, input.pr, account, body)
+  }
+
+  if (input.verdict === "CLOSE") {
+    return postCloseComment(
+      input.exec,
+      input.repository,
+      input.pr,
+      account,
+      body,
+    )
+  }
+
+  const findings = Object.entries(input.outputs).flatMap(([reviewer, output]) =>
+    outputFindings(reviewer, output),
+  )
+
+  return postChangesRequested(
+    input.exec,
+    input.repository,
+    input.pr,
+    account,
+    findings.map((item) => item.finding),
+    {
+      body,
+      commentBodies: findings.map((item) =>
+        singleFindingBody({
+          finding: item.finding,
+          headSha: input.headSha,
+          index: item.index,
+          pr: input.pr,
+          reviewer: item.reviewer,
+        }),
+      ),
+    },
+  )
+}
+
 async function postRereviewOutput(
   input: ReviewRunInput,
   reviewerKey: string,
@@ -714,15 +1090,11 @@ async function postRereviewOutput(
   )
 
   if (!reviewer) throw new Error(`Unknown reviewer: ${reviewerKey}`)
+  const account = reviewPostingAccount(input.repository, reviewer)
 
   await Promise.all(
     output.resolve.map((item) =>
-      resolveThread(
-        input.exec,
-        input.repository,
-        reviewer.account,
-        item.threadId,
-      ),
+      resolveThread(input.exec, input.repository, account, item.threadId),
     ),
   )
   await Promise.all(
@@ -731,7 +1103,7 @@ async function postRereviewOutput(
         input.exec,
         input.repository,
         input.pr,
-        reviewer.account,
+        account,
         item.commentId,
         item.body,
       ),
@@ -739,19 +1111,14 @@ async function postRereviewOutput(
   )
 
   if (output.verdict === "MERGE")
-    return postApproval(
-      input.exec,
-      input.repository,
-      input.pr,
-      reviewer.account,
-    )
+    return postApproval(input.exec, input.repository, input.pr, account)
 
   if (output.verdict === "CLOSE")
     return postCloseComment(
       input.exec,
       input.repository,
       input.pr,
-      reviewer.account,
+      account,
       output.reason ?? "Close requested.",
     )
 
@@ -761,7 +1128,7 @@ async function postRereviewOutput(
     input.exec,
     input.repository,
     input.pr,
-    reviewer.account,
+    account,
     output.newFindings.map((finding) => ({
       fix: "Please address this before merging.",
       issue: finding.body,
@@ -1199,51 +1566,102 @@ export async function runReview(
     input.pr,
   )
   const freshnessTarget = reviewFreshnessTarget(commits, meta.headRefOid)
+  const singleReviewMode = resolvedReviewMode(input.repository) === "single"
+  const reviewerKeys = input.repository.agents.reviewers.map(
+    (reviewer) => reviewer.key,
+  )
   const reviewerAccounts = input.repository.agents.reviewers.map(
     (reviewer) => reviewer.account,
   )
-  const preliminaryMode = resolveReviewMode(
-    reviews,
-    reviewerAccounts,
-    freshnessTarget,
-  )
+  const preliminaryMode = singleReviewMode
+    ? resolveSingleAccountReviewMode({
+        account: input.repository.review?.account ?? "",
+        current: freshnessTarget,
+        pr: input.pr,
+        reviewerKeys,
+        reviews,
+      })
+    : resolveReviewMode(reviews, reviewerAccounts, freshnessTarget)
   const unresolvedThreadsByAccount = new Map<
     string,
     Awaited<ReturnType<typeof fetchUnresolvedThreads>>
   >()
+  const unresolvedThreadsByReviewer = new Map<string, ReviewThread[]>()
   const pendingThreadReplyAccounts = new Set<string>()
+  const pendingThreadReplyReviewers = new Set<string>()
   const skippedReviewers = input.repository.agents.reviewers.filter(
     (reviewer) => {
-      return preliminaryMode.assignments.get(reviewer.account)?.type === "skip"
+      return (
+        preliminaryMode.assignments.get(
+          reviewAssignmentKey(input.repository, reviewer),
+        )?.type === "skip"
+      )
     },
   )
 
-  await mapPool(
-    skippedReviewers,
-    input.repository.concurrency.reviewers,
-    async (reviewer) => {
-      const threads = await fetchUnresolvedThreads(
-        exec,
-        input.repository,
-        input.pr,
-        reviewer.account,
-      )
+  if (singleReviewMode && skippedReviewers.length) {
+    const account = input.repository.review?.account ?? ""
+    const threads = await fetchUnresolvedThreads(
+      exec,
+      input.repository,
+      input.pr,
+      account,
+    )
+    const assigned = assignThreadsByReviewFindingMarker({
+      fallbackReviewerKeys: reviewerKeys,
+      headSha: meta.headRefOid,
+      pr: input.pr,
+      reviewerKeys,
+      threads,
+    })
 
-      unresolvedThreadsByAccount.set(reviewer.account, threads)
-      if (hasPendingThreadReply(threads, reviewer.account)) {
-        pendingThreadReplyAccounts.add(reviewer.account)
+    for (const reviewer of skippedReviewers) {
+      const reviewerThreads = assigned[reviewer.key] ?? []
+
+      unresolvedThreadsByReviewer.set(reviewer.key, reviewerThreads)
+      if (hasPendingThreadReply(reviewerThreads, account)) {
+        pendingThreadReplyReviewers.add(reviewer.key)
       }
-    },
-    { signal: input.signal },
-  )
-  const mode = pendingThreadReplyAccounts.size
-    ? resolveReviewMode(
-        reviews,
-        reviewerAccounts,
-        freshnessTarget,
-        pendingThreadReplyAccounts,
-      )
-    : preliminaryMode
+    }
+  } else {
+    await mapPool(
+      skippedReviewers,
+      input.repository.concurrency.reviewers,
+      async (reviewer) => {
+        const threads = await fetchUnresolvedThreads(
+          exec,
+          input.repository,
+          input.pr,
+          reviewer.account,
+        )
+
+        unresolvedThreadsByAccount.set(reviewer.account, threads)
+        if (hasPendingThreadReply(threads, reviewer.account)) {
+          pendingThreadReplyAccounts.add(reviewer.account)
+        }
+      },
+      { signal: input.signal },
+    )
+  }
+  const mode = singleReviewMode
+    ? pendingThreadReplyReviewers.size
+      ? resolveSingleAccountReviewMode({
+          account: input.repository.review?.account ?? "",
+          current: freshnessTarget,
+          pendingReviewers: pendingThreadReplyReviewers,
+          pr: input.pr,
+          reviewerKeys,
+          reviews,
+        })
+      : preliminaryMode
+    : pendingThreadReplyAccounts.size
+      ? resolveReviewMode(
+          reviews,
+          reviewerAccounts,
+          freshnessTarget,
+          pendingThreadReplyAccounts,
+        )
+      : preliminaryMode
 
   if (mode.type === "already_reviewed" && !input.allowAlreadyReviewed)
     throw new Error("PR has already been reviewed by all configured accounts")
@@ -1354,7 +1772,9 @@ export async function runReview(
 
     const activeReviewers = input.repository.agents.reviewers.flatMap(
       (reviewer): ActiveReviewer[] => {
-        const assignment = mode.assignments.get(reviewer.account)
+        const assignment = mode.assignments.get(
+          reviewAssignmentKey(input.repository, reviewer),
+        )
 
         if (!assignment || assignment.type === "skip") return []
 
@@ -1381,7 +1801,9 @@ export async function runReview(
       worktreePath,
     })
     for (const reviewer of input.repository.agents.reviewers) {
-      const assignment = mode.assignments.get(reviewer.account)
+      const assignment = mode.assignments.get(
+        reviewAssignmentKey(input.repository, reviewer),
+      )
       if (assignment?.type !== "skip") continue
 
       await input.onProgress?.({
@@ -1427,12 +1849,13 @@ export async function runReview(
             : inlineCommentTargets
 
           const unresolved =
+            unresolvedThreadsByReviewer.get(reviewer.key) ??
             unresolvedThreadsByAccount.get(reviewer.account) ??
             (await fetchUnresolvedThreads(
               exec,
               input.repository,
               input.pr,
-              reviewer.account,
+              reviewPostingAccount(input.repository, reviewer),
             ))
           const prompt = await composeRereviewPrompt({
             baseSha: meta.baseRefOid,
@@ -1619,7 +2042,9 @@ export async function runReview(
     )
     const skippedVerdicts = input.repository.agents.reviewers.flatMap(
       (reviewer) => {
-        const assignment = mode.assignments.get(reviewer.account)
+        const assignment = mode.assignments.get(
+          reviewAssignmentKey(input.repository, reviewer),
+        )
 
         if (assignment?.type !== "skip") return []
 
@@ -1640,7 +2065,9 @@ export async function runReview(
     ])
     const skippedCloseEntries = input.repository.agents.reviewers.flatMap(
       (reviewer): ReviewEntry[] => {
-        const assignment = mode.assignments.get(reviewer.account)
+        const assignment = mode.assignments.get(
+          reviewAssignmentKey(input.repository, reviewer),
+        )
 
         if (assignment?.type !== "skip" || !closeTargets.includes(reviewer.key))
           return []
@@ -1678,7 +2105,9 @@ export async function runReview(
     const activeOutputs = validation.outputs
     const skippedOutputs = Object.fromEntries(
       input.repository.agents.reviewers.flatMap((reviewer) => {
-        const assignment = mode.assignments.get(reviewer.account)
+        const assignment = mode.assignments.get(
+          reviewAssignmentKey(input.repository, reviewer),
+        )
 
         return assignment?.type === "skip"
           ? [[reviewer.key, reviewOutputFromState(assignment.review)]]
@@ -1688,7 +2117,9 @@ export async function runReview(
     const outputs = { ...skippedOutputs, ...activeOutputs }
     const remainingSkippedVerdicts = input.repository.agents.reviewers.flatMap(
       (reviewer) => {
-        const assignment = mode.assignments.get(reviewer.account)
+        const assignment = mode.assignments.get(
+          reviewAssignmentKey(input.repository, reviewer),
+        )
 
         if (assignment?.type !== "skip" || closeTargets.includes(reviewer.key))
           return []
@@ -1712,39 +2143,110 @@ export async function runReview(
       input.approvalPolicy ?? "majority",
     )
     await input.onProgress?.({ phase: "posting reviews", type: "phase" })
-    const posted = {
-      ...Object.fromEntries(
-        input.repository.agents.reviewers.flatMap((reviewer) => {
-          const assignment = mode.assignments.get(reviewer.account)
+    const skippedPosted = Object.fromEntries(
+      input.repository.agents.reviewers.flatMap((reviewer) => {
+        const assignment = mode.assignments.get(
+          reviewAssignmentKey(input.repository, reviewer),
+        )
 
-          return assignment?.type === "skip"
-            ? [[reviewer.key, "skipped: already reviewed current head"]]
-            : []
-        }),
-      ),
-      ...Object.fromEntries(
-        await Promise.all(
-          Object.entries(activeOutputs).map(async ([key, output]) => [
-            key,
-            input.dryRun
-              ? dryRunReviewPost(key, output)
-              : "resolve" in output
-                ? await postRereviewOutput(
-                    { ...input, exec },
-                    key,
-                    output as RereviewOutput,
-                  )
-                : await postReviewOutput(
-                    { ...input, exec },
-                    key,
-                    output as ReviewOutput,
-                  ),
-          ]),
-        ),
-      ),
-    }
+        return assignment?.type === "skip"
+          ? [[reviewer.key, "skipped: already reviewed current head"]]
+          : []
+      }),
+    )
+    const posted = singleReviewMode
+      ? {
+          ...skippedPosted,
+          ...(Object.keys(activeOutputs).length
+            ? {
+                consensus: input.dryRun
+                  ? `dry-run:would-post-single-review:${verdict}`
+                  : await (async () => {
+                      const account = input.repository.review?.account ?? ""
 
-    const automationAccount = input.repository.agents.reviewers[0]?.account
+                      await Promise.all(
+                        Object.values(activeOutputs).flatMap((output) => {
+                          if (!("resolve" in output)) return []
+
+                          return output.resolve.map((item) =>
+                            resolveThread(
+                              exec,
+                              input.repository,
+                              account,
+                              item.threadId,
+                            ),
+                          )
+                        }),
+                      )
+                      await Promise.all(
+                        Object.entries(activeOutputs).flatMap(
+                          ([key, output]) => {
+                            if (!("followUps" in output)) return []
+
+                            return output.followUps.map((item) =>
+                              postReply(
+                                exec,
+                                input.repository,
+                                input.pr,
+                                account,
+                                item.commentId,
+                                [
+                                  `**Reviewer:** ${key}`,
+                                  "",
+                                  item.body,
+                                  "",
+                                  formatReviewMarker({
+                                    head: meta.headRefOid,
+                                    pr: input.pr,
+                                    reviewer: key,
+                                    verdict: output.verdict,
+                                  }),
+                                ].join("\n"),
+                              ),
+                            )
+                          },
+                        ),
+                      )
+
+                      return postSingleConsensusReview({
+                        exec,
+                        headSha: meta.headRefOid,
+                        outputs,
+                        pr: input.pr,
+                        repository: input.repository,
+                        verdict,
+                      })
+                    })(),
+              }
+            : {}),
+        }
+      : {
+          ...skippedPosted,
+          ...Object.fromEntries(
+            await Promise.all(
+              Object.entries(activeOutputs).map(async ([key, output]) => [
+                key,
+                input.dryRun
+                  ? dryRunReviewPost(key, output)
+                  : "resolve" in output
+                    ? await postRereviewOutput(
+                        { ...input, exec },
+                        key,
+                        output as RereviewOutput,
+                      )
+                    : await postReviewOutput(
+                        { ...input, exec },
+                        key,
+                        output as ReviewOutput,
+                      ),
+              ]),
+            ),
+          ),
+        }
+
+    const automationAccount = singleReviewMode
+      ? input.repository.review?.account
+      : input.repository.agents.reviewers[0]?.account
     const enableReviewAutomation = input.enableReviewAutomation ?? true
     if (
       enableReviewAutomation &&

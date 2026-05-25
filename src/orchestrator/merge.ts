@@ -59,7 +59,11 @@ import { mapPool } from "./pool"
 import { formatMergeReport, type MergeEditorOutput } from "./report"
 import {
   inlineCommentTargetsForDiff,
+  assignThreadsByReviewFindingMarker,
+  formatReviewMarker,
+  postSingleConsensusReview,
   runReview,
+  reviewPostingAccount,
   type ReviewRunProgress,
 } from "./review"
 import { checkSafetyGate, hasSafetyGate } from "./safety"
@@ -318,6 +322,7 @@ async function postRereviewOutput(
   )
 
   if (!reviewer) throw new Error(`Unknown reviewer: ${reviewerKey}`)
+  const account = reviewPostingAccount(input.repository, reviewer)
 
   if (input.dryRun) {
     if (output.verdict === "MERGE")
@@ -331,12 +336,7 @@ async function postRereviewOutput(
 
   await Promise.all(
     output.resolve.map((item) =>
-      resolveThread(
-        input.exec,
-        input.repository,
-        reviewer.account,
-        item.threadId,
-      ),
+      resolveThread(input.exec, input.repository, account, item.threadId),
     ),
   )
   const replies = await Promise.all(
@@ -345,7 +345,7 @@ async function postRereviewOutput(
         input.exec,
         input.repository,
         input.pr,
-        reviewer.account,
+        account,
         item.commentId,
         item.body,
       ),
@@ -353,12 +353,7 @@ async function postRereviewOutput(
   )
 
   if (output.verdict === "MERGE") {
-    return postApproval(
-      input.exec,
-      input.repository,
-      input.pr,
-      reviewer.account,
-    )
+    return postApproval(input.exec, input.repository, input.pr, account)
   }
 
   if (output.verdict === "CLOSE") {
@@ -366,7 +361,7 @@ async function postRereviewOutput(
       input.exec,
       input.repository,
       input.pr,
-      reviewer.account,
+      account,
       output.reason ?? "Close requested.",
     )
   }
@@ -376,7 +371,7 @@ async function postRereviewOutput(
       input.exec,
       input.repository,
       input.pr,
-      reviewer.account,
+      account,
       output.newFindings.map((finding) => ({
         fix: "Please address this before merging.",
         issue: finding.body,
@@ -476,6 +471,27 @@ async function runRereview(
     worktreePath,
   })
   const artifactDir = outputDir(input)
+  const singleReviewMode = input.repository.review?.mode === "single"
+  const reviewerKeys = input.repository.agents.reviewers.map(
+    (reviewer) => reviewer.key,
+  )
+  const singleModeThreads = singleReviewMode
+    ? assignThreadsByReviewFindingMarker({
+        fallbackReviewerKeys: reviewerKeys,
+        headSha,
+        pr: input.pr,
+        reviewerKeys,
+        threads:
+          options.dryRunThreads == null
+            ? await fetchUnresolvedThreads(
+                input.exec,
+                input.repository,
+                input.pr,
+                input.repository.review?.account ?? "",
+              )
+            : Object.values(options.dryRunThreads).flat(),
+      })
+    : undefined
   let entries = await mapPool(
     input.repository.agents.reviewers,
     input.repository.concurrency.reviewers,
@@ -483,12 +499,13 @@ async function runRereview(
       throwIfAborted(input.signal)
 
       const unresolved =
+        singleModeThreads?.[reviewer.key] ??
         options.dryRunThreads?.[reviewer.key] ??
         (await fetchUnresolvedThreads(
           input.exec,
           input.repository,
           input.pr,
-          reviewer.account,
+          reviewPostingAccount(input.repository, reviewer),
         ))
       const hasReviewerSession = Boolean(sessionIds[reviewer.key])
       const prompt = await composeRereviewPrompt({
@@ -715,15 +732,6 @@ async function runRereview(
     )
   }
 
-  const posted = Object.fromEntries(
-    await Promise.all(
-      entries.map(async (entry) => [
-        entry.reviewer,
-        await postRereviewOutput(input, entry.reviewer, entry.output),
-      ]),
-    ),
-  )
-
   const verdict = mergeVerdictForPolicy(
     entries.map((entry) => ({
       reviewer: entry.reviewer,
@@ -731,6 +739,72 @@ async function runRereview(
     })),
     input.repository.merge.approvalPolicy,
   )
+  const outputs = Object.fromEntries(
+    entries.map((entry) => [entry.reviewer, entry.output]),
+  )
+  const posted = singleReviewMode
+    ? input.dryRun
+      ? { consensus: `dry-run:would-post-single-review:${verdict}` }
+      : {
+          consensus: await (async () => {
+            const account = input.repository.review?.account ?? ""
+
+            await Promise.all(
+              entries.flatMap((entry) =>
+                entry.output.resolve.map((item) =>
+                  resolveThread(
+                    input.exec,
+                    input.repository,
+                    account,
+                    item.threadId,
+                  ),
+                ),
+              ),
+            )
+            await Promise.all(
+              entries.flatMap((entry) =>
+                entry.output.followUps.map((item) =>
+                  postReply(
+                    input.exec,
+                    input.repository,
+                    input.pr,
+                    account,
+                    item.commentId,
+                    [
+                      `**Reviewer:** ${entry.reviewer}`,
+                      "",
+                      item.body,
+                      "",
+                      formatReviewMarker({
+                        head: headSha,
+                        pr: input.pr,
+                        reviewer: entry.reviewer,
+                        verdict: entry.output.verdict,
+                      }),
+                    ].join("\n"),
+                  ),
+                ),
+              ),
+            )
+
+            return postSingleConsensusReview({
+              exec: input.exec,
+              headSha,
+              outputs,
+              pr: input.pr,
+              repository: input.repository,
+              verdict,
+            })
+          })(),
+        }
+    : Object.fromEntries(
+        await Promise.all(
+          entries.map(async (entry) => [
+            entry.reviewer,
+            await postRereviewOutput(input, entry.reviewer, entry.output),
+          ]),
+        ),
+      )
 
   await writeFile(
     join(artifactDir, `rereview-majority.cycle-${cycle}.json`),
@@ -749,9 +823,7 @@ async function runRereview(
   )
 
   return {
-    outputs: Object.fromEntries(
-      entries.map((entry) => [entry.reviewer, entry.output]),
-    ),
+    outputs,
     posted,
     verdict,
   }

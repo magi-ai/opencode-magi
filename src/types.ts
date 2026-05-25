@@ -29,13 +29,15 @@ export interface OpenCodePermissionRule {
 }
 
 export interface ReviewerConfig {
-  account: string
+  account?: string
   id?: string
   model: ModelConfig
   permissions?: PermissionConfig
   persona?: string
   ref?: string
 }
+
+export type ReviewIdentityMode = "multi" | "single"
 
 export interface EditorConfig {
   account: string
@@ -193,10 +195,12 @@ export interface OutputConfig {
 }
 
 export interface ReviewConfig {
+  account?: string
   automation?: AutomationConfig
   checks?: ReviewChecksConfig
   concurrency?: ConcurrencyConfig
   merge?: PullRequestMergeConfig
+  mode?: ReviewIdentityMode
   output?: string
   prompts?: ReviewPromptConfig
   reviewers?: ReviewerConfig[]
@@ -287,8 +291,9 @@ export interface MagiConfig {
 
 export interface ResolvedReviewer extends Omit<
   ReviewerConfig,
-  "model" | "options" | "permissions"
+  "account" | "model" | "options" | "permissions"
 > {
+  account: string
   index: number
   key: string
   model: string
@@ -352,6 +357,10 @@ export interface ResolvedRepository extends RepositoryConfig {
     queue?: boolean
   }
   prompts: PromptConfig
+  review?: {
+    account?: string
+    mode: ReviewIdentityMode
+  }
   reviewAutomation?: Required<AutomationConfig>
   safety: Required<Omit<SafetyConfig, "maxChangedFiles">> & {
     maxChangedFiles?: number
