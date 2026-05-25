@@ -426,6 +426,8 @@ function createExec(
         "+export const value = 1",
       ].join("\n")
     }
+    if (command.startsWith("git merge-base ")) return "merge-base"
+    if (command.startsWith("git merge-tree ")) return ""
     if (
       command.includes("repos/owner/repo/issues/1/comments") &&
       command.includes("--method POST")
