@@ -1,5 +1,25 @@
 # opencode-magi
 
+## 0.7.0
+
+### Minor Changes
+
+- [#263](https://github.com/magi-ai/opencode-magi/pull/263) [`41a33d6`](https://github.com/magi-ai/opencode-magi/commit/41a33d6a295e10a8fe4612959d1e02ceaa8aa61b) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Support ordered model candidate arrays with per-model options in Magi config.
+
+- [#274](https://github.com/magi-ai/opencode-magi/pull/274) [`1c2b888`](https://github.com/magi-ai/opencode-magi/commit/1c2b8880151b20f40d34d82e0d1f33c4866c07a0) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Rename review and triage config agent lists to reviewers and voters.
+
+- [#279](https://github.com/magi-ai/opencode-magi/pull/279) [`5055cf2`](https://github.com/magi-ai/opencode-magi/commit/5055cf2c1c5b7fd3a74f165a0fefe49720f09a2a) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Support single model objects with per-model options in Magi config.
+
+### Patch Changes
+
+- [#276](https://github.com/magi-ai/opencode-magi/pull/276) [`1c9ede7`](https://github.com/magi-ai/opencode-magi/commit/1c9ede70948731df1e540f58a1004f7efd227ad2) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Use the canonical majority reason for non-ASK triage comments.
+
+- [#262](https://github.com/magi-ai/opencode-magi/pull/262) [`2f91cd2`](https://github.com/magi-ai/opencode-magi/commit/2f91cd2cf0fa246e3541503c4992345981e0059b) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Make non-ASK triage comments read like natural issue comments.
+
+- [#266](https://github.com/magi-ai/opencode-magi/pull/266) [`dca6400`](https://github.com/magi-ai/opencode-magi/commit/dca640049f67951ad489ef5602f4b909997e4b2a) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Prevent magi_clear from accepting assistant-provided cleanup selectors or resource flags.
+
+- [#271](https://github.com/magi-ai/opencode-magi/pull/271) [`b9c3ac2`](https://github.com/magi-ai/opencode-magi/commit/b9c3ac271d78088dbb6ffae3ed209be6dd708365) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Fail command execution when configuration validation fails.
+
 ## 0.6.1
 
 ### Patch Changes
