@@ -42,23 +42,23 @@ It does not modify files, create runs, post to GitHub, or start agents.
 
 `/magi:validate` validates the same settings documented in [Config](/docs/config.md). The most important requirements are:
 
-| Setting                      | Requirement                                                                                      |
-| ---------------------------- | ------------------------------------------------------------------------------------------------ |
-| `mode`                       | Optional `single` or `multi`; defaults to `single`.                                              |
-| `account`                    | Required in single mode for reviewer- and triage-originated GitHub mutations.                    |
-| `review.reviewers`           | Required for review/merge, at least 3 reviewers, odd count.                                      |
-| `review.reviewers[].model`   | Required full OpenCode model ID in `provider/model` form.                                        |
-| `review.reviewers[].account` | Required and unique across reviewers in multi mode; optional and ignored for posting in single mode. |
-| `merge.editor`               | Required by `/magi:merge`, optional for `/magi:review`.                                          |
-| `github.owner`               | Required for PR review/merge runs.                                                               |
-| `github.repo`                | Required for PR review/merge runs.                                                               |
-| `review.prompts.*`           | Must point to readable files when configured.                                                    |
-| `merge.prompts.*`            | Must point to readable files when configured.                                                    |
-| `triage.voters`              | Required for triage, at least 3 voters, odd count.                                               |
-| `triage.voters[].account`    | Required and unique after refs in multi mode; not supported in single mode.                      |
-| `triage.reporter`            | Optional resolved triage voter key in multi mode; not supported in single mode.                  |
+| Setting                      | Requirement                                                                                                                    |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `mode`                       | Optional `single` or `multi`; defaults to `single`.                                                                            |
+| `account`                    | Required in single mode for reviewer- and triage-originated GitHub mutations.                                                  |
+| `review.reviewers`           | Required for review/merge, at least 3 reviewers, odd count.                                                                    |
+| `review.reviewers[].model`   | Required full OpenCode model ID in `provider/model` form.                                                                      |
+| `review.reviewers[].account` | Required and unique across reviewers in multi mode; optional and ignored for posting in single mode.                           |
+| `merge.editor`               | Required by `/magi:merge`, optional for `/magi:review`.                                                                        |
+| `github.owner`               | Required for PR review/merge runs.                                                                                             |
+| `github.repo`                | Required for PR review/merge runs.                                                                                             |
+| `review.prompts.*`           | Must point to readable files when configured.                                                                                  |
+| `merge.prompts.*`            | Must point to readable files when configured.                                                                                  |
+| `triage.voters`              | Required for triage, at least 3 voters, odd count.                                                                             |
+| `triage.voters[].account`    | Required and unique after refs in multi mode; not supported in single mode.                                                    |
+| `triage.reporter`            | Optional resolved triage voter key in multi mode; not supported in single mode.                                                |
 | `triage.creator.*`           | Creator model and author are required when `triage.automation.create` is true; creator account is required only in multi mode. |
-| `triage.prompts.*`           | Must point to readable files when configured.                                                    |
+| `triage.prompts.*`           | Must point to readable files when configured.                                                                                  |
 
 ## FAQ
 

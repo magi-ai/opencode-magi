@@ -89,38 +89,38 @@ Triage artifacts are written to the issue run output directory:
 
 Important settings:
 
-| Setting                                | Purpose                                                                                                 |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `mode`                                 | `single` or `multi` GitHub posting identity mode. Defaults to `single`.                                 |
-| `account`                              | Shared triage posting account for single mode.                                                          |
-| `triage.voters`                        | Dedicated issue triage voters. Must be an odd-length array of at least 3 voters.                        |
-| `triage.voters[].account`              | GitHub account used by each triage voter in multi mode. Not supported in single mode.                   |
-| `triage.reporter`                      | Multi-mode resolved triage voter key used for non-`ASK` comments and mutations; defaults by issue number. |
-| `triage.creator`                       | Agent used for implementation PR creation when enabled.                                                 |
+| Setting                                | Purpose                                                                                                     |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `mode`                                 | `single` or `multi` GitHub posting identity mode. Defaults to `single`.                                     |
+| `account`                              | Shared triage posting account for single mode.                                                              |
+| `triage.voters`                        | Dedicated issue triage voters. Must be an odd-length array of at least 3 voters.                            |
+| `triage.voters[].account`              | GitHub account used by each triage voter in multi mode. Not supported in single mode.                       |
+| `triage.reporter`                      | Multi-mode resolved triage voter key used for non-`ASK` comments and mutations; defaults by issue number.   |
+| `triage.creator`                       | Agent used for implementation PR creation when enabled.                                                     |
 | `triage.creator.account`               | Required in multi mode when `triage.automation.create` is true; top-level `account` is used in single mode. |
-| `triage.categories`                    | Category IDs and label/type rules that can skip Category Vote. Type rules require GitHub issue types.   |
-| `triage.signals`                       | Optional signal IDs and descriptions for custom cases such as `good_first_issue`.                       |
-| `triage.automation.close`              | Enables closing rejected, invalid, or duplicate issues.                                                 |
-| `triage.automation.create`             | Enables implementation PR creation for accepted issues.                                                 |
-| `triage.automation.review`             | Starts `/magi:review` after implementation PR creation. Requires `triage.automation.create`.            |
-| `triage.automation.merge`              | Starts `/magi:merge` after implementation PR creation. Requires `triage.automation.create`.             |
-| `triage.automation.label`              | Conditional label add/remove rules. Set `[]` to disable label automation.                               |
-| `triage.safety.requiredLabels`         | Labels required before initial triage runs.                                                             |
-| `triage.safety.blockedLabels`          | Labels that prevent triage from running.                                                                |
-| `triage.safety.allowAuthors`           | Allowed issue authors when configured.                                                                  |
-| `triage.safety.allowMentionActors`     | GitHub logins allowed to trigger reconsideration.                                                       |
-| `triage.safety.allowMentionRoles`      | GitHub author associations allowed to trigger reconsideration.                                          |
-| `triage.prompts.existingPr`            | Related-PR voting prompt template.                                                                      |
-| `triage.prompts.duplicate`             | Duplicate issue voting prompt template.                                                                 |
-| `triage.prompts.category`              | Category voting prompt template.                                                                        |
-| `triage.prompts.acceptance`            | Acceptance voting prompt template.                                                                      |
-| `triage.prompts.commentClassification` | Mention reply classification prompt template.                                                           |
-| `triage.prompts.reconsider`            | Reconsideration prompt template.                                                                        |
-| `triage.prompts.create`                | Implementation PR creation prompt template.                                                             |
-| `triage.prompts.createGuidelines`      | Shared PR creation guidance file.                                                                       |
-| `triage.concurrency.runs`              | Maximum issues processed concurrently.                                                                  |
-| `triage.output`                        | Issue triage artifact directory.                                                                        |
-| `triage.worktree`                      | Worktree directory for validation and PR creation.                                                      |
+| `triage.categories`                    | Category IDs and label/type rules that can skip Category Vote. Type rules require GitHub issue types.       |
+| `triage.signals`                       | Optional signal IDs and descriptions for custom cases such as `good_first_issue`.                           |
+| `triage.automation.close`              | Enables closing rejected, invalid, or duplicate issues.                                                     |
+| `triage.automation.create`             | Enables implementation PR creation for accepted issues.                                                     |
+| `triage.automation.review`             | Starts `/magi:review` after implementation PR creation. Requires `triage.automation.create`.                |
+| `triage.automation.merge`              | Starts `/magi:merge` after implementation PR creation. Requires `triage.automation.create`.                 |
+| `triage.automation.label`              | Conditional label add/remove rules. Set `[]` to disable label automation.                                   |
+| `triage.safety.requiredLabels`         | Labels required before initial triage runs.                                                                 |
+| `triage.safety.blockedLabels`          | Labels that prevent triage from running.                                                                    |
+| `triage.safety.allowAuthors`           | Allowed issue authors when configured.                                                                      |
+| `triage.safety.allowMentionActors`     | GitHub logins allowed to trigger reconsideration.                                                           |
+| `triage.safety.allowMentionRoles`      | GitHub author associations allowed to trigger reconsideration.                                              |
+| `triage.prompts.existingPr`            | Related-PR voting prompt template.                                                                          |
+| `triage.prompts.duplicate`             | Duplicate issue voting prompt template.                                                                     |
+| `triage.prompts.category`              | Category voting prompt template.                                                                            |
+| `triage.prompts.acceptance`            | Acceptance voting prompt template.                                                                          |
+| `triage.prompts.commentClassification` | Mention reply classification prompt template.                                                               |
+| `triage.prompts.reconsider`            | Reconsideration prompt template.                                                                            |
+| `triage.prompts.create`                | Implementation PR creation prompt template.                                                                 |
+| `triage.prompts.createGuidelines`      | Shared PR creation guidance file.                                                                           |
+| `triage.concurrency.runs`              | Maximum issues processed concurrently.                                                                      |
+| `triage.output`                        | Issue triage artifact directory.                                                                            |
+| `triage.worktree`                      | Worktree directory for validation and PR creation.                                                          |
 
 See [Config](/docs/config.md) for the complete reference.
 
