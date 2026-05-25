@@ -15,6 +15,7 @@ import type {
   TriageDuplicateOutput,
 } from "../types"
 import type { ModelClient } from "./model"
+import { DEFAULT_TRIAGE_LABEL_RULES } from "../config/resolve"
 import {
   chooseDuplicateOutput,
   eligibleMentionReplies,
@@ -22,6 +23,7 @@ import {
   parseTriageMarker,
   resolveIssueCategory,
   runTriage,
+  triageLabelChanges,
 } from "./triage"
 
 const repository: ResolvedRepository = {
@@ -81,9 +83,9 @@ const repository: ResolvedRepository = {
   safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
   triage: {
     automation: {
-      clear: ["triage"],
       close: false,
       create: false,
+      label: DEFAULT_TRIAGE_LABEL_RULES,
       merge: false,
       review: false,
     },
@@ -116,6 +118,7 @@ const repository: ResolvedRepository = {
       blockedLabels: [],
       requiredLabels: ["triage"],
     },
+    signals: [],
   },
 }
 
@@ -376,11 +379,18 @@ function duplicateVote(vote: string, duplicateOf?: number): string {
 }
 
 function decision(category: string | null, disposition: string) {
-  return { category, disposition }
+  return { category, disposition, signals: [] }
 }
 
 function repositoryWithTriage(
-  triage: Partial<NonNullable<ResolvedRepository["triage"]>>,
+  triage: Partial<
+    Omit<NonNullable<ResolvedRepository["triage"]>, "automation" | "safety">
+  > & {
+    automation?: Partial<
+      NonNullable<ResolvedRepository["triage"]>["automation"]
+    >
+    safety?: Partial<NonNullable<ResolvedRepository["triage"]>["safety"]>
+  },
 ): ResolvedRepository {
   return {
     ...repository,
@@ -436,6 +446,31 @@ describe("triage", () => {
     ).toBe(undefined)
   })
 
+  test("computes triage label changes with matching and add-wins behavior", () => {
+    expect(
+      triageLabelChanges({
+        issueLabels: ["triage", "Duplicate"],
+        result: {
+          category: "bug",
+          disposition: "accepted",
+          signals: ["good_first_issue"],
+        },
+        rules: [
+          {
+            add: ["good first issue", "duplicate"],
+            remove: ["triage", "GOOD FIRST ISSUE"],
+            when: {
+              category: "bug",
+              disposition: "accepted",
+              signals: ["good_first_issue"],
+            },
+          },
+          { add: ["Good First Issue"], when: { disposition: "accepted" } },
+        ],
+      }),
+    ).toEqual({ add: ["good first issue"], remove: ["triage"] })
+  })
+
   test("parses v2 triage markers", () => {
     expect(
       parseTriageMarker(
@@ -457,7 +492,7 @@ describe("triage", () => {
     ).toMatchObject({
       askReason: "category_unclear",
       category: null,
-      disposition: "ask",
+      disposition: "needs_category",
     })
   })
 
@@ -578,9 +613,9 @@ describe("triage", () => {
     const visibleComment = comment.split("<!-- opencode-magi:triage")[0]
 
     expect(result.result.result).toEqual({
-      askReason: "category_unclear",
       category: null,
-      disposition: "ask",
+      disposition: "needs_category",
+      signals: [],
     })
     expect(visibleComment).toContain("ASK body")
     expect(visibleComment).not.toContain("bug")
@@ -593,7 +628,7 @@ describe("triage", () => {
       outputs: [],
     })
 
-    expect(result.result.result).toEqual(decision(null, "failed"))
+    expect(result.result.result).toEqual(decision(null, "blocked"))
     expect(result.result.report).toContain("missing required labels: triage")
     expect(result.sessionTitles).toEqual([])
   })
@@ -649,7 +684,7 @@ describe("triage", () => {
       ],
     })
 
-    expect(result.result.result).toEqual(decision(null, "clear_only"))
+    expect(result.result.result).toEqual(decision(null, "already_handled"))
     expect(
       result.sessionTitles.filter((title) =>
         title.includes("triage existing PR"),
@@ -682,7 +717,6 @@ describe("triage", () => {
       repository: repositoryWithTriage({
         automation: {
           close: true,
-          clear: ["triage"],
           create: false,
           merge: false,
           review: false,
@@ -712,7 +746,6 @@ describe("triage", () => {
       repository: repositoryWithTriage({
         automation: {
           close: true,
-          clear: ["triage"],
           create: false,
           merge: false,
           review: false,
@@ -723,6 +756,75 @@ describe("triage", () => {
     expect(result.result.result).toEqual(decision("bug", "rejected"))
     expect(
       result.commands.some((command) => command.startsWith("gh issue close 1")),
+    ).toBe(true)
+  })
+
+  test("marks invalid issues from acceptance votes", async () => {
+    const result = await runScenario({
+      dryRun: false,
+      issue: issue({ type: "Bug" }),
+      outputs: [vote("INVALID"), vote("INVALID"), vote("NO")],
+      repository: repositoryWithTriage({ automation: { close: true } }),
+    })
+
+    expect(result.result.result).toEqual(decision("bug", "invalid"))
+    expect(
+      result.commands.some((command) => command.startsWith("gh issue close 1")),
+    ).toBe(true)
+    expect(
+      result.commands.some((command) =>
+        command.includes("--add-label 'invalid'"),
+      ),
+    ).toBe(true)
+  })
+
+  test("applies signal-based label automation", async () => {
+    const result = await runScenario({
+      dryRun: false,
+      issue: issue({ type: "Feature" }),
+      outputs: [
+        vote("YES"),
+        vote("YES"),
+        vote("YES"),
+        JSON.stringify({
+          signals: [{ id: "good_first_issue", reason: "small and scoped" }],
+        }),
+        JSON.stringify({
+          signals: [{ id: "good_first_issue", reason: "clear change" }],
+        }),
+        JSON.stringify({ signals: [] }),
+      ],
+      repository: repositoryWithTriage({
+        automation: {
+          label: [
+            {
+              add: ["good first issue"],
+              remove: ["triage"],
+              when: {
+                disposition: "accepted",
+                signals: ["good_first_issue"],
+              },
+            },
+          ],
+        },
+        signals: [
+          {
+            description: "Small, well-scoped issue.",
+            id: "good_first_issue",
+          },
+        ],
+      }),
+    })
+
+    expect(result.result.result).toEqual({
+      category: "feature",
+      disposition: "accepted",
+      signals: ["good_first_issue"],
+    })
+    expect(
+      result.commands.some((command) =>
+        command.includes("--add-label 'good first issue'"),
+      ),
     ).toBe(true)
   })
 
@@ -750,7 +852,6 @@ describe("triage", () => {
         ...repositoryWithTriage({
           automation: {
             close: false,
-            clear: ["triage"],
             create: true,
             merge: false,
             review: false,
@@ -848,7 +949,6 @@ describe("triage", () => {
           repositoryWithTriage({
             automation: {
               close: false,
-              clear: ["triage"],
               create: true,
               merge: false,
               review: false,
@@ -912,7 +1012,6 @@ describe("triage", () => {
         ...repositoryWithTriage({
           automation: {
             close: false,
-            clear: ["triage"],
             create: true,
             merge: false,
             review: false,
@@ -956,7 +1055,6 @@ describe("triage", () => {
       repository: repositoryWithTriage({
         automation: {
           close: true,
-          clear: ["triage"],
           create: false,
           merge: false,
           review: false,
@@ -991,7 +1089,6 @@ describe("triage", () => {
         ...repositoryWithTriage({
           automation: {
             close: false,
-            clear: ["triage"],
             create: true,
             merge: false,
             review: false,
@@ -1047,7 +1144,6 @@ describe("triage", () => {
         ...repositoryWithTriage({
           automation: {
             close: false,
-            clear: ["triage"],
             create: true,
             merge: false,
             review: false,
@@ -1264,7 +1360,7 @@ describe("triage", () => {
         }),
         comment({ body: "no mention", id: 14, authorAssociation: "MEMBER" }),
       ],
-      marker: { commentId: 10, processed: [11], v: 1 },
+      marker: { commentId: 10, processed: [11], signals: [], v: 1 },
       processed: [11],
       repository,
     })

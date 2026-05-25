@@ -270,6 +270,47 @@
         "description": { "type": "string" }
       }
     },
+    "triageSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    },
+    "triageLabelRuleCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "disposition": {
+          "enum": [
+            "accepted",
+            "rejected",
+            "invalid",
+            "duplicate",
+            "already_handled",
+            "needs_category",
+            "needs_acceptance",
+            "blocked",
+            "failed"
+          ]
+        },
+        "category": { "type": "string" },
+        "signals": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "triageLabelRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["when"],
+      "properties": {
+        "when": { "$ref": "#/$defs/triageLabelRuleCondition" },
+        "add": { "type": "array", "items": { "type": "string" } },
+        "remove": { "type": "array", "items": { "type": "string" } }
+      }
+    },
     "triageAutomation": {
       "type": "object",
       "additionalProperties": false,
@@ -278,10 +319,9 @@
         "create": { "type": "boolean", "default": false },
         "review": { "type": "boolean", "default": false },
         "merge": { "type": "boolean", "default": false },
-        "clear": {
+        "label": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["triage"]
+          "items": { "$ref": "#/$defs/triageLabelRule" }
         }
       }
     },
@@ -361,6 +401,10 @@
         "categories": {
           "type": "array",
           "items": { "$ref": "#/$defs/triageCategory" }
+        },
+        "signals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/triageSignal" }
         },
         "automation": { "$ref": "#/$defs/triageAutomation" },
         "safety": { "$ref": "#/$defs/triageSafety" },

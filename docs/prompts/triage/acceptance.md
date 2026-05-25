@@ -1,6 +1,6 @@
 # Acceptance
 
-Used when triage voters decide whether the selected issue category should be accepted.
+Used when triage voters decide whether the selected issue category should be accepted, rejected, invalid, or needs more information.
 
 Config key: `triage.prompts.acceptance`
 

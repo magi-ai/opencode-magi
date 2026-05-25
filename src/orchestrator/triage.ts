@@ -11,7 +11,6 @@ import type {
   ResolvedRepository,
   ResolvedTriageAgent,
   TriageAction,
-  TriageAskReason,
   TriageBinaryVote,
   TriageCategoryVote,
   TriageCommentClassification,
@@ -19,6 +18,8 @@ import type {
   TriageDuplicateOutput,
   TriageDuplicateVote,
   TriageExistingPrVote,
+  TriageLabelRuleConfig,
+  TriageSignalOutput,
   TriageVoteOutput,
 } from "../types"
 import { mkdir, writeFile } from "node:fs/promises"
@@ -26,6 +27,7 @@ import { dirname, join } from "node:path"
 import { issueRunOutputDir } from "../config/output"
 import { issueRunWorktreeDir } from "../config/worktree"
 import {
+  addIssueLabels,
   assignIssue,
   closeIssue,
   closePullRequest,
@@ -50,6 +52,7 @@ import {
   composeTriageDuplicatePrompt,
   composeTriageExistingPrPrompt,
   composeTriageReconsiderPrompt,
+  composeTriageSignalPrompt,
 } from "../prompts/compose"
 import {
   parseTriageBinaryOutput,
@@ -58,6 +61,7 @@ import {
   parseTriageCreatePrOutput,
   parseTriageDuplicateOutput,
   parseTriageExistingPrOutput,
+  parseTriageSignalOutput,
 } from "../prompts/output"
 import { aggregateStringMajority, majorityThreshold } from "./majority"
 import {
@@ -68,6 +72,7 @@ import {
 } from "./model"
 
 type FinalResult = TriageDecision
+type TriageLegacyAskReason = "acceptance_unclear" | "category_unclear"
 
 export interface TriageRunInput {
   client: ModelClient
@@ -156,7 +161,8 @@ interface TriageMarker {
   result?: string
   category?: string | null
   disposition?: TriageDecision["disposition"]
-  askReason?: TriageAskReason
+  askReason?: TriageLegacyAskReason
+  signals: string[]
   v: number
 }
 
@@ -200,6 +206,7 @@ type TriagePromptComposer = (input: {
 
 const MARKER_PREFIX = "opencode-magi:triage"
 const BINARY_VOTES = ["ASK", "NO", "YES"] as const
+const ACCEPTANCE_VOTES = ["ASK", "INVALID", "NO", "YES"] as const
 const DUPLICATE_VOTES = ["DUPLICATE", "NOT_DUPLICATE"] as const
 const EXISTING_PR_VOTES = [
   "RELATED_PR_DOES_NOT_HANDLE_ISSUE",
@@ -219,11 +226,33 @@ function marker(input: {
   pr?: number
   processed?: number[]
 }): string {
-  const askReason = input.decision.askReason
-    ? ` askReason=${input.decision.askReason}`
-    : ""
+  return `<!-- ${MARKER_PREFIX} v=2 issue=${input.issue} category=${input.decision.category ?? "none"} disposition=${input.decision.disposition} signals=${input.decision.signals.join(",")} action=${input.action} checkpoint=${input.checkpoint ?? "pending"} pr=${input.pr ?? "none"} processed=${(input.processed ?? []).join(",")} -->`
+}
 
-  return `<!-- ${MARKER_PREFIX} v=2 issue=${input.issue} category=${input.decision.category ?? "none"} disposition=${input.decision.disposition}${askReason} action=${input.action} checkpoint=${input.checkpoint ?? "pending"} pr=${input.pr ?? "none"} processed=${(input.processed ?? []).join(",")} -->`
+function markerDisposition(input: {
+  askReason?: TriageLegacyAskReason
+  disposition?: string
+}): TriageDecision["disposition"] | undefined {
+  switch (input.disposition) {
+    case "accepted":
+    case "rejected":
+    case "invalid":
+    case "duplicate":
+    case "already_handled":
+    case "needs_category":
+    case "needs_acceptance":
+    case "blocked":
+    case "failed":
+      return input.disposition
+    case "ask":
+      return input.askReason === "category_unclear"
+        ? "needs_category"
+        : "needs_acceptance"
+    case "clear_only":
+      return "already_handled"
+    default:
+      return undefined
+  }
 }
 
 export function parseTriageMarker(body: string): TriageMarker | undefined {
@@ -245,34 +274,32 @@ export function parseTriageMarker(body: string): TriageMarker | undefined {
 
   if (version !== 1 && version !== 2) return undefined
 
+  const askReason =
+    entries.askReason === "acceptance_unclear" ||
+    entries.askReason === "category_unclear"
+      ? entries.askReason
+      : undefined
+
   return {
     action: entries.action,
-    askReason:
-      entries.askReason === "acceptance_unclear" ||
-      entries.askReason === "category_unclear"
-        ? entries.askReason
-        : undefined,
+    askReason,
     category:
       entries.category === "none" ? null : entries.category || undefined,
     checkpoint:
       entries.checkpoint && Number.isFinite(Number(entries.checkpoint))
         ? Number(entries.checkpoint)
         : undefined,
-    disposition:
-      entries.disposition === "accepted" ||
-      entries.disposition === "rejected" ||
-      entries.disposition === "ask" ||
-      entries.disposition === "duplicate" ||
-      entries.disposition === "clear_only" ||
-      entries.disposition === "failed"
-        ? entries.disposition
-        : undefined,
+    disposition: markerDisposition({
+      askReason,
+      disposition: entries.disposition,
+    }),
     issue: entries.issue ? Number(entries.issue) : undefined,
     pr: entries.pr,
     processed: entries.processed
       ? entries.processed.split(",").filter(Boolean).map(Number)
       : [],
     result: entries.result,
+    signals: entries.signals ? entries.signals.split(",").filter(Boolean) : [],
     v: version,
   }
 }
@@ -283,10 +310,54 @@ function labelsContain(labels: string[], targets: string[]): boolean {
   return targets.some((target) => set.has(target.toLowerCase()))
 }
 
-function existingClearLabels(issue: IssueMeta, labels: string[]): string[] {
-  const existing = new Set(issue.labels.map((label) => label.toLowerCase()))
+function addLabel(labels: Map<string, string>, label: string): void {
+  const key = label.toLowerCase()
+  if (!labels.has(key)) labels.set(key, label)
+}
 
-  return labels.filter((label) => existing.has(label.toLowerCase()))
+function labelRuleMatches(
+  rule: TriageLabelRuleConfig,
+  result: FinalResult,
+): boolean {
+  const when = rule.when
+  if (when.disposition && when.disposition !== result.disposition) return false
+  if (when.category && when.category !== result.category) return false
+  if (when.signals?.length) {
+    const signals = new Set(result.signals)
+    if (when.signals.some((signal) => !signals.has(signal))) return false
+  }
+
+  return true
+}
+
+export function triageLabelChanges(input: {
+  issueLabels: string[]
+  result: FinalResult
+  rules: TriageLabelRuleConfig[]
+}): { add: string[]; remove: string[] } {
+  const add = new Map<string, string>()
+  const remove = new Map<string, string>()
+
+  for (const rule of input.rules) {
+    if (!labelRuleMatches(rule, input.result)) continue
+    for (const label of rule.add ?? []) addLabel(add, label)
+    for (const label of rule.remove ?? []) addLabel(remove, label)
+  }
+
+  for (const key of add.keys()) remove.delete(key)
+
+  const existing = new Set(
+    input.issueLabels.map((label) => label.toLowerCase()),
+  )
+
+  return {
+    add: [...add]
+      .filter(([key]) => !existing.has(key))
+      .map(([, label]) => label),
+    remove: [...remove]
+      .filter(([key]) => existing.has(key))
+      .map(([, label]) => label),
+  }
 }
 
 export function resolveIssueCategory(
@@ -648,6 +719,106 @@ async function runPhaseVote<T extends string>(input: {
   }
 }
 
+async function runSignalVote(input: {
+  context: string
+  input: TriageRunInput
+  outputDir: string
+}): Promise<string[]> {
+  const agents = input.input.repository.agents.triage
+  const signals = input.input.repository.triage?.signals ?? []
+  if (!agents?.length) throw new Error("triage.voters is required")
+  if (!signals.length) return []
+  await emitProgress(input.input, { phase: "signal", type: "phase" })
+
+  const signalIds = signals.map((signal) => signal.id)
+  const promptTexts = await Promise.all(
+    agents.map((agent) =>
+      composeTriageSignalPrompt({
+        context: input.context,
+        directory: input.input.directory,
+        issue: input.input.issue,
+        repository: input.input.repository,
+        voter: agent,
+      }),
+    ),
+  )
+  const outputs = await Promise.all(
+    agents.map(async (agent, index) => {
+      const prompt = promptTexts[index]
+      await emitProgress(input.input, {
+        phase: "signal",
+        type: "triage_agent_started",
+        voter: agent.key,
+      })
+      const result = await runModelWithRepair<TriageSignalOutput>({
+        client: input.input.client,
+        model: agent.model,
+        onProgress: (progress) =>
+          emitTriageModelProgress({
+            phase: "signal",
+            progress,
+            run: input.input,
+            voter: agent.key,
+          }),
+        options: agent.options,
+        parentSessionId: input.input.parentSessionId,
+        parse: (text) => parseTriageSignalOutput(text, signalIds),
+        permission: agent.permission,
+        prompt,
+        repairAttempts: input.input.config.output?.repairAttempts ?? 3,
+        schemaName: "triage signal",
+        signal: input.input.signal,
+        title: `Magi triage signal #${input.input.issue} (${agent.key})`,
+      })
+      await emitProgress(input.input, {
+        phase: "signal",
+        sessionId: result.sessionId,
+        type: "triage_agent_completed",
+        voter: agent.key,
+        vote:
+          result.value.signals.map((signal) => signal.id).join(",") || "none",
+      })
+
+      return {
+        ...result.value,
+        promptText: prompt,
+        raw: result.raw,
+        sessionId: result.sessionId,
+        voter: agent.key,
+      }
+    }),
+  )
+  const threshold = majorityThreshold(outputs.length)
+  const counts = new Map<string, number>()
+
+  for (const output of outputs) {
+    for (const id of new Set(output.signals.map((signal) => signal.id))) {
+      counts.set(id, (counts.get(id) ?? 0) + 1)
+    }
+  }
+
+  const selected = signalIds.filter((id) => (counts.get(id) ?? 0) >= threshold)
+
+  await Promise.all(
+    outputs.map((output) => {
+      const base = join(input.outputDir, `${output.voter}.signal`)
+
+      return Promise.all([
+        writeFile(`${base}.prompt.txt`, `${output.promptText}\n`),
+        writeFile(`${base}.raw.txt`, `${output.raw}\n`),
+        writeJson(`${base}.json`, { signals: output.signals }),
+      ])
+    }),
+  )
+  await writeJson(join(input.outputDir, "signal-majority.json"), {
+    counts: Object.fromEntries(counts),
+    selected,
+    threshold,
+  })
+
+  return selected
+}
+
 async function relationshipScan(input: TriageRunInput, issue: IssueMeta) {
   const [comments, relatedPullRequests, duplicateCandidates] =
     await Promise.all([
@@ -752,34 +923,34 @@ export function eligibleMentionReplies(input: {
 function finalResultFromMarker(marker: TriageMarker): FinalResult {
   if (marker.disposition) {
     return {
-      askReason: marker.askReason,
       category: marker.category ?? null,
       disposition: marker.disposition,
+      signals: marker.signals,
     }
   }
 
   switch (marker.result) {
     case "BUG_ACCEPTED":
     case "RESOLVED_BY_MERGED_PR":
-      return { category: "bug", disposition: "accepted" }
+      return { category: "bug", disposition: "accepted", signals: [] }
     case "BUG_REJECTED":
-      return { category: "bug", disposition: "rejected" }
+      return { category: "bug", disposition: "rejected", signals: [] }
     case "FEATURE_ACCEPTED":
-      return { category: "feature", disposition: "accepted" }
+      return { category: "feature", disposition: "accepted", signals: [] }
     case "FEATURE_REJECTED":
-      return { category: "feature", disposition: "rejected" }
+      return { category: "feature", disposition: "rejected", signals: [] }
     case "ASK":
       return {
-        askReason: "acceptance_unclear",
         category: null,
-        disposition: "ask",
+        disposition: "needs_acceptance",
+        signals: [],
       }
     case "CLEAR_ONLY":
-      return { category: null, disposition: "clear_only" }
+      return { category: null, disposition: "already_handled", signals: [] }
     case "DUPLICATE":
-      return { category: null, disposition: "duplicate" }
+      return { category: null, disposition: "duplicate", signals: [] }
     default:
-      return { category: null, disposition: "failed" }
+      return { category: null, disposition: "failed", signals: [] }
   }
 }
 
@@ -791,7 +962,7 @@ function actionPlan(input: {
   result: FinalResult
   triage: NonNullable<ResolvedRepository["triage"]>
 }): ActionPlan {
-  if (input.result.disposition === "clear_only") {
+  if (input.result.disposition === "already_handled") {
     return {
       action: "CLEAR_ONLY",
       allowedActions: ["CLEAR_ONLY"],
@@ -801,11 +972,14 @@ function actionPlan(input: {
       postComment: false,
     }
   }
-  if (input.result.disposition === "ask") {
+  if (
+    input.result.disposition === "needs_category" ||
+    input.result.disposition === "needs_acceptance"
+  ) {
     return {
       action: "ASK",
       allowedActions: ["ASK"],
-      clearLabels: false,
+      clearLabels: true,
       closeIssue: false,
       createPr: false,
       postComment: true,
@@ -815,6 +989,7 @@ function actionPlan(input: {
   const closeIssue =
     input.triage.automation.close &&
     (input.result.disposition === "rejected" ||
+      input.result.disposition === "invalid" ||
       input.result.disposition === "duplicate")
   const createPr =
     input.triage.automation.create && input.result.disposition === "accepted"
@@ -837,9 +1012,14 @@ function previousAutomationPlan(input: {
   triage: NonNullable<ResolvedRepository["triage"]>
 }): ActionPlan | undefined {
   const base = actionPlan({ result: input.result, triage: input.triage })
+  const labelChanges = triageLabelChanges({
+    issueLabels: input.issue.labels,
+    result: input.result,
+    rules: input.triage.automation.label,
+  })
   const clearLabels =
     base.clearLabels &&
-    existingClearLabels(input.issue, input.triage.automation.clear).length > 0
+    (labelChanges.add.length > 0 || labelChanges.remove.length > 0)
   const closeIssue =
     input.marker.action === "CLOSE" &&
     base.closeIssue &&
@@ -981,6 +1161,9 @@ function decisionCommentFallback(input: {
   }
   if (input.result.disposition === "duplicate") {
     return "Magi marked this issue as a duplicate."
+  }
+  if (input.result.disposition === "invalid") {
+    return "Magi marked this issue as invalid or not actionable."
   }
 
   return "Magi completed triage for this issue."
@@ -1216,7 +1399,9 @@ async function finishWithResult(input: {
   let prUrl: string | undefined
   const reporter = triageReporter(input.input.repository, input.issue.number)
   const comment =
-    plan.postComment && input.result.disposition !== "ask"
+    plan.postComment &&
+    input.result.disposition !== "needs_category" &&
+    input.result.disposition !== "needs_acceptance"
       ? `${decisionCommentBody({
           action: plan.action,
           reason: input.commentReason,
@@ -1234,7 +1419,22 @@ async function finishWithResult(input: {
     await writeFile(join(input.outputDir, "comment.md"), `${comment}\n`)
   }
 
-  if (input.result.disposition === "ask" && input.askOutputs) {
+  const labelChanges = plan.clearLabels
+    ? triageLabelChanges({
+        issueLabels: input.issue.labels,
+        result: input.result,
+        rules: triage.automation.label,
+      })
+    : { add: [], remove: [] }
+  if (plan.clearLabels) {
+    await writeJson(join(input.outputDir, "label-changes.json"), labelChanges)
+  }
+
+  if (
+    (input.result.disposition === "needs_category" ||
+      input.result.disposition === "needs_acceptance") &&
+    input.askOutputs
+  ) {
     await postAskComments({
       action: plan.action,
       dryRun: input.input.dryRun,
@@ -1267,17 +1467,21 @@ async function finishWithResult(input: {
       })
     }
     if (plan.clearLabels) {
-      const clearLabels = existingClearLabels(
-        input.issue,
-        triage.automation.clear,
-      )
-
-      if (clearLabels.length) {
+      if (labelChanges.remove.length) {
         await removeIssueLabels(
           input.input.exec,
           input.input.repository,
           input.issue.number,
-          clearLabels,
+          labelChanges.remove,
+          reporter.account,
+        )
+      }
+      if (labelChanges.add.length) {
+        await addIssueLabels(
+          input.input.exec,
+          input.input.repository,
+          input.issue.number,
+          labelChanges.add,
           reporter.account,
         )
       }
@@ -1551,7 +1755,7 @@ export async function runTriage(
       issue: input.issue,
       outputDir,
       report,
-      result: { category: null, disposition: "failed" },
+      result: { category: null, disposition: "blocked", signals: [] },
     }
   }
 
@@ -1645,10 +1849,7 @@ export async function runTriage(
     })
     await writeFile(join(outputDir, "context.md"), `${context}\n`)
     const previous = finalResultFromMarker(relationship.previousMarker)
-    if (
-      previous.disposition !== "ask" ||
-      previous.askReason !== "acceptance_unclear"
-    ) {
+    if (previous.disposition !== "needs_acceptance") {
       const reconsideration = await runReconsiderationVote({
         context,
         input,
@@ -1657,15 +1858,23 @@ export async function runTriage(
       commentReason = reconsideration.reason
       result =
         reconsideration.vote === "YES"
-          ? { category: previous.category, disposition: "accepted" }
+          ? {
+              category: previous.category,
+              disposition: "accepted",
+              signals: [],
+            }
           : reconsideration.vote === "NO"
-            ? { category: previous.category, disposition: "rejected" }
-            : {
-                askReason: "acceptance_unclear",
+            ? {
                 category: previous.category,
-                disposition: "ask",
+                disposition: "rejected",
+                signals: [],
               }
-      if (result.disposition === "ask") {
+            : {
+                category: previous.category,
+                disposition: "needs_acceptance",
+                signals: [],
+              }
+      if (result.disposition === "needs_acceptance") {
         askCommentOutputs = askOutputs(reconsideration.outputs)
         markAskComments = true
       }
@@ -1691,6 +1900,7 @@ export async function runTriage(
         const relatedPrDecision: TriageDecision = {
           category: resolveIssueCategory(issue, input.repository) ?? null,
           disposition: "accepted",
+          signals: [],
         }
         const plan: ActionPlan = {
           action: "CLOSE",
@@ -1720,7 +1930,7 @@ export async function runTriage(
         outputDir,
         processed,
         relationship,
-        result: { category: null, disposition: "clear_only" },
+        result: { category: null, disposition: "already_handled", signals: [] },
         runId,
       })
     }
@@ -1738,7 +1948,7 @@ export async function runTriage(
     if (duplicate) {
       context = `${context}\n\nDuplicate decision: ${JSON.stringify(duplicate)}`
       commentReason = duplicate.reason
-      result = { category: null, disposition: "duplicate" }
+      result = { category: null, disposition: "duplicate", signals: [] }
     }
   }
 
@@ -1768,9 +1978,9 @@ export async function runTriage(
 
     if (category === "ASK") {
       result = {
-        askReason: "category_unclear",
         category: null,
-        disposition: "ask",
+        disposition: "needs_category",
+        signals: [],
       }
       askCommentOutputs = askOutputs(categoryVote?.outputs)
       markAskComments = false
@@ -1794,23 +2004,42 @@ export async function runTriage(
         phase: "acceptance",
         prompt: composeTriageAcceptancePrompt,
         schemaName: "triage acceptance",
-        votes: BINARY_VOTES,
+        votes: ACCEPTANCE_VOTES,
       })
       commentReason = acceptance.reason
       result =
         acceptance.vote === "YES"
-          ? { category, disposition: "accepted" }
+          ? { category, disposition: "accepted", signals: [] }
           : acceptance.vote === "NO"
-            ? { category, disposition: "rejected" }
-            : {
-                askReason: "acceptance_unclear",
-                category,
-                disposition: "ask",
-              }
-      if (result.disposition === "ask") {
+            ? { category, disposition: "rejected", signals: [] }
+            : acceptance.vote === "INVALID"
+              ? { category, disposition: "invalid", signals: [] }
+              : {
+                  category,
+                  disposition: "needs_acceptance",
+                  signals: [],
+                }
+      if (result.disposition === "needs_acceptance") {
         askCommentOutputs = askOutputs(acceptance.outputs)
         markAskComments = true
       }
+    }
+  }
+
+  if (
+    result &&
+    result.disposition !== "blocked" &&
+    result.disposition !== "failed" &&
+    triage.signals.length
+  ) {
+    const signalContext = `${context}\n\nFinal triage result: ${JSON.stringify(result)}`
+    result = {
+      ...result,
+      signals: await runSignalVote({
+        context: signalContext,
+        input,
+        outputDir,
+      }),
     }
   }
 
@@ -1825,9 +2054,9 @@ export async function runTriage(
     processed,
     relationship,
     result: result ?? {
-      askReason: "acceptance_unclear",
       category: null,
-      disposition: "ask",
+      disposition: "needs_acceptance",
+      signals: [],
     },
     runId,
   })

@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, test, vi } from "vitest"
+import { DEFAULT_TRIAGE_LABEL_RULES } from "../config/resolve"
 
 const runReviewMock = vi.hoisted(() => vi.fn())
 const runMergeMock = vi.hoisted(() => vi.fn())
@@ -187,6 +188,7 @@ describe("MagiRunManager notifications", () => {
           blockedLabels: [],
           requiredLabels: [],
         },
+        signals: [],
       },
     }
   }
@@ -282,7 +284,7 @@ describe("MagiRunManager notifications", () => {
       issue: 115,
       outputDir: join(directory, "triage"),
       report: "Triage report",
-      result: { category: "feature", disposition: "accepted" },
+      result: { category: "feature", disposition: "accepted", signals: [] },
     })
 
     try {
@@ -291,9 +293,9 @@ describe("MagiRunManager notifications", () => {
         issue: 115,
         parentSessionId: "parent-session",
         repository: sampleTriageRepository({
-          clear: ["triage"],
           close: false,
           create: false,
+          label: DEFAULT_TRIAGE_LABEL_RULES,
           merge: false,
           review: false,
         }),
@@ -302,7 +304,11 @@ describe("MagiRunManager notifications", () => {
 
       expect(state.status).toBe("completed")
       expect(state.phase).toBe(
-        JSON.stringify({ category: "feature", disposition: "accepted" }),
+        JSON.stringify({
+          category: "feature",
+          disposition: "accepted",
+          signals: [],
+        }),
       )
       expect(runTriageMock).toHaveBeenCalledWith(
         expect.objectContaining({ parentSessionId: "parent-session" }),
@@ -462,9 +468,9 @@ describe("MagiRunManager notifications", () => {
     const directory = await mkdtemp(join(tmpdir(), "magi-triage-queue-"))
     const { manager } = managerWithPromptCapture(directory)
     const repository = sampleTriageRepository({
-      clear: ["triage"],
       close: false,
       create: false,
+      label: DEFAULT_TRIAGE_LABEL_RULES,
       merge: false,
       review: false,
     })
@@ -520,9 +526,9 @@ describe("MagiRunManager notifications", () => {
     const directory = await mkdtemp(join(tmpdir(), "magi-triage-cancel-"))
     const { manager } = managerWithPromptCapture(directory)
     const repository = sampleTriageRepository({
-      clear: ["triage"],
       close: false,
       create: false,
+      label: DEFAULT_TRIAGE_LABEL_RULES,
       merge: false,
       review: false,
     })
@@ -710,9 +716,9 @@ describe("MagiRunManager notifications", () => {
     const directory = await mkdtemp(join(tmpdir(), "magi-sync-triage-timeout-"))
     const { actions, manager } = managerWithPromptCapture(directory)
     const repository = sampleTriageRepository({
-      clear: ["triage"],
       close: false,
       create: true,
+      label: DEFAULT_TRIAGE_LABEL_RULES,
       merge: false,
       review: false,
     })
@@ -893,9 +899,9 @@ describe("MagiRunManager notifications", () => {
 
   test("starts review automation after triage creates a PR", async () => {
     const { startMerge, startReview } = await executeTriageWithAutomation({
-      clear: ["triage"],
       close: false,
       create: true,
+      label: DEFAULT_TRIAGE_LABEL_RULES,
       merge: false,
       review: true,
     })
@@ -912,9 +918,9 @@ describe("MagiRunManager notifications", () => {
 
   test("starts only merge automation when both triage follow-ups are enabled", async () => {
     const { startMerge, startReview } = await executeTriageWithAutomation({
-      clear: ["triage"],
       close: false,
       create: true,
+      label: DEFAULT_TRIAGE_LABEL_RULES,
       merge: true,
       review: true,
     })
@@ -932,9 +938,9 @@ describe("MagiRunManager notifications", () => {
   test("runs triage follow-up review synchronously when requested", async () => {
     const { startMerge, startReview } = await executeTriageWithAutomation(
       {
-        clear: ["triage"],
         close: false,
         create: true,
+        label: DEFAULT_TRIAGE_LABEL_RULES,
         merge: false,
         review: true,
       },
@@ -950,9 +956,9 @@ describe("MagiRunManager notifications", () => {
   test("runs triage follow-up merge synchronously when requested", async () => {
     const { startMerge, startReview } = await executeTriageWithAutomation(
       {
-        clear: ["triage"],
         close: false,
         create: true,
+        label: DEFAULT_TRIAGE_LABEL_RULES,
         merge: true,
         review: true,
       },

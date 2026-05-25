@@ -369,6 +369,71 @@ describe("validateConfig", () => {
     expect(result.errors).toContain("triage.automation.pr is not supported")
   })
 
+  test("validates triage label automation rules", async () => {
+    const valid = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: {
+          voters: triageVoters,
+          automation: {
+            label: [
+              {
+                add: ["good first issue"],
+                remove: ["triage"],
+                when: {
+                  category: "bug",
+                  disposition: "accepted",
+                  signals: ["good_first_issue"],
+                },
+              },
+            ],
+          },
+          signals: [
+            {
+              description: "Small, well-scoped issue.",
+              id: "good_first_issue",
+            },
+          ],
+        },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+    const emptyWhen = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: {
+          voters: triageVoters,
+          automation: { label: [{ when: {} }] },
+        },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+
+    expect(valid).toMatchObject({ errors: [], ok: true })
+    expect(emptyWhen.ok).toBe(false)
+    expect(emptyWhen.errors).toContain(
+      "triage.automation.label[0].when must not be empty",
+    )
+  })
+
+  test("rejects old triage label clear automation key", async () => {
+    const result = await validateConfig(
+      {
+        github: { owner: "owner", repo: "repo" },
+        triage: {
+          voters: triageVoters,
+          automation: { clear: ["triage"] } as unknown as NonNullable<
+            MagiConfig["triage"]
+          >["automation"],
+        },
+      },
+      { requireReview: false, requireTriage: true },
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain("triage.automation.clear is not supported")
+  })
+
   test("rejects old triage PR creation prompt key", async () => {
     const result = await validateConfig(
       {

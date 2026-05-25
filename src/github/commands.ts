@@ -1027,6 +1027,27 @@ export async function assignIssue(
   )
 }
 
+export async function addIssueLabels(
+  exec: Exec,
+  repository: ResolvedRepository,
+  issue: number,
+  labels: string[],
+  account: string,
+): Promise<string[]> {
+  const token = await ghToken(exec, repository, account)
+  const added: string[] = []
+
+  for (const label of labels) {
+    await exec(
+      `gh issue edit ${issue} --repo ${shellQuote(repoSpecifier(repository))} --add-label ${shellQuote(label)}`,
+      ghTokenEnv(token),
+    )
+    added.push(label)
+  }
+
+  return added
+}
+
 export async function removeIssueLabels(
   exec: Exec,
   repository: ResolvedRepository,

@@ -1,6 +1,11 @@
 import type { MagiConfig } from "../types"
 import { describe, expect, test } from "vitest"
-import { resolveRepository, reviewerKey, triageAgentKey } from "./resolve"
+import {
+  DEFAULT_TRIAGE_LABEL_RULES,
+  resolveRepository,
+  reviewerKey,
+  triageAgentKey,
+} from "./resolve"
 
 const config: MagiConfig = {
   agents: {},
@@ -90,12 +95,48 @@ describe("resolveRepository", () => {
       },
     ])
     expect(repo.triage?.automation).toEqual({
-      clear: ["triage"],
       close: false,
       create: false,
+      label: DEFAULT_TRIAGE_LABEL_RULES,
       merge: false,
       review: false,
     })
+    expect(repo.triage?.signals).toEqual([])
+  })
+
+  test("resolves custom triage label rules and disabled label automation", () => {
+    const custom = [
+      {
+        add: ["good first issue"],
+        when: {
+          disposition: "accepted" as const,
+          signals: ["good_first_issue"],
+        },
+      },
+    ]
+    const repo = resolveRepository({
+      github: { owner: "owner", repo: "repo" },
+      triage: {
+        voters: [],
+        automation: { label: custom },
+        signals: [
+          {
+            description: "Small, well-scoped issue.",
+            id: "good_first_issue",
+          },
+        ],
+      },
+    })
+    const disabled = resolveRepository({
+      github: { owner: "owner", repo: "repo" },
+      triage: { voters: [], automation: { label: [] } },
+    })
+
+    expect(repo.triage?.automation.label).toEqual(custom)
+    expect(repo.triage?.signals).toEqual([
+      { description: "Small, well-scoped issue.", id: "good_first_issue" },
+    ])
+    expect(disabled.triage?.automation.label).toEqual([])
   })
 
   test("resolves triage review and merge automation", () => {
