@@ -630,6 +630,12 @@ describe("triage", () => {
 
     expect(result.result.result).toEqual(decision(null, "blocked"))
     expect(result.result.report).toContain("missing required labels: triage")
+    expect(
+      result.commands.filter(
+        (command) =>
+          command.includes("--add-label") || command.includes("--remove-label"),
+      ),
+    ).toEqual([])
     expect(result.sessionTitles).toEqual([])
   })
 
