@@ -7,7 +7,10 @@ export interface ModelCandidateConfig {
   options?: ModelOptions
 }
 
-export type ModelConfig = string | (string | ModelCandidateConfig)[]
+export type ModelConfig =
+  | string
+  | ModelCandidateConfig
+  | (string | ModelCandidateConfig)[]
 
 export type PermissionAction = "allow" | "ask" | "deny"
 
