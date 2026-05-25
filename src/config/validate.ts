@@ -614,6 +614,7 @@ function validateTriageAgentList(
   path: string,
   errors: string[],
   catalog?: ModelCatalog,
+  mode: "multi" | "single" = "single",
 ): void {
   if (voters == null) return
   if (!Array.isArray(voters)) {
@@ -639,7 +640,10 @@ function validateTriageAgentList(
       errors,
       catalog,
     )
-    if (!agent.account) errors.push(`${path}[${index}].account is required`)
+    if (mode === "multi" && !agent.account)
+      errors.push(`${path}[${index}].account is required`)
+    if (mode === "single" && agent.account)
+      errors.push(`${path}[${index}].account is not supported in single mode`)
     validateString(agent.account, `${path}[${index}].account`, errors)
     validateString(agent.persona, `${path}[${index}].persona`, errors)
     validatePermissionConfig(
@@ -701,6 +705,7 @@ function validateResolvedTriageAgents(
   agents: { account: string; key: string }[],
   path: string,
   errors: string[],
+  mode: "multi" | "single" = "single",
 ): void {
   const keys = new Set<string>()
   const accounts = new Set<string>()
@@ -710,7 +715,7 @@ function validateResolvedTriageAgents(
       errors.push(`${path} has duplicate agent key: ${agent.key}`)
     keys.add(agent.key)
 
-    if (accounts.has(agent.account))
+    if (mode === "multi" && accounts.has(agent.account))
       errors.push(`${path} has duplicate agent account: ${agent.account}`)
     accounts.add(agent.account)
   }
@@ -766,6 +771,7 @@ function validateTriageCreator(
   path: string,
   errors: string[],
   catalog?: ModelCatalog,
+  mode: "multi" | "single" = "single",
 ): void {
   if (!creator) return
   if (!isPlainObject(creator)) {
@@ -775,6 +781,8 @@ function validateTriageCreator(
 
   validateKnownKeys(creator, path, TRIAGE_CREATOR_KEYS, errors)
   if (!creator.model) errors.push(`${path}.model is required`)
+  if (mode === "single" && creator.account)
+    errors.push(`${path}.account is not supported in single mode`)
   validateString(creator.account, `${path}.account`, errors)
   validateAndNormalizeModel(
     creator as ModelTarget,
@@ -1172,6 +1180,7 @@ function validateTriage(
   options: ValidationOptions,
 ): void {
   const triage = config.triage
+  const mode = reviewMode(config)
   if (!triage) return
   if (!isPlainObject(triage)) {
     errors.push("triage must be an object")
@@ -1192,6 +1201,7 @@ function validateTriage(
     "triage.voters",
     errors,
     options.modelCatalog,
+    mode,
   )
   if (Array.isArray(triage.voters)) {
     const resolvedTriageAgents = triage.voters.map((agent, index) => ({
@@ -1206,21 +1216,32 @@ function validateTriage(
       resolvedTriageAgents,
       "triage.resolvedAgents",
       errors,
+      mode,
     )
     if (
+      mode === "multi" &&
       reporter != null &&
       !resolvedTriageAgents.some((agent) => agent.key === reporter)
     ) {
       errors.push(`triage.reporter must match a triage voter key: ${reporter}`)
     }
   }
+  if (mode === "single" && reporter != null) {
+    errors.push("triage.reporter is not supported in single mode")
+  }
   validateString(triage.reporter, "triage.reporter", errors)
-  validateTriageCreator(creator, "triage.creator", errors, options.modelCatalog)
+  validateTriageCreator(
+    creator,
+    "triage.creator",
+    errors,
+    options.modelCatalog,
+    mode,
+  )
   if (automation?.create && !creator)
     errors.push(
       "triage.creator is required when triage.automation.create is true",
     )
-  if (automation?.create && creator && !creator.account)
+  if (mode === "multi" && automation?.create && creator && !creator.account)
     errors.push(
       "triage.creator.account is required when triage.automation.create is true",
     )
@@ -1549,6 +1570,8 @@ export async function validateConfig(
   validateString(config.account, "account", errors)
   validateString(config.language, "language", errors)
 
+  if (config.review || config.triage) validateReviewIdentity(config, errors)
+
   if (config.agents != null && !isPlainObject(config.agents)) {
     errors.push("agents must be an object")
   } else {
@@ -1570,7 +1593,6 @@ export async function validateConfig(
     } else {
       validateKnownKeys(config.review, "review", REVIEW_KEYS, errors)
     }
-    validateReviewIdentity(config, errors)
     if (!config.review.reviewers) errors.push("review.reviewers is required")
     validateReviewerList(
       config.review.reviewers as ReviewerConfig[] | undefined,

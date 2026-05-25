@@ -97,6 +97,32 @@ describe("resolveRepository", () => {
     ])
   })
 
+  test("resolves single mode triage accounts from the top-level account", () => {
+    const repo = resolveRepository({
+      account: "magi-bot",
+      github: { owner: "owner", repo: "repo" },
+      mode: "single",
+      triage: {
+        voters: [
+          { id: "product", model: "openai/gpt" },
+          { id: "maintainer", model: "openai/gpt" },
+          { id: "support", model: "openai/gpt" },
+        ],
+        creator: {
+          author: { email: "magi@example.com", name: "Magi Bot" },
+          model: "openai/gpt",
+        },
+      },
+    })
+
+    expect(repo.agents.triage?.map((agent) => agent.account)).toEqual([
+      "magi-bot",
+      "magi-bot",
+      "magi-bot",
+    ])
+    expect(repo.agents.triageCreator?.account).toBe("magi-bot")
+  })
+
   test("resolves default triage categories", () => {
     const repo = resolveRepository({
       github: { owner: "owner", repo: "repo" },

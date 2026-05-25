@@ -15,7 +15,10 @@ import type {
   TriageDuplicateOutput,
 } from "../types"
 import type { ModelClient } from "./model"
-import { DEFAULT_TRIAGE_LABEL_RULES } from "../config/resolve"
+import {
+  DEFAULT_TRIAGE_LABEL_RULES,
+  resolveRepository,
+} from "../config/resolve"
 import {
   chooseDuplicateOutput,
   eligibleMentionReplies,
@@ -422,6 +425,26 @@ function withSingleTriageAgent(
       ...agents,
     },
   }
+}
+
+function singleModeTriageRepository(): ResolvedRepository {
+  return resolveRepository({
+    account: "magi-bot",
+    github: { owner: "owner", repo: "repo" },
+    mode: "single",
+    triage: {
+      voters: [
+        { id: "product", model: "mock/model" },
+        { id: "maintainer", model: "mock/model" },
+        { id: "support", model: "mock/model" },
+      ],
+      automation: { create: true },
+      creator: {
+        author: { email: "magi@example.com", name: "Magi Bot" },
+        model: "mock/model",
+      },
+    },
+  })
 }
 
 describe("triage", () => {
@@ -928,6 +951,74 @@ describe("triage", () => {
         },
       ]),
     )
+  })
+
+  test("uses the top-level account for single mode triage PR mutations", async () => {
+    const result = await runScenario({
+      dryRun: false,
+      issue: issue({ type: "Feature" }),
+      outputs: [
+        vote("YES"),
+        vote("YES"),
+        vote("YES"),
+        JSON.stringify({
+          commitMessage: "fix: address issue #1",
+          commitSha: "abcdef1234567890",
+          filesTouched: ["src/app.ts"],
+          mode: "EDITED",
+          pullRequest: {
+            body: "Closes #1",
+            title: "fix: address issue #1",
+          },
+          responses: [],
+        }),
+      ],
+      repository: singleModeTriageRepository(),
+    })
+
+    expect(result.result.result).toEqual(decision("feature", "accepted"))
+    expect(
+      result.commands.filter((command) => command.startsWith("gh auth token")),
+    ).toEqual(expect.arrayContaining([expect.stringContaining("'magi-bot'")]))
+    expect(
+      result.commands
+        .filter((command) => command.startsWith("gh auth token"))
+        .every((command) => command.includes("'magi-bot'")),
+    ).toBe(true)
+    expect(
+      result.commands.some((command) =>
+        command.includes("--add-assignee 'magi-bot'"),
+      ),
+    ).toBe(true)
+    expect(
+      result.commands.some((command) =>
+        command.includes("--remove-label 'triage'"),
+      ),
+    ).toBe(true)
+    expect(
+      result.commands.some((command) => command.startsWith("git push")),
+    ).toBe(true)
+    expect(
+      result.commands.some((command) => command.startsWith("gh pr create")),
+    ).toBe(true)
+  })
+
+  test("uses the top-level account for single mode ASK comments", async () => {
+    const result = await runScenario({
+      dryRun: false,
+      issue: issue({ type: undefined }),
+      outputs: [vote("ASK"), vote("ASK"), vote("bug")],
+      repository: singleModeTriageRepository(),
+    })
+
+    expect(result.result.result).toEqual(decision(null, "needs_category"))
+    expect(
+      result.commands.filter((command) => command.startsWith("gh auth token")),
+    ).toEqual([
+      expect.stringContaining("'magi-bot'"),
+      expect.stringContaining("'magi-bot'"),
+      expect.stringContaining("'magi-bot'"),
+    ])
   })
 
   test("honors configured repair attempts for triage PR creation", async () => {

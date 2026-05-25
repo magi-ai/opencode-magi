@@ -52,7 +52,7 @@ export interface EditorConfig {
 }
 
 export interface TriageAgentConfig {
-  account: string
+  account?: string
   id?: string
   model: ModelConfig
   permissions?: PermissionConfig
@@ -312,8 +312,9 @@ export interface ResolvedEditor extends Omit<
 
 export interface ResolvedTriageAgent extends Omit<
   TriageAgentConfig,
-  "model" | "options" | "permissions"
+  "account" | "model" | "options" | "permissions"
 > {
+  account: string
   index: number
   key: string
   model: string
