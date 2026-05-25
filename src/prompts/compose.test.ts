@@ -110,6 +110,8 @@ describe("prompt composer", () => {
       baseSha: "base",
       directory: dir,
       headSha: "head",
+      mergeConflictContext:
+        "<conflict_file>\npath: src/app.ts\nsuggestedLine: 2\n</conflict_file>",
       pr: 1,
       repository,
       reviewContext:
@@ -124,10 +126,16 @@ describe("prompt composer", () => {
     expect(prompt).toContain(
       "<pull_request_context>\nnumber: 1\n</pull_request_context>",
     )
+    expect(prompt).toContain(
+      "<merge_conflict_context>\n<conflict_file>\npath: src/app.ts\nsuggestedLine: 2\n</conflict_file>\n</merge_conflict_context>",
+    )
     expect(prompt.indexOf("Custom review for #1")).toBeLessThan(
       prompt.indexOf("<pull_request_context>"),
     )
     expect(prompt.indexOf("<pull_request_context>")).toBeLessThan(
+      prompt.indexOf("<merge_conflict_context>"),
+    )
+    expect(prompt.indexOf("<merge_conflict_context>")).toBeLessThan(
       prompt.indexOf("<output_contract>"),
     )
     const optionalSessionSections = [
@@ -161,6 +169,8 @@ describe("prompt composer", () => {
       baseSha: "base",
       directory: dir,
       headSha: "head",
+      mergeConflictContext:
+        "<conflict_file>\npath: src/app.ts\nsuggestedLine: 2\n</conflict_file>",
       pr: 1,
       previousHeadSha: "old",
       previousReview: "Previously requested changes for tests.",
@@ -173,6 +183,9 @@ describe("prompt composer", () => {
 
     expect(rereviewPrompt).toContain(
       "<closing_issues>\n(none)\n</closing_issues>",
+    )
+    expect(rereviewPrompt).toContain(
+      "<merge_conflict_context>\n<conflict_file>\npath: src/app.ts\nsuggestedLine: 2\n</conflict_file>\n</merge_conflict_context>",
     )
     expect(rereviewPrompt).toContain(
       "<previous_review>\nPreviously requested changes for tests.\n</previous_review>",

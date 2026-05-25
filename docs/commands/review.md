@@ -49,15 +49,16 @@ It skips reviewer accounts that already reviewed the current effective head. If 
 8. Wait for required PR checks when `review.checks.wait` is enabled. Optional checks are ignored for review gating.
 9. If checks fail, remove checks matching `review.checks.exclude`, fetch failed job logs, classify each remaining failure as `SCOPE_IN` or `SCOPE_OUT`, rerun only `SCOPE_OUT` GitHub Actions jobs up to `review.checks.retryFailedJobs`, and pass `SCOPE_IN` failure context to reviewers. Dry runs skip the rerun and report it as a planned action.
 10. Create a detached git worktree under `review.worktree` and check out the PR branch.
-11. Run each non-skipped reviewer agent through the reviewer worker pool.
-12. Parse each reviewer response as the fixed review or re-review JSON schema.
-13. Validate each `CHANGES_REQUESTED` finding by asking the other reviewers to vote on it.
-14. Keep only findings that reach finding-level majority.
-15. Reconsider any minority `CLOSE` verdict before posting.
-16. Aggregate active reviewer verdicts plus skipped reviewer verdicts from existing GitHub review state by majority vote.
-17. Post each active reviewer result to GitHub with that reviewer's configured account, unless `--dry-run` is set.
-18. If configured, merge or close the PR according to `review.automation`.
-19. Remove the temporary worktree and recorded worktree branch.
+11. Detect merge conflicts between the PR head and base branch and pass conflicted files plus right-side PR diff line hints to reviewers when conflicts exist.
+12. Run each non-skipped reviewer agent through the reviewer worker pool.
+13. Parse each reviewer response as the fixed review or re-review JSON schema.
+14. Validate each `CHANGES_REQUESTED` finding by asking the other reviewers to vote on it.
+15. Keep only findings that reach finding-level majority.
+16. Reconsider any minority `CLOSE` verdict before posting.
+17. Aggregate active reviewer verdicts plus skipped reviewer verdicts from existing GitHub review state by majority vote.
+18. Post each active reviewer result to GitHub with that reviewer's configured account, unless `--dry-run` is set.
+19. If configured, merge or close the PR according to `review.automation`.
+20. Remove the temporary worktree and recorded worktree branch.
 
 Reviewer verdicts map to GitHub actions:
 
@@ -151,6 +152,8 @@ Each reviewer receives the diff from that reviewer's previous review commit to t
 Each `CHANGES_REQUESTED` finding is validated by the other reviewers. The finding author counts as one approval; with three reviewers, at least one of the other two reviewers must agree for the finding to remain.
 
 Every finding must target a valid right-side line in the PR diff. If the problem does not have an exact changed line, reviewers anchor it to the nearest changed line that represents the cause, responsibility, missing implementation, or affected behavior, such as missing validation, wiring, requirements, tests, documentation, configuration, or a relevant call site.
+
+When the PR conflicts with the base branch, reviewer prompts include `<merge_conflict_context>` with conflicted files, merge-tree excerpts, and `suggestedLine` values when a valid right-side PR diff line is available. Reviewers should request changes for unresolved conflicts that make the PR unsafe or impossible to merge.
 
 ### What GitHub data windows are fetched?
 

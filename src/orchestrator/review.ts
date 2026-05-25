@@ -433,6 +433,140 @@ export async function inlineCommentTargetsForDiff(input: {
   )
 }
 
+function firstTargetLine(
+  targets: InlineCommentTargets,
+  path: string,
+): number | undefined {
+  const lines = targets.get(path)
+
+  if (!lines?.size) return undefined
+
+  return [...lines].sort((a, b) => a - b)[0]
+}
+
+function mergeInlineCommentTargets(
+  left: InlineCommentTargets,
+  right: InlineCommentTargets,
+): InlineCommentTargets {
+  const merged = new Map<string, Set<number>>()
+
+  for (const [path, lines] of [...left, ...right]) {
+    const targetLines = merged.get(path) ?? new Set<number>()
+
+    for (const line of lines) targetLines.add(line)
+    merged.set(path, targetLines)
+  }
+
+  return merged
+}
+
+function targetLineSummary(
+  targets: InlineCommentTargets,
+  path: string,
+): string {
+  const lines = targets.get(path)
+
+  if (!lines?.size) return "(none)"
+
+  const sorted = [...lines].sort((a, b) => a - b)
+  const shown = sorted.slice(0, 12).join(", ")
+
+  return sorted.length > 12 ? `${shown}, ...` : shown
+}
+
+function indentedExcerpt(lines: string[]): string {
+  return lines
+    .slice(0, 24)
+    .map((line) => `  ${line}`)
+    .join("\n")
+}
+
+function parseMergeConflictSections(output: string): {
+  excerpt: string
+  path: string
+}[] {
+  const conflictHeaders = new Set([
+    "added in both",
+    "changed in both",
+    "removed in local",
+    "removed in remote",
+  ])
+  const sections: { lines: string[]; paths: Set<string> }[] = []
+  let current: { lines: string[]; paths: Set<string> } | undefined
+
+  for (const line of output.split("\n")) {
+    if (!line.trim()) continue
+
+    if (
+      !line.startsWith(" ") &&
+      !line.startsWith("+") &&
+      !line.startsWith("-") &&
+      !line.startsWith("@")
+    ) {
+      current = conflictHeaders.has(line)
+        ? { lines: [line], paths: new Set() }
+        : undefined
+      if (current) sections.push(current)
+      continue
+    }
+
+    if (!current) continue
+
+    current.lines.push(line)
+
+    const path = /^  (?:base|our|their)\s+\d+\s+[0-9a-f]+\s+(.+)$/.exec(
+      line,
+    )?.[1]
+    if (path) current.paths.add(path)
+  }
+
+  return sections.flatMap((section) =>
+    [...section.paths].map((path) => ({
+      excerpt: indentedExcerpt(section.lines),
+      path,
+    })),
+  )
+}
+
+export async function mergeConflictContextForDiff(input: {
+  baseSha: string
+  exec: Exec
+  headSha: string
+  inlineCommentTargets: InlineCommentTargets
+  worktreePath: string
+}): Promise<string> {
+  const mergeBase = (
+    await input.exec(
+      `git merge-base ${shellQuote(input.baseSha)} ${shellQuote(input.headSha)}`,
+      { cwd: input.worktreePath },
+    )
+  ).trim()
+  const output = await input.exec(
+    `git merge-tree ${shellQuote(mergeBase)} ${shellQuote(input.headSha)} ${shellQuote(input.baseSha)}`,
+    { cwd: input.worktreePath },
+  )
+  const conflicts = parseMergeConflictSections(output)
+
+  if (!conflicts.length) return ""
+
+  return [
+    "The PR currently has unresolved merge conflicts with the base branch.",
+    "Treat unresolved conflicts as review findings and request changes when they make the PR unsafe or impossible to merge.",
+    "Use suggestedLine when it is present; it is a valid right-side PR diff line for an inline finding.",
+    ...conflicts.map((conflict) => {
+      const suggestedLine = firstTargetLine(
+        input.inlineCommentTargets,
+        conflict.path,
+      )
+      const suggestedLineText = suggestedLine
+        ? `suggestedLine: ${suggestedLine}`
+        : "suggestedLine: (no right-side PR diff line found)"
+
+      return `<conflict_file>\npath: ${conflict.path}\n${suggestedLineText}\nrightSideDiffLines: ${targetLineSummary(input.inlineCommentTargets, conflict.path)}\nmergeTreeExcerpt:\n${conflict.excerpt}\n</conflict_file>`
+    }),
+  ].join("\n")
+}
+
 function parsePostedFindingLocation(
   location: string,
 ): Pick<Finding, "line" | "path" | "startLine"> | undefined {
@@ -1239,6 +1373,13 @@ export async function runReview(
       toSha: meta.headRefOid,
       worktreePath,
     })
+    const mergeConflictContext = await mergeConflictContextForDiff({
+      baseSha: meta.baseRefOid,
+      exec,
+      headSha: meta.headRefOid,
+      inlineCommentTargets: initialInlineCommentTargets,
+      worktreePath,
+    })
     for (const reviewer of input.repository.agents.reviewers) {
       const assignment = mode.assignments.get(reviewer.account)
       if (assignment?.type !== "skip") continue
@@ -1278,6 +1419,12 @@ export async function runReview(
             toSha: meta.headRefOid,
             worktreePath,
           })
+          const rereviewInlineCommentTargets = mergeConflictContext
+            ? mergeInlineCommentTargets(
+                inlineCommentTargets,
+                initialInlineCommentTargets,
+              )
+            : inlineCommentTargets
 
           const unresolved =
             unresolvedThreadsByAccount.get(reviewer.account) ??
@@ -1292,6 +1439,7 @@ export async function runReview(
             ciFailureContext,
             directory: input.directory,
             headSha: meta.headRefOid,
+            mergeConflictContext,
             pr: input.pr,
             previousReview: previousReviewText(previous),
             previousHeadSha: previous.commit.oid,
@@ -1336,7 +1484,7 @@ export async function runReview(
                 parse: (text) =>
                   parseRereviewOutputWithInlineTargets(
                     text,
-                    inlineCommentTargets,
+                    rereviewInlineCommentTargets,
                   ),
                 permission: reviewer.permission,
                 prompt,
@@ -1381,6 +1529,7 @@ export async function runReview(
           ciFailureContext,
           directory: input.directory,
           headSha: meta.headRefOid,
+          mergeConflictContext,
           pr: input.pr,
           repository: input.repository,
           reviewContext,
