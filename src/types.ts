@@ -211,10 +211,27 @@ export interface TriageCategoryConfig {
   types?: string[]
 }
 
+export interface TriageSignalConfig {
+  description: string
+  id: string
+}
+
+export interface TriageLabelRuleCondition {
+  category?: string
+  disposition?: TriageDisposition
+  signals?: string[]
+}
+
+export interface TriageLabelRuleConfig {
+  add?: string[]
+  remove?: string[]
+  when: TriageLabelRuleCondition
+}
+
 export interface TriageAutomationConfig {
-  clear?: string[]
   close?: boolean
   create?: boolean
+  label?: TriageLabelRuleConfig[]
   merge?: boolean
   review?: boolean
 }
@@ -236,6 +253,7 @@ export interface TriageConfig {
   prompts?: TriagePromptConfig
   reporter?: string
   safety?: TriageSafetyConfig
+  signals?: TriageSignalConfig[]
   voters?: TriageAgentConfig[]
   worktree?: string
 }
@@ -346,6 +364,7 @@ export interface ResolvedRepository extends RepositoryConfig {
     prompts: TriagePromptConfig
     reporter?: string
     safety: Required<TriageSafetyConfig>
+    signals: TriageSignalConfig[]
     worktree?: string
   }
 }
@@ -402,7 +421,7 @@ export interface FindingValidationOutput {
 }
 
 export type TriageCategoryVote = string
-export type TriageBinaryVote = "ASK" | "NO" | "YES"
+export type TriageBinaryVote = "ASK" | "INVALID" | "NO" | "YES"
 export type TriageDuplicateVote = "DUPLICATE" | "NOT_DUPLICATE"
 export type TriageExistingPrVote =
   | "RELATED_PR_DOES_NOT_HANDLE_ISSUE"
@@ -416,23 +435,32 @@ export type TriageCommentClassification =
 export type TriageAction = "ASK" | "CLEAR_ONLY" | "CLOSE" | "COMMENT" | "PR"
 export type TriageDisposition =
   | "accepted"
-  | "rejected"
-  | "ask"
+  | "already_handled"
+  | "blocked"
   | "duplicate"
-  | "clear_only"
   | "failed"
-export type TriageAskReason = "acceptance_unclear" | "category_unclear"
+  | "invalid"
+  | "needs_acceptance"
+  | "needs_category"
+  | "rejected"
 
 export interface TriageDecision {
-  askReason?: TriageAskReason
   category: string | null
   disposition: TriageDisposition
+  signals: string[]
 }
 
 export interface TriageVoteOutput<T extends string = string> {
   body?: string
   reason: string
   vote: T
+}
+
+export interface TriageSignalOutput {
+  signals: {
+    id: string
+    reason: string
+  }[]
 }
 
 export interface TriageDuplicateOutput extends TriageVoteOutput<TriageDuplicateVote> {

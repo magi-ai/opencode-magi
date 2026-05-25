@@ -10,7 +10,9 @@ import type {
   TriageCategoryConfig,
   TriageConcurrencyConfig,
   TriageCreatorConfig,
+  TriageLabelRuleConfig,
   TriageSafetyConfig,
+  TriageSignalConfig,
 } from "../types"
 import { Ajv2020 } from "ajv/dist/2020"
 import { constants } from "node:fs"
@@ -121,6 +123,7 @@ const TRIAGE_KEYS = new Set([
   "prompts",
   "reporter",
   "safety",
+  "signals",
   "voters",
   "worktree",
 ])
@@ -139,13 +142,19 @@ const CLEAR_KEYS = new Set(["branch", "output", "session", "worktree"])
 const CONCURRENCY_KEYS = new Set(["reviewers", "runs"])
 const OUTPUT_KEYS = new Set(["repairAttempts"])
 const TRIAGE_AUTOMATION_KEYS = new Set([
-  "clear",
   "close",
   "create",
+  "label",
   "merge",
   "review",
 ])
 const TRIAGE_CATEGORY_KEYS = new Set(["description", "id", "labels", "types"])
+const TRIAGE_LABEL_RULE_KEYS = new Set(["add", "remove", "when"])
+const TRIAGE_LABEL_RULE_WHEN_KEYS = new Set([
+  "category",
+  "disposition",
+  "signals",
+])
 const TRIAGE_CONCURRENCY_KEYS = new Set(["runs"])
 const TRIAGE_SAFETY_KEYS = new Set([
   "allowAuthors",
@@ -153,6 +162,18 @@ const TRIAGE_SAFETY_KEYS = new Set([
   "allowMentionRoles",
   "blockedLabels",
   "requiredLabels",
+])
+const TRIAGE_SIGNAL_KEYS = new Set(["description", "id"])
+const TRIAGE_DISPOSITIONS = new Set([
+  "accepted",
+  "rejected",
+  "invalid",
+  "duplicate",
+  "already_handled",
+  "needs_category",
+  "needs_acceptance",
+  "blocked",
+  "failed",
 ])
 const SAFETY_KEYS = new Set([
   "allowAuthors",
@@ -984,6 +1005,94 @@ function validateTriageCategories(
   })
 }
 
+function validateTriageSignals(
+  signals: unknown,
+  path: string,
+  errors: string[],
+): void {
+  if (signals == null) return
+  if (!Array.isArray(signals)) {
+    errors.push(`${path} must be an array`)
+    return
+  }
+
+  const ids = new Set<string>()
+  signals.forEach((item, index) => {
+    const itemPath = `${path}[${index}]`
+    if (!isPlainObject(item)) {
+      errors.push(`${itemPath} must be an object`)
+      return
+    }
+
+    const signal = item as unknown as TriageSignalConfig
+    validateKnownKeys(signal, itemPath, TRIAGE_SIGNAL_KEYS, errors)
+    if (!signal.id) {
+      errors.push(`${itemPath}.id is required`)
+    } else if (typeof signal.id !== "string") {
+      errors.push(`${itemPath}.id must be a string`)
+    } else if (!TRIAGE_CATEGORY_ID_PATTERN.test(signal.id)) {
+      errors.push(`${itemPath}.id must match /^[A-Za-z0-9_-]+$/`)
+    } else if (ids.has(signal.id)) {
+      errors.push(`${itemPath}.id must be unique`)
+    } else {
+      ids.add(signal.id)
+    }
+    if (!signal.description) {
+      errors.push(`${itemPath}.description is required`)
+    } else {
+      validateString(signal.description, `${itemPath}.description`, errors)
+    }
+  })
+}
+
+function validateTriageLabelRules(
+  rules: unknown,
+  path: string,
+  errors: string[],
+): void {
+  if (rules == null) return
+  if (!Array.isArray(rules)) {
+    errors.push(`${path} must be an array`)
+    return
+  }
+
+  rules.forEach((item, index) => {
+    const itemPath = `${path}[${index}]`
+    if (!isPlainObject(item)) {
+      errors.push(`${itemPath} must be an object`)
+      return
+    }
+
+    const rule = item as unknown as TriageLabelRuleConfig
+    validateKnownKeys(rule, itemPath, TRIAGE_LABEL_RULE_KEYS, errors)
+    validateStringArray(rule.add, `${itemPath}.add`, errors)
+    validateStringArray(rule.remove, `${itemPath}.remove`, errors)
+
+    if (!isPlainObject(rule.when)) {
+      errors.push(`${itemPath}.when must be an object`)
+      return
+    }
+    validateKnownKeys(
+      rule.when,
+      `${itemPath}.when`,
+      TRIAGE_LABEL_RULE_WHEN_KEYS,
+      errors,
+    )
+    if (!Object.keys(rule.when).length) {
+      errors.push(`${itemPath}.when must not be empty`)
+    }
+    if (
+      rule.when.disposition != null &&
+      (typeof rule.when.disposition !== "string" ||
+        !TRIAGE_DISPOSITIONS.has(rule.when.disposition))
+    ) {
+      errors.push(`${itemPath}.when.disposition must be a triage disposition`)
+    }
+    validateString(rule.when.category, `${itemPath}.when.category`, errors)
+    validateStringArray(rule.when.signals, `${itemPath}.when.signals`, errors)
+  })
+}
+
 function validateSafety(config: MagiConfig, errors: string[]): void {
   const safety = config.review?.safety
   if (safety != null && !isPlainObject(safety)) {
@@ -1108,7 +1217,7 @@ function validateTriage(
   validateBoolean(automation?.create, "triage.automation.create", errors)
   validateBoolean(automation?.merge, "triage.automation.merge", errors)
   validateBoolean(automation?.review, "triage.automation.review", errors)
-  validateStringArray(automation?.clear, "triage.automation.clear", errors)
+  validateTriageLabelRules(automation?.label, "triage.automation.label", errors)
   if (automation?.review && !automation.create) {
     errors.push(
       "triage.automation.review requires triage.automation.create to be true",
@@ -1136,6 +1245,7 @@ function validateTriage(
   }
 
   validateTriageCategories(triage.categories, "triage.categories", errors)
+  validateTriageSignals(triage.signals, "triage.signals", errors)
   validateKnownKeys(safety, "triage.safety", TRIAGE_SAFETY_KEYS, errors)
   validateStringArray(
     safety?.allowAuthors,

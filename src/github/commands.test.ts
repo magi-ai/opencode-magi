@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "vitest"
 import {
+  addIssueLabels,
   createWorktree,
   fetchIssue,
   fetchRelatedPullRequests,
@@ -92,6 +93,24 @@ describe("GitHub command helpers", () => {
     expect(ghHostOption(repository)).toBe("")
     expect(repoSpecifier(enterprise)).toBe("github.example.com/owner/repo")
     expect(ghHostOption(enterprise)).toBe(" --hostname 'github.example.com'")
+  })
+
+  test("adds issue labels with the reporter account token", async () => {
+    const commands: string[] = []
+    const exec: Exec = async (command) => {
+      commands.push(command)
+      if (command.startsWith("gh auth token")) return "token\n"
+
+      return ""
+    }
+
+    await addIssueLabels(exec, repository, 12, ["duplicate", "wontfix"], "bot")
+
+    expect(commands).toEqual([
+      "gh auth token --user 'bot'",
+      "gh issue edit 12 --repo 'owner/repo' --add-label 'duplicate'",
+      "gh issue edit 12 --repo 'owner/repo' --add-label 'wontfix'",
+    ])
   })
 
   test("fetches issues through GraphQL with issue type", async () => {

@@ -3,6 +3,7 @@ import { mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "vitest"
+import { DEFAULT_TRIAGE_LABEL_RULES } from "../config/resolve"
 import {
   composeCloseReconsiderationPrompt,
   composeCiClassificationAfterEditPrompt,
@@ -478,9 +479,9 @@ describe("prompt composer", () => {
       safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
       triage: {
         automation: {
-          clear: ["triage"],
           close: false,
           create: true,
+          label: DEFAULT_TRIAGE_LABEL_RULES,
           merge: false,
           review: false,
         },
@@ -504,6 +505,7 @@ describe("prompt composer", () => {
           blockedLabels: [],
           requiredLabels: ["triage"],
         },
+        signals: [],
       },
     }
 
@@ -562,9 +564,9 @@ describe("prompt composer", () => {
       safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
       triage: {
         automation: {
-          clear: [],
           close: false,
           create: false,
+          label: [],
           merge: false,
           review: false,
         },
@@ -578,6 +580,7 @@ describe("prompt composer", () => {
           blockedLabels: [],
           requiredLabels: [],
         },
+        signals: [],
       },
     }
 

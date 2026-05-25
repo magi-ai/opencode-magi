@@ -8,6 +8,7 @@ import type {
   ResolvedReviewer,
   ResolvedTriageCategory,
   ResolvedTriageAgent,
+  TriageLabelRuleConfig,
 } from "../types"
 import editorPermission from "../permissions/editor.json" with { type: "json" }
 import commonPermission from "../permissions/common.json" with { type: "json" }
@@ -39,6 +40,32 @@ const DEFAULT_TRIAGE_CATEGORIES: ResolvedTriageCategory[] = [
     labels: ["enhancement"],
     types: ["Feature"],
   },
+]
+
+export const DEFAULT_TRIAGE_LABEL_RULES: TriageLabelRuleConfig[] = [
+  { remove: ["triage"], when: { disposition: "accepted" } },
+  {
+    add: ["duplicate"],
+    remove: ["triage"],
+    when: { disposition: "duplicate" },
+  },
+  {
+    add: ["duplicate"],
+    remove: ["triage"],
+    when: { disposition: "already_handled" },
+  },
+  {
+    add: ["wontfix"],
+    remove: ["triage"],
+    when: { disposition: "rejected" },
+  },
+  {
+    add: ["invalid"],
+    remove: ["triage"],
+    when: { disposition: "invalid" },
+  },
+  { add: ["question"], when: { disposition: "needs_category" } },
+  { add: ["question"], when: { disposition: "needs_acceptance" } },
 ]
 
 export function reviewerKey(reviewer: { id?: string }, index: number): string {
@@ -265,9 +292,9 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
     },
     triage: {
       automation: {
-        clear: config.triage?.automation?.clear ?? ["triage"],
         close: config.triage?.automation?.close ?? false,
         create: config.triage?.automation?.create ?? false,
+        label: config.triage?.automation?.label ?? DEFAULT_TRIAGE_LABEL_RULES,
         merge: config.triage?.automation?.merge ?? false,
         review: config.triage?.automation?.review ?? false,
       },
@@ -290,6 +317,7 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
         blockedLabels: config.triage?.safety?.blockedLabels ?? [],
         requiredLabels: config.triage?.safety?.requiredLabels ?? ["triage"],
       },
+      signals: config.triage?.signals ?? [],
       worktree: config.triage?.worktree,
     },
   }

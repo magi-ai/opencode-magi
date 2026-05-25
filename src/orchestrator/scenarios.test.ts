@@ -14,6 +14,7 @@ import type {
 import type { Exec, ResolvedRepository } from "../types"
 import type { ApprovalPolicy } from "./majority"
 import type { ModelClient } from "./model"
+import { DEFAULT_TRIAGE_LABEL_RULES } from "../config/resolve"
 import { runMerge } from "./merge"
 import { runReview } from "./review"
 import { runTriage } from "./triage"
@@ -750,9 +751,9 @@ function triageRepository(
     prompts: {},
     ...rest,
     automation: {
-      clear: ["triage"],
       close: false,
       create: false,
+      label: DEFAULT_TRIAGE_LABEL_RULES,
       merge: false,
       review: false,
       ...automation,
@@ -765,6 +766,7 @@ function triageRepository(
       requiredLabels: ["triage"],
       ...safety,
     },
+    signals: [],
   } satisfies NonNullable<ResolvedRepository["triage"]>
 
   return {
@@ -1200,6 +1202,7 @@ describe("scenario: /magi:triage", () => {
     expect(result.result.result).toEqual({
       category: "bug",
       disposition: "accepted",
+      signals: [],
     })
     expect(
       result.sessionTitles.some((title) => title.includes("triage category")),
@@ -1222,6 +1225,7 @@ describe("scenario: /magi:triage", () => {
     expect(result.result.result).toEqual({
       category: "feature",
       disposition: "accepted",
+      signals: [],
     })
     expect(
       result.sessionTitles.filter((title) => title.includes("triage category")),
@@ -1241,6 +1245,7 @@ describe("scenario: /magi:triage", () => {
     expect(result.result.result).toEqual({
       category: null,
       disposition: "duplicate",
+      signals: [],
     })
     expect(
       result.sessionTitles.some((title) => title.includes("triage category")),
@@ -1268,7 +1273,8 @@ describe("scenario: /magi:triage", () => {
 
     expect(result.result.result).toEqual({
       category: null,
-      disposition: "clear_only",
+      disposition: "already_handled",
+      signals: [],
     })
     expect(
       result.sessionTitles.filter((title) =>
@@ -1302,6 +1308,7 @@ describe("scenario: /magi:triage", () => {
     expect(result.result.result).toEqual({
       category: null,
       disposition: "accepted",
+      signals: [],
     })
     expect(
       result.commands.some((command) => command.startsWith("gh issue close 1")),
@@ -1343,6 +1350,7 @@ describe("scenario: /magi:triage", () => {
     expect(result.result.result).toEqual({
       category: "feature",
       disposition: "rejected",
+      signals: [],
     })
     expect(commentBody).toContain("NO reason")
     expect(

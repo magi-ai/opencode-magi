@@ -268,6 +268,25 @@ The object must match this shape:
 }
 </output_contract>`.trim()
 
+export const triageSignalOutputContract = `
+<output_contract>
+Return exactly one JSON object and nothing else. Do not wrap it in markdown.
+
+The object must match this shape:
+{
+  "signals": [
+    {
+      "id": "configured_signal_id",
+      "reason": "Short rationale."
+    }
+  ]
+}
+
+Rules:
+- Return only configured signal IDs that apply.
+- Return an empty signals array when none apply.
+</output_contract>`.trim()
+
 const outputContractsBySchemaName: Record<string, string> = {
   "CI classification": ciClassificationOutputContract,
   "close reconsideration": closeReconsiderationOutputContract,
@@ -276,7 +295,9 @@ const outputContractsBySchemaName: Record<string, string> = {
   rereview: rereviewOutputContract,
   "rereview close reconsideration": rereviewCloseReconsiderationOutputContract,
   review: reviewOutputContract,
-  "triage acceptance": triageVoteOutputContract('"YES" | "NO" | "ASK"'),
+  "triage acceptance": triageVoteOutputContract(
+    '"YES" | "NO" | "INVALID" | "ASK"',
+  ),
   "triage category": triageVoteOutputContract(
     '"ASK" or one of the configured category IDs',
   ),
@@ -287,6 +308,7 @@ const outputContractsBySchemaName: Record<string, string> = {
     '"RELATED_PR_HANDLES_ISSUE" | "RELATED_PR_DOES_NOT_HANDLE_ISSUE"',
   ),
   "triage reconsider": triageVoteOutputContract('"YES" | "NO" | "ASK"'),
+  "triage signal": triageSignalOutputContract,
 }
 
 export function repairPrompt(schemaName: string): string {

@@ -18,6 +18,7 @@ import {
   triageCommentClassificationOutputContract,
   triageCreatePrOutputContract,
   triageDuplicateOutputContract,
+  triageSignalOutputContract,
   triageVoteOutputContract,
 } from "./contracts"
 
@@ -248,6 +249,9 @@ function triageValues(input: {
         : `- ${category.id}`,
     )
     .join("\n")
+  const signalOptions = (input.repository.triage?.signals ?? [])
+    .map((signal) => `- ${signal.id}: ${signal.description}`)
+    .join("\n")
 
   return {
     ...repositoryValues(input.repository),
@@ -255,6 +259,7 @@ function triageValues(input: {
     categoryOptions,
     context: input.context,
     issue: String(input.issue),
+    signalOptions,
     worktreePath: input.worktreePath ?? "",
   }
 }
@@ -705,7 +710,19 @@ export async function composeTriageAcceptancePrompt(
     ...input,
     builtin: "acceptance",
     customPath: input.repository.triage?.prompts.acceptance,
-    outputContract: triageVoteOutputContract('"YES" | "NO" | "ASK"'),
+    outputContract: triageVoteOutputContract(
+      '"YES" | "NO" | "INVALID" | "ASK"',
+    ),
+  })
+}
+
+export async function composeTriageSignalPrompt(
+  input: TriagePromptInput,
+): Promise<string> {
+  return composeTriageVotePrompt({
+    ...input,
+    builtin: "signal",
+    outputContract: triageSignalOutputContract,
   })
 }
 

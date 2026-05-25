@@ -13,6 +13,7 @@ import type {
   TriageDuplicateVote,
   TriageExistingPrVote,
   TriageCategoryVote,
+  TriageSignalOutput,
   TriageVoteOutput,
   Verdict,
 } from "../types"
@@ -172,7 +173,31 @@ export function parseTriageCategoryOutput(
 export function parseTriageBinaryOutput(
   text: string,
 ): TriageVoteOutput<TriageBinaryVote> {
-  return parseTriageVote(text, ["ASK", "NO", "YES"])
+  return parseTriageVote(text, ["ASK", "INVALID", "NO", "YES"])
+}
+
+export function parseTriageSignalOutput(
+  text: string,
+  signalIds: readonly string[],
+): TriageSignalOutput {
+  const data = extractJson(text) as Record<string, unknown>
+  if (!data || typeof data !== "object")
+    throw new Error("triage signal output must be an object")
+  const ids = new Set(signalIds)
+
+  return {
+    signals: requireArray(data.signals, "signals").map((item, index) => {
+      const value = item as Record<string, unknown>
+      const id = requireString(value.id, `signals[${index}].id`)
+      if (!ids.has(id))
+        throw new Error(`signals[${index}].id is not configured`)
+
+      return {
+        id,
+        reason: requireString(value.reason, `signals[${index}].reason`),
+      }
+    }),
+  }
 }
 
 export function parseTriageDuplicateOutput(
