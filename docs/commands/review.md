@@ -37,6 +37,8 @@ Review flags:
 
 In `multi` mode, it skips reviewer accounts that already reviewed the current effective head. In `single` mode, it uses hidden review markers posted by `review.account` to recover current logical reviewer verdicts. If a reviewer reviewed an older effective head, Magi runs that reviewer in re-review mode. If every configured reviewer already reviewed the current effective head, the command aborts instead of posting duplicate reviews.
 
+Single-mode consensus reviews include the logical reviewer verdicts plus visible close-reason or accepted-change-request summaries when the consensus is `CLOSE` or `CHANGES_REQUESTED`. Hidden finding markers on unresolved review threads route re-review context back to the logical reviewer that raised the finding.
+
 ## Flow
 
 1. Fetch PR metadata with `gh pr view`.
