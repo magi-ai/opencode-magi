@@ -471,7 +471,7 @@ async function runRereview(
     worktreePath,
   })
   const artifactDir = outputDir(input)
-  const singleReviewMode = input.repository.review?.mode === "single"
+  const singleReviewMode = input.repository.review?.mode !== "multi"
   const reviewerKeys = input.repository.agents.reviewers.map(
     (reviewer) => reviewer.key,
   )

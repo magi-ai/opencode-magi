@@ -125,7 +125,7 @@ Agent model fields accept either a single `provider/model` string or an ordered 
 | `output`                               | Both    | No                               | -                                                    | Output parsing and repair configuration.                                                                                            |
 | `output.repairAttempts`                | Both    | No                               | `3`                                                  | Number of times to ask a model to repair invalid structured output.                                                                 |
 | `review`                               | Both    | Yes                              | -                                                    | PR review configuration used by `/magi:review` and the review phase of `/magi:merge`.                                               |
-| `review.mode`                          | Both    | No                               | `multi`                                              | GitHub identity mode. `multi` posts with per-reviewer accounts; `single` posts reviewer-originated mutations with `review.account`. |
+| `review.mode`                          | Both    | No                               | `single`                                             | GitHub identity mode. `multi` posts with per-reviewer accounts; `single` posts reviewer-originated mutations with `review.account`. |
 | `review.account`                       | Both    | Yes (`review.mode: "single"`)    | -                                                    | Shared GitHub account used for reviewer-originated review mutations in single mode.                                                 |
 | `review.reviewers`                     | Both    | Yes                              | -                                                    | Odd-length array of at least 3 reviewer agents.                                                                                     |
 | `review.reviewers[].id`                | Both    | No                               | `reviewer-1`, ...                                    | Reviewer key used for run state, output files, and session tracking.                                                                |
@@ -234,16 +234,15 @@ Agent model fields accept either a single `provider/model` string or an ordered 
 
 ## Review Identity Modes
 
-`review.mode` defaults to `multi`, which is recommended when you have multiple GitHub accounts available. In multi mode, every reviewer needs a unique `review.reviewers[].account`, and GitHub sees separate review states from separate accounts.
+`review.mode` defaults to `single`, which lowers setup requirements by using one `review.account` for reviewer-originated GitHub mutations. Magi still runs an odd number of at least 3 logical reviewer agents, validates findings, asks close-minority reviewers to reconsider, and applies the configured majority or unanimous approval policy. Single mode writes hidden review markers to GitHub review bodies and inline comments so later runs can recover logical reviewer state without local `.magi` artifacts.
 
-`review.mode: "single"` lowers setup requirements by using one `review.account` for reviewer-originated GitHub mutations. Magi still runs an odd number of at least 3 logical reviewer agents, validates findings, asks close-minority reviewers to reconsider, and applies the configured majority or unanimous approval policy. Single mode writes hidden review markers to GitHub review bodies and inline comments so later runs can recover logical reviewer state without local `.magi` artifacts.
+`review.mode: "multi"` is recommended when you have multiple GitHub accounts available and need GitHub to see separate review states from separate accounts. In multi mode, every reviewer needs a unique `review.reviewers[].account`.
 
 Single mode provides Magi internal consensus only. It does not satisfy branch protection rules that require approvals from multiple distinct GitHub accounts.
 
 ```json
 {
   "review": {
-    "mode": "single",
     "account": "your-account",
     "reviewers": [
       { "id": "general", "model": "openai/gpt-5.5" },

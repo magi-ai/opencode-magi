@@ -64,20 +64,18 @@ Add the following content to the configuration file.
   "agents": {
     "refs": {
       "account-1": {
-        "model": "openai/gpt-5.5",
-        "account": "account-1"
+        "model": "openai/gpt-5.5"
       },
       "account-2": {
-        "model": "anthropic/claude-opus-4-7",
-        "account": "account-2"
+        "model": "anthropic/claude-opus-4-7"
       },
       "account-3": {
-        "model": "opencode/kimi-k2-6",
-        "account": "account-3"
+        "model": "opencode/kimi-k2-6"
       }
     }
   },
   "review": {
+    "account": "your-account",
     "reviewers": [
       { "ref": "account-1" },
       { "ref": "account-2" },
@@ -87,19 +85,22 @@ Add the following content to the configuration file.
 }
 ```
 
-After `refs` are expanded, `review.reviewers[].account` is the GitHub account used to post reviews and approvals in the default `review.mode: "multi"`. Must be authenticated with `gh auth token --user <account>` and must be unique.
+By default, `review.mode` is `"single"`. Magi uses one `review.account` to post reviewer-originated GitHub mutations while still running multiple logical reviewer agents and preserving majority voting, finding validation, and close reconsideration. The account must be authenticated with `gh auth token --user <account>`.
 
-For individual setups, use `review.mode: "single"` with one `review.account`. Magi still runs an odd number of at least 3 logical reviewer agents and keeps majority voting, finding validation, and close reconsideration, but GitHub branch protection sees only the one configured review account.
+For team setups that need separate GitHub review identities, set `review.mode: "multi"` and configure a unique account for each reviewer.
 
 ```json
 {
   "review": {
-    "mode": "single",
-    "account": "your-account",
+    "mode": "multi",
     "reviewers": [
-      { "id": "general", "model": "openai/gpt-5.5" },
-      { "id": "security", "model": "anthropic/claude-opus-4-7" },
-      { "id": "compat", "model": "opencode/kimi-k2-6" }
+      { "id": "general", "model": "openai/gpt-5.5", "account": "account-1" },
+      {
+        "id": "security",
+        "model": "anthropic/claude-opus-4-7",
+        "account": "account-2"
+      },
+      { "id": "compat", "model": "opencode/kimi-k2-6", "account": "account-3" }
     ]
   }
 }

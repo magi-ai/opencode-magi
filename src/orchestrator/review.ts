@@ -191,7 +191,7 @@ export interface ReviewFindingMarker {
 function resolvedReviewMode(
   repository: ResolvedRepository,
 ): "multi" | "single" {
-  return repository.review?.mode === "single" ? "single" : "multi"
+  return repository.review?.mode === "multi" ? "multi" : "single"
 }
 
 export function reviewPostingAccount(
