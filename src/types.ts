@@ -117,6 +117,10 @@ export interface AutomationConfig {
   merge?: boolean
 }
 
+export interface MergeAutomationConfig extends AutomationConfig {
+  conflict?: boolean
+}
+
 export interface SafetyConfig {
   allowAuthors?: string[]
   blockedPaths?: string[]
@@ -244,7 +248,7 @@ export interface ResolvedTriageCategory {
 }
 
 export interface MergeConfig {
-  automation?: AutomationConfig
+  automation?: MergeAutomationConfig
   checks?: MergeChecksConfig
   editor?: EditorConfig
   maxThreadResolutionCycles?: number
@@ -313,7 +317,7 @@ export interface ResolvedAgents {
 
 export interface ResolvedRepository extends RepositoryConfig {
   agents: ResolvedAgents
-  automation: Required<AutomationConfig>
+  automation: Required<AutomationConfig> & { conflict?: boolean }
   checks: {
     exclude: string[]
     retryFailedJobs: number

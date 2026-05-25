@@ -134,6 +134,7 @@ const REVIEW_MERGE_KEYS = new Set([
 const REVIEW_CHECKS_KEYS = new Set(["exclude", "retryFailedJobs", "wait"])
 const MERGE_CHECKS_KEYS = new Set(["wait"])
 const AUTOMATION_KEYS = new Set(["close", "merge"])
+const MERGE_AUTOMATION_KEYS = new Set(["close", "conflict", "merge"])
 const CLEAR_KEYS = new Set(["branch", "output", "session", "worktree"])
 const CONCURRENCY_KEYS = new Set(["reviewers", "runs"])
 const OUTPUT_KEYS = new Set(["repairAttempts"])
@@ -795,7 +796,7 @@ function validateMerge(
   validateBooleanObject(
     merge?.automation,
     "merge.automation",
-    AUTOMATION_KEYS,
+    MERGE_AUTOMATION_KEYS,
     errors,
   )
   const checks = merge?.checks as { wait?: unknown } | undefined
