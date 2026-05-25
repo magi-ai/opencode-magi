@@ -366,57 +366,79 @@ describe("magi_status", () => {
   })
 })
 
-describe("magi_triage", () => {
-  test("throws when config validation fails", async () => {
-    const directory = await mkdtemp(
-      join(process.env.TMPDIR ?? "/tmp", "magi-triage-"),
-    )
+describe("magi run tools", () => {
+  test.each([
+    ["magi_merge", { prs: "1 --sync" }, "merge.editor is required"],
+    [
+      "magi_review",
+      { prs: "1 --sync" },
+      "review.agents[0].options is not supported",
+    ],
+    [
+      "magi_triage",
+      { issues: "1 --sync" },
+      "review.agents[0].options is not supported",
+    ],
+  ] as const)(
+    "%s throws when config validation fails",
+    async (name, args, error) => {
+      const directory = await mkdtemp(
+        join(process.env.TMPDIR ?? "/tmp", "magi-run-validation-"),
+      )
 
-    try {
-      await writeConfig(join(directory, ".opencode", "magi.json"), {
-        github: { owner: "owner", repo: "repo" },
-        review: {
-          agents: [
-            {
-              account: "bot-a",
-              model: "openai/gpt",
-              options: { reasoningEffort: "high" },
-            },
-            { account: "bot-b", model: "openai/gpt" },
-            { account: "bot-c", model: "openai/gpt" },
-          ],
-        },
-        triage: {
-          agents: [
-            { account: "triage-a", model: "openai/gpt" },
-            { account: "triage-b", model: "openai/gpt" },
-            { account: "triage-c", model: "openai/gpt" },
-          ],
-        },
-      })
-
-      const plugin = await MagiPlugin({
-        client: {
-          config: {
-            providers: async () => ({
-              providers: [{ id: "openai", models: { gpt: {} } }],
-            }),
+      try {
+        await writeConfig(join(directory, ".opencode", "magi.json"), {
+          github: { owner: "owner", repo: "repo" },
+          review: {
+            agents: [
+              {
+                account: "bot-a",
+                model: "openai/gpt",
+                options: { reasoningEffort: "high" },
+              },
+              { account: "bot-b", model: "openai/gpt" },
+              { account: "bot-c", model: "openai/gpt" },
+            ],
           },
-          session: {},
-        },
-        directory,
-      } as never)
+          triage: {
+            agents: [
+              { account: "triage-a", model: "openai/gpt" },
+              { account: "triage-b", model: "openai/gpt" },
+              { account: "triage-c", model: "openai/gpt" },
+            ],
+          },
+        })
 
-      await expect(
-        plugin.tool?.magi_triage.execute(
-          { issues: "1 --sync" } as never,
-          { abort: new AbortController().signal, sessionID: "parent" } as never,
-        ),
-      ).rejects.toThrow("review.agents[0].options is not supported")
-    } finally {
-      await rm(directory, { force: true, recursive: true })
-    }
-  })
+        const plugin = await MagiPlugin({
+          client: {
+            config: {
+              providers: async () => ({
+                providers: [{ id: "openai", models: { gpt: {} } }],
+              }),
+            },
+            session: {},
+          },
+          directory,
+        } as never)
+        const tools = plugin.tool as Record<
+          string,
+          { execute: (args: never, context: never) => Promise<unknown> }
+        >
+
+        await expect(
+          tools[name].execute(
+            args as never,
+            {
+              abort: new AbortController().signal,
+              sessionID: "parent",
+            } as never,
+          ),
+        ).rejects.toThrow(error)
+      } finally {
+        await rm(directory, { force: true, recursive: true })
+      }
+    },
+  )
 })
 
 describe("magi_validate", () => {

@@ -726,7 +726,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
             requireModelCatalog: true,
           })
 
-          if (!validation.ok) return JSON.stringify(validation, null, 2)
+          if (!validation.ok) throw validationError(validation)
 
           const repository = resolveRepository(config)
           const sync = parsed.sync || args.sync === true
@@ -784,7 +784,7 @@ export const MagiPlugin: Plugin = async ({ client, directory }) => {
             requireModelCatalog: true,
           })
 
-          if (!validation.ok) return JSON.stringify(validation, null, 2)
+          if (!validation.ok) throw validationError(validation)
 
           const repository = resolveRepository(config)
           const sync = parsed.sync || args.sync === true
