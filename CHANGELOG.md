@@ -1,5 +1,19 @@
 # opencode-magi
 
+## 0.8.0
+
+### Minor Changes
+
+- [#284](https://github.com/magi-ai/opencode-magi/pull/284) [`8394b29`](https://github.com/magi-ai/opencode-magi/commit/8394b298dc6dd38e7f33c87aa5a824aef9a8e011) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Add optional merge queue conflict recovery for `/magi:merge` via `merge.automation.conflict`.
+
+- [#283](https://github.com/magi-ai/opencode-magi/pull/283) [`aaf5554`](https://github.com/magi-ai/opencode-magi/commit/aaf55543ebec4f6e3c3b8dea1b63bec861a64249) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Add merge conflict context to review and re-review prompts.
+
+- [#285](https://github.com/magi-ai/opencode-magi/pull/285) [`c498630`](https://github.com/magi-ai/opencode-magi/commit/c49863097edbf6c20ee11e2e89567509d9125f93) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Add configurable triage label automation and align triage dispositions.
+
+### Patch Changes
+
+- [#284](https://github.com/magi-ai/opencode-magi/pull/284) [`8394b29`](https://github.com/magi-ai/opencode-magi/commit/8394b298dc6dd38e7f33c87aa5a824aef9a8e011) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Label merge queue conflict recovery editor output distinctly in merge reports.
+
 ## 0.7.0
 
 ### Minor Changes
