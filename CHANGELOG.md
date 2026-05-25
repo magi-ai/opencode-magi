@@ -1,5 +1,19 @@
 # opencode-magi
 
+## 0.9.0
+
+### Minor Changes
+
+- [#287](https://github.com/magi-ai/opencode-magi/pull/287) [`18a05b6`](https://github.com/magi-ai/opencode-magi/commit/18a05b65c7de1d95d52bc2ea782393c6ecc9c67e) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Add single-account review mode for multi-agent PR review consensus.
+
+### Patch Changes
+
+- [#292](https://github.com/magi-ai/opencode-magi/pull/292) [`8ae9cb9`](https://github.com/magi-ai/opencode-magi/commit/8ae9cb999e3c5c757b2622d9fa7bfed46fb591e0) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Default PR review identity mode to single-account posting.
+
+- [#293](https://github.com/magi-ai/opencode-magi/pull/293) [`31900a0`](https://github.com/magi-ai/opencode-magi/commit/31900a0f9502927edf509cf28590ff5f7f7a784c) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Updated dependencies.
+
+- [#290](https://github.com/magi-ai/opencode-magi/pull/290) [`140b838`](https://github.com/magi-ai/opencode-magi/commit/140b8383bf4a655f5c17d5e2b8d049d9fd266a2d) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Improve single-account review summaries and logical reviewer thread routing.
+
 ## 0.8.0
 
 ### Minor Changes
