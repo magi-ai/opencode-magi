@@ -524,6 +524,13 @@ describe("triage orchestration", () => {
         }),
         JSON.stringify({ reason: "Caspar reason", vote: "YES" }),
       ],
+      repository: {
+        ...repository,
+        triage: {
+          ...repository.triage!,
+          reporter: "Balthasar",
+        },
+      },
     })
     const comment = await readFile(
       join(result.result.outputDir, "comment.md"),
