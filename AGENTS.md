@@ -1,6 +1,6 @@
-# opencode-magi Development Guide
+# OpenCode Magi Development Guide
 
-opencode-magi is an OpenCode plugin for multi-agent GitHub pull request review and merge orchestration.
+OpenCode Magi is an OpenCode plugin for multi-agent GitHub pull request review and merge orchestration.
 
 ## Critical Rules
 
