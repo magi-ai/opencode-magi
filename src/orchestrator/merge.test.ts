@@ -289,6 +289,87 @@ describe("merge", () => {
     )
   })
 
+  test("returns dequeued without editor or push when base merge has no conflicts", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-merge-test-"))
+    const mergeRepository: ResolvedRepository = {
+      ...editorRepository,
+      automation: { close: true, conflict: true, merge: true },
+      merge: { ...editorRepository.merge, mergeQueue: true },
+    }
+    let queueStatusCalls = 0
+    const commands: string[] = []
+    const exec = vi.fn(async (command: string) => {
+      commands.push(command)
+      if (command.startsWith("gh pr view")) return JSON.stringify(prMeta())
+      if (command.includes("/rules/branches/")) {
+        return JSON.stringify([{ type: "merge_queue" }])
+      }
+      if (command.startsWith("gh auth token")) return "token"
+      if (command.includes("id headRefOid")) {
+        return JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: { headRefOid: "head-sha", id: "PR_id" },
+            },
+          },
+        })
+      }
+      if (command.includes("enqueuePullRequest")) return "entry"
+      if (command.includes("isInMergeQueue")) {
+        queueStatusCalls += 1
+
+        return JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                isInMergeQueue: false,
+                mergeQueueEntry: null,
+                state: "OPEN",
+              },
+            },
+          },
+        })
+      }
+      if (command.startsWith("git merge --no-commit")) return ""
+      if (command === "git diff --name-only --diff-filter=U") return ""
+
+      return ""
+    })
+
+    runReviewMock.mockResolvedValueOnce({
+      baseSha: "base-sha",
+      ciReports: [],
+      discardedFindings: [],
+      headSha: "head-sha",
+      outputs: {},
+      posted: {},
+      pr: 281,
+      report: "",
+      sessionIds: {},
+      verdict: "MERGE",
+      worktreePath: directory,
+    })
+
+    const result = await runMerge({
+      client: { session: { create: vi.fn(), prompt: vi.fn() } },
+      config: {},
+      directory,
+      exec,
+      pr: 281,
+      repository: mergeRepository,
+    })
+
+    expect(result.status).toBe("dequeued")
+    expect(queueStatusCalls).toBe(1)
+    expect(commands).toContainEqual(
+      expect.stringContaining("git merge --no-commit"),
+    )
+    expect(commands).toContain("git diff --name-only --diff-filter=U")
+    expect(composeMergeConflictPromptMock).not.toHaveBeenCalled()
+    expect(runModelWithRepairMock).not.toHaveBeenCalled()
+    expect(commands).not.toContainEqual(expect.stringContaining("git push"))
+  })
+
   test("recovers one merge queue conflict and re-enqueues", async () => {
     const directory = await mkdtemp(join(tmpdir(), "magi-merge-test-"))
     const reviewers = ["alpha", "bravo", "charlie"].map((key, index) => ({
@@ -394,6 +475,8 @@ describe("merge", () => {
     })
 
     expect(result.status).toBe("merged")
+    expect(result.report).toContain("Conflict recovery:")
+    expect(result.report).not.toContain("Cycle 1: fix(merge): use dry-run head")
     expect(queueStatusCalls).toBe(2)
     expect(composeMergeConflictPromptMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -405,6 +488,156 @@ describe("merge", () => {
     )
     expect(commands).toContainEqual(expect.stringContaining("git push"))
     expect(waitForChecksWithClassificationMock).toHaveBeenCalledOnce()
+  })
+
+  test("does not push when conflict editor leaves unmerged files", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-merge-test-"))
+    const mergeRepository: ResolvedRepository = {
+      ...editorRepository,
+      automation: { close: true, conflict: true, merge: true },
+      merge: { ...editorRepository.merge, mergeQueue: true },
+    }
+    let unmergedCalls = 0
+    const commands: string[] = []
+    const exec = vi.fn(async (command: string) => {
+      commands.push(command)
+      if (command.startsWith("gh pr view")) return JSON.stringify(prMeta())
+      if (command.includes("/rules/branches/")) {
+        return JSON.stringify([{ type: "merge_queue" }])
+      }
+      if (command.startsWith("gh auth token")) return "token"
+      if (command.includes("id headRefOid")) {
+        return JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: { headRefOid: "head-sha", id: "PR_id" },
+            },
+          },
+        })
+      }
+      if (command.includes("enqueuePullRequest")) return "entry"
+      if (command.includes("isInMergeQueue")) {
+        return JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                isInMergeQueue: false,
+                mergeQueueEntry: null,
+                state: "OPEN",
+              },
+            },
+          },
+        })
+      }
+      if (command.startsWith("git merge --no-commit")) return ""
+      if (command === "git diff --name-only --diff-filter=U") {
+        unmergedCalls += 1
+
+        return unmergedCalls === 1
+          ? "src/file.ts\n"
+          : "src/file.ts\nsrc/other.ts\n"
+      }
+      if (command === "git rev-parse HEAD") return "resolved-head"
+
+      return ""
+    })
+
+    runReviewMock.mockResolvedValueOnce({
+      baseSha: "base-sha",
+      ciReports: [],
+      discardedFindings: [],
+      headSha: "head-sha",
+      outputs: {},
+      posted: {},
+      pr: 281,
+      report: "",
+      sessionIds: {},
+      verdict: "MERGE",
+      worktreePath: directory,
+    })
+    runModelWithRepairMock.mockResolvedValueOnce({
+      raw: "{}",
+      sessionId: "edit-session",
+      value: { ...editOutput(), commitSha: "resolved-head" },
+    })
+
+    const result = await runMerge({
+      client: { session: { create: vi.fn(), prompt: vi.fn() } },
+      config: {},
+      directory,
+      exec,
+      pr: 281,
+      repository: mergeRepository,
+    })
+
+    expect(result.status).toBe("changes_unresolved")
+    expect(unmergedCalls).toBe(2)
+    expect(commands).not.toContainEqual(expect.stringContaining("git push"))
+    expect(waitForChecksWithClassificationMock).not.toHaveBeenCalled()
+  })
+
+  test("dry run returns approved without attempting conflict recovery", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-merge-test-"))
+    const mergeRepository: ResolvedRepository = {
+      ...editorRepository,
+      automation: { close: true, conflict: true, merge: true },
+      merge: { ...editorRepository.merge, mergeQueue: true },
+    }
+    let queueStatusCalls = 0
+    const exec = vi.fn(async (command: string) => {
+      if (command.startsWith("gh pr view")) return JSON.stringify(prMeta())
+      if (command.includes("/rules/branches/")) {
+        return JSON.stringify([{ type: "merge_queue" }])
+      }
+      if (command.includes("isInMergeQueue")) {
+        queueStatusCalls += 1
+
+        return JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                isInMergeQueue: false,
+                mergeQueueEntry: null,
+                state: "OPEN",
+              },
+            },
+          },
+        })
+      }
+
+      return ""
+    })
+
+    runReviewMock.mockResolvedValueOnce({
+      baseSha: "base-sha",
+      ciReports: [],
+      discardedFindings: [],
+      headSha: "head-sha",
+      outputs: {},
+      posted: {},
+      pr: 281,
+      report: "",
+      sessionIds: {},
+      verdict: "MERGE",
+      worktreePath: directory,
+    })
+
+    const result = await runMerge({
+      client: { session: { create: vi.fn(), prompt: vi.fn() } },
+      config: {},
+      directory,
+      dryRun: true,
+      exec,
+      pr: 281,
+      repository: mergeRepository,
+    })
+
+    expect(result.status).toBe("approved")
+    expect(queueStatusCalls).toBe(0)
+    expect(exec).not.toHaveBeenCalledWith(
+      expect.stringContaining("git merge --no-commit"),
+      expect.anything(),
+    )
   })
 
   test("uses dry-run edited head for rereview close reconsideration prompts", async () => {

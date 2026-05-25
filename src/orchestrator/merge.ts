@@ -56,7 +56,7 @@ import {
 import { closeMinorityReviewers, mergeVerdictForPolicy } from "./majority"
 import { type ModelClient, runModelWithRepair } from "./model"
 import { mapPool } from "./pool"
-import { formatMergeReport } from "./report"
+import { formatMergeReport, type MergeEditorOutput } from "./report"
 import {
   inlineCommentTargetsForDiff,
   runReview,
@@ -762,7 +762,7 @@ async function finishMergeRun(
   result: Omit<MergeRunResult, "report">,
   reportInput: {
     ciReports: CheckWaitReport[]
-    editorOutputs: EditOutput[]
+    editorOutputs: MergeEditorOutput[]
     outputs: Record<string, RereviewOutput | ReviewOutput>
     posted: Record<string, string>
   },
@@ -1408,7 +1408,7 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
     let reportOutputs = review.outputs
     let reportPosted = review.posted
     let reportCiReports = review.ciReports
-    const editorOutputs: EditOutput[] = []
+    const editorOutputs: MergeEditorOutput[] = []
     const complete = (result: Omit<MergeRunResult, "report">) =>
       finishMergeRun(input, result, {
         ciReports: reportCiReports,
@@ -1424,7 +1424,10 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
       : undefined
     let conflictRecoveryAttempted = false
     const applyConflictRecovery = (recovery: ConflictRecoveryResult) => {
-      editorOutputs.push(recovery.editorOutput)
+      editorOutputs.push({
+        ...recovery.editorOutput,
+        label: "Conflict recovery",
+      })
       ciReports.length = 0
       ciReports.push(...recovery.ciReports)
       reportCiReports = [...recovery.ciReports]

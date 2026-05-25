@@ -165,4 +165,34 @@ describe("report formatting", () => {
       "ASK comment #123: Can you clarify the expected behavior?",
     )
   })
+
+  test("labels conflict recovery editor output distinctly", () => {
+    const report = formatMergeReport({
+      ciReports: [],
+      editorOutputs: [
+        {
+          commitMessage: "fix: resolve merge conflict",
+          commitSha: "abcdef1234567890",
+          filesTouched: ["src/a.ts"],
+          label: "Conflict recovery",
+          mode: "EDITED",
+          responses: [],
+        },
+      ],
+      outputs: {
+        alpha: { findings: [], verdict: "MERGE" },
+        beta: { findings: [], verdict: "MERGE" },
+        gamma: { findings: [], verdict: "MERGE" },
+      },
+      posted: {},
+      pr: 29,
+      repository,
+      status: "changes_unresolved",
+    })
+
+    expect(report).toContain(
+      "Conflict recovery: fix: resolve merge conflict (abcdef1)",
+    )
+    expect(report).not.toContain("Cycle 1: fix: resolve merge conflict")
+  })
 })

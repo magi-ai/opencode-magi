@@ -32,8 +32,10 @@ export interface ReviewReportInput {
   safety?: SafetyGateResult
 }
 
+export type MergeEditorOutput = EditOutput & { label?: string }
+
 export interface MergeReportInput extends ReviewReportInput {
-  editorOutputs?: EditOutput[]
+  editorOutputs?: MergeEditorOutput[]
   status: MergeStatus
 }
 
@@ -204,13 +206,13 @@ function mergeStatusLines(status: MergeStatus): string[] {
   }
 }
 
-function editorLines(outputs: EditOutput[] | undefined): string[] {
+function editorLines(outputs: MergeEditorOutput[] | undefined): string[] {
   if (!outputs?.length) return []
 
   return [
     "- **Editor**:",
     ...outputs.flatMap((output, index) => {
-      const label = `  - Cycle ${index + 1}`
+      const label = `  - ${output.label ?? `Cycle ${index + 1}`}`
 
       if (output.mode === "REPLIED") {
         return [
