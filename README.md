@@ -17,7 +17,7 @@ OpenCode Magi recreates the review cycle humans already run on GitHub: multiple 
 - Multi-agent reviews with an odd-number majority of 3 or more reviewers.
 - Optional unanimous approval policy for merge automation when every reviewer must approve before a PR is merged.
 - Finding-level voting before posting change requests, so only findings accepted by reviewer majority are submitted.
-- Multi-account review mode where each reviewer posts through its configured GitHub account, plus single-account review mode where one GitHub account posts the consensus result for multiple logical reviewers.
+- Single-account identity mode by default, where one GitHub account posts consensus-backed review and triage results for multiple logical agents, plus multi-account mode for setups that need separate GitHub identities.
 - Re-review support for edited PRs: fixed threads are resolved, satisfied reviewers approve, and remaining issues are posted as additional comments.
 - Optional merge and close automation where an editor agent responds on behalf of the author, fixes changes it agrees with, pushes commits when needed, and repeats the reviewer/editor cycle until the PR can be approved, queued, merged, or closed.
 - Per-agent OpenCode permissions for reviewer, CI classifier, and editor child sessions.
@@ -61,6 +61,7 @@ Add the following content to the configuration file.
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/magi-ai/opencode-magi/main/schema.json",
+  "account": "your-account",
   "agents": {
     "refs": {
       "account-1": {
@@ -75,7 +76,6 @@ Add the following content to the configuration file.
     }
   },
   "review": {
-    "account": "your-account",
     "reviewers": [
       { "ref": "account-1" },
       { "ref": "account-2" },
@@ -85,14 +85,14 @@ Add the following content to the configuration file.
 }
 ```
 
-By default, `review.mode` is `"single"`. Magi uses one `review.account` to post reviewer-originated GitHub mutations while still running multiple logical reviewer agents and preserving majority voting, finding validation, and close reconsideration. The account must be authenticated with `gh auth token --user <account>`.
+By default, `mode` is `"single"`. Magi uses one top-level `account` to post reviewer- and triage-originated GitHub mutations while still running multiple logical agents and preserving majority voting, finding validation, and close reconsideration. The account must be authenticated with `gh auth token --user <account>`.
 
-For team setups that need separate GitHub review identities, set `review.mode: "multi"` and configure a unique account for each reviewer.
+For advanced team setups that need GitHub to see separate review or triage identities, set top-level `mode: "multi"` and configure unique accounts for each reviewer or triage voter.
 
 ```json
 {
+  "mode": "multi",
   "review": {
-    "mode": "multi",
     "reviewers": [
       { "id": "general", "model": "openai/gpt-5.5", "account": "account-1" },
       {
@@ -121,6 +121,7 @@ Add the following content to the configuration file.
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/magi-ai/opencode-magi/main/schema.json",
+  "account": "your-account",
   "github": {
     "owner": "your-owner",
     "repo": "your-repo"
@@ -128,16 +129,13 @@ Add the following content to the configuration file.
   "agents": {
     "refs": {
       "account-1": {
-        "model": "openai/gpt-5.5",
-        "account": "account-1"
+        "model": "openai/gpt-5.5"
       },
       "account-2": {
-        "model": "anthropic/claude-opus-4-7",
-        "account": "account-2"
+        "model": "anthropic/claude-opus-4-7"
       },
       "account-3": {
-        "model": "opencode/kimi-k2-6",
-        "account": "account-3"
+        "model": "opencode/kimi-k2-6"
       },
       "account-4": {
         "model": "openai/gpt-5.5",
@@ -182,7 +180,7 @@ Entries with `ref` are expanded from `agents.refs`. Fields set alongside `ref` o
 }
 ```
 
-After `refs` are expanded, `review.reviewers[].account` is the GitHub account used to post reviews and approvals in `multi` mode. Must be authenticated with `gh auth token --user <account>` and must be unique. In `single` mode, `review.account` is used for reviewer-originated review posts, approvals, change requests, close comments, reviewer replies, and reviewer thread resolutions. `merge.editor.account` is still used by `/magi:merge` to push fixes, close PRs, and merge PRs.
+After `refs` are expanded, top-level `account` is the GitHub account used for reviewer- and triage-originated posts and mutations in `single` mode. In `multi` mode, `review.reviewers[].account` and `triage.voters[].account` are used instead and must be unique within their agent lists. `merge.editor.account` is still used by `/magi:merge` to push fixes, close PRs, and merge PRs.
 
 #### Validate config
 
