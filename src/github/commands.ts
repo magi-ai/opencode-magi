@@ -1593,6 +1593,56 @@ export async function waitForAutoMerge(
   }
 }
 
+export async function fetchBaseBranch(
+  exec: Exec,
+  repository: ResolvedRepository,
+  meta: PullRequestMeta,
+  worktreePath: string,
+): Promise<void> {
+  await exec(
+    `git fetch --no-tags ${shellQuote(repositoryGitUrl(repository, repository.github.owner, repository.github.repo))} ${shellQuote(`refs/heads/${meta.baseRefName}`)}`,
+    { cwd: worktreePath },
+  )
+}
+
+export async function mergeBaseNoCommit(
+  exec: Exec,
+  baseSha: string,
+  worktreePath: string,
+): Promise<void> {
+  await exec(`git merge --no-commit --no-ff ${shellQuote(baseSha)}`, {
+    cwd: worktreePath,
+  }).catch(() => undefined)
+}
+
+export async function listUnmergedFiles(
+  exec: Exec,
+  worktreePath: string,
+): Promise<string[]> {
+  const output = await exec("git diff --name-only --diff-filter=U", {
+    cwd: worktreePath,
+  })
+
+  return output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
+
+export async function abortMerge(
+  exec: Exec,
+  worktreePath: string,
+): Promise<void> {
+  await exec("git merge --abort", { cwd: worktreePath }).catch(() => undefined)
+}
+
+export async function currentHeadSha(
+  exec: Exec,
+  worktreePath: string,
+): Promise<string> {
+  return (await exec("git rev-parse HEAD", { cwd: worktreePath })).trim()
+}
+
 export async function closePullRequest(
   exec: Exec,
   repository: ResolvedRepository,

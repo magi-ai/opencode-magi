@@ -13,12 +13,17 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { prRunOutputDir } from "../config/output"
 import {
+  abortMerge,
   closePullRequest,
   configureGitIdentity,
+  currentHeadSha,
+  fetchBaseBranch,
   fetchMergeQueueRequirement,
   fetchPullRequest,
   fetchUnresolvedThreads,
+  listUnmergedFiles,
   mergePullRequest,
+  mergeBaseNoCommit,
   postApproval,
   postChangesRequested,
   postCloseComment,
@@ -33,6 +38,7 @@ import {
 } from "../github/commands"
 import {
   composeEditPrompt,
+  composeMergeConflictPrompt,
   composeRereviewCloseReconsiderationPrompt,
   composeRereviewPrompt,
 } from "../prompts/compose"
@@ -793,6 +799,312 @@ async function mergeWithQueue(
   return waitForMergeQueue(exec, input.repository, input.pr)
 }
 
+interface ConflictRecoveryResult {
+  ciReports: CheckWaitReport[]
+  editorOutput: EditOutput
+  headSha: string
+  outputs: Record<string, RereviewOutput>
+  posted: Record<string, string>
+  status?: MergeRunResult["status"]
+}
+
+async function runConflictEditor(input: {
+  baseBranch: string
+  baseSha: string
+  conflictedFiles: string[]
+  cycle: number
+  headSha: string
+  run: MergeRunInput
+  worktreePath: string
+}): Promise<EditOutput> {
+  const editor = input.run.repository.agents.editor
+
+  if (!editor) throw new Error("merge.editor is required for magi_merge")
+
+  await configureGitIdentity(input.run.exec, input.worktreePath, {
+    email: editor.author?.email,
+    name: editor.author?.name,
+  })
+
+  const artifactDir = outputDir(input.run)
+  const prompt = await composeMergeConflictPrompt({
+    baseBranch: input.baseBranch,
+    baseSha: input.baseSha,
+    conflictedFiles: JSON.stringify(input.conflictedFiles, null, 2),
+    directory: input.run.directory,
+    headSha: input.headSha,
+    pr: input.run.pr,
+    repository: input.run.repository,
+    worktreePath: input.worktreePath,
+  })
+  await input.run.onProgress?.({ cycle: input.cycle, type: "editor_started" })
+  const result = await withEditorFailureProgress({
+    cycle: input.cycle,
+    onProgress: input.run.onProgress,
+    run: () =>
+      runModelWithRepair<EditOutput>({
+        client: input.run.client,
+        model: editor.model,
+        onProgress: async (progress) => {
+          if (progress.type === "session_created") {
+            await input.run.onProgress?.({
+              cycle: input.cycle,
+              options: progress.options,
+              sessionId: progress.sessionId,
+              type: "editor_session",
+            })
+          }
+          if (progress.type === "repair") {
+            await input.run.onProgress?.({
+              cycle: input.cycle,
+              type: "editor_repair",
+            })
+          }
+          if (progress.type === "response") {
+            await input.run.onProgress?.({
+              cycle: input.cycle,
+              sessionId: progress.sessionId,
+              type: "editor_response",
+            })
+          }
+        },
+        options: editor.options,
+        parentSessionId: input.run.parentSessionId,
+        parse: parseEditOutput,
+        permission: editor.permission,
+        prompt,
+        repairAttempts: input.run.config.output?.repairAttempts ?? 3,
+        schemaName: "edit",
+        signal: input.run.signal,
+        title: `magi resolve conflict ${input.run.repository.alias}#${input.run.pr}`,
+      }),
+  })
+
+  await writeFile(join(artifactDir, "editor.conflict.prompt.txt"), prompt)
+  await writeFile(join(artifactDir, "editor.conflict.raw.txt"), result.raw)
+  await writeFile(
+    join(artifactDir, "editor.conflict.json"),
+    JSON.stringify(result.value, null, 2),
+  )
+  await input.run.onProgress?.({ cycle: input.cycle, type: "editor_completed" })
+
+  return result.value
+}
+
+async function recoverMergeQueueConflict(input: {
+  ciReports: CheckWaitReport[]
+  cycle: number
+  exec: Exec
+  previousHeadSha: string
+  run: MergeRunInput
+  sessionIds: Record<string, string>
+  worktreePath: string
+}): Promise<ConflictRecoveryResult | undefined> {
+  await input.run.onProgress?.({
+    phase: "checking merge queue conflict",
+    type: "phase",
+  })
+  const meta = await fetchPullRequest(
+    input.exec,
+    input.run.repository,
+    input.run.pr,
+  )
+
+  if (meta.state && meta.state.toUpperCase() !== "OPEN") return undefined
+
+  await fetchBaseBranch(
+    input.exec,
+    input.run.repository,
+    meta,
+    input.worktreePath,
+  )
+  await mergeBaseNoCommit(input.exec, meta.baseRefOid, input.worktreePath)
+  const conflictedFiles = await listUnmergedFiles(
+    input.exec,
+    input.worktreePath,
+  )
+
+  if (!conflictedFiles.length) {
+    await abortMerge(input.exec, input.worktreePath)
+    return undefined
+  }
+
+  await input.run.onProgress?.({
+    phase: "resolving merge conflict",
+    type: "phase",
+  })
+  const editorOutput = await runConflictEditor({
+    baseBranch: meta.baseRefName,
+    baseSha: meta.baseRefOid,
+    conflictedFiles,
+    cycle: input.cycle,
+    headSha: input.previousHeadSha,
+    run: input.run,
+    worktreePath: input.worktreePath,
+  })
+
+  if (editorOutput.mode !== "EDITED") {
+    return {
+      ciReports: input.ciReports,
+      editorOutput,
+      headSha: input.previousHeadSha,
+      outputs: {},
+      posted: {},
+      status: "changes_unresolved",
+    }
+  }
+
+  const remainingConflicts = await listUnmergedFiles(
+    input.exec,
+    input.worktreePath,
+  )
+  const editedHeadSha = await currentHeadSha(input.exec, input.worktreePath)
+
+  if (remainingConflicts.length || editedHeadSha === input.previousHeadSha) {
+    return {
+      ciReports: input.ciReports,
+      editorOutput,
+      headSha: input.previousHeadSha,
+      outputs: {},
+      posted: {},
+      status: "changes_unresolved",
+    }
+  }
+
+  const editor = input.run.repository.agents.editor
+  if (!editor) throw new Error("merge.editor is required for magi_merge")
+  const headOwner = meta.headRepositoryOwner?.login
+  const headRepo = meta.headRepository?.name
+
+  if (!headOwner || !headRepo) {
+    throw new Error("Pull request head repository is missing")
+  }
+
+  await pushHead(
+    input.exec,
+    input.run.repository,
+    input.worktreePath,
+    editor.account,
+    { owner: headOwner, ref: meta.headRefName, repo: headRepo },
+  )
+
+  const ciReports = [...input.ciReports]
+  let ciFailureContext = ""
+
+  await input.run.onProgress?.({
+    phase: "waiting for checks after conflict resolution",
+    type: "phase",
+  })
+  const checkResult = await waitForChecksWithClassification({
+    afterEdit: {
+      cycle: input.cycle,
+      headSha: editedHeadSha,
+      previousHeadSha: input.previousHeadSha,
+      worktreePath: input.worktreePath,
+    },
+    client: input.run.client,
+    directory: input.run.directory,
+    exec: input.exec,
+    headSha: editedHeadSha,
+    onProgress: (phase) => input.run.onProgress?.({ phase, type: "phase" }),
+    parentSessionId: input.run.parentSessionId,
+    pr: input.run.pr,
+    repairAttempts: input.run.config.output?.repairAttempts ?? 3,
+    repository: input.run.repository,
+    signal: input.run.signal,
+    wait: input.run.repository.checks.waitAfterEdit,
+  })
+  ciFailureContext = checkResult?.ciFailureContext ?? ""
+  if (
+    checkResult &&
+    (checkResult.report.scopeOutsideRecovered.length ||
+      checkResult.report.scopeOutsideUnresolved.length ||
+      checkResult.report.scopeInside.length)
+  ) {
+    ciReports.push(checkResult.report)
+    await input.run.onProgress?.({
+      report: checkResult.report,
+      type: "ci_report",
+    })
+  }
+
+  await input.run.onProgress?.({
+    phase: "rereview after conflict resolution",
+    type: "phase",
+  })
+  const rereview = await runRereview(
+    input.run,
+    input.worktreePath,
+    input.previousHeadSha,
+    input.cycle,
+    input.sessionIds,
+    ciFailureContext,
+  )
+
+  if (rereview.verdict === "CLOSE") {
+    if (!input.run.repository.automation.close) {
+      return {
+        ciReports,
+        editorOutput,
+        headSha: editedHeadSha,
+        outputs: rereview.outputs,
+        posted: rereview.posted,
+        status: "close_requested",
+      }
+    }
+
+    await input.run.onProgress?.({ phase: "closing PR", type: "phase" })
+    await closePullRequest(
+      input.exec,
+      input.run.repository,
+      input.run.pr,
+      editor.account,
+    )
+
+    return {
+      ciReports,
+      editorOutput,
+      headSha: editedHeadSha,
+      outputs: rereview.outputs,
+      posted: rereview.posted,
+      status: "closed",
+    }
+  }
+
+  if (rereview.verdict === "MERGE") {
+    if (hasBlockingCiReports(ciReports)) {
+      return {
+        ciReports,
+        editorOutput,
+        headSha: editedHeadSha,
+        outputs: rereview.outputs,
+        posted: rereview.posted,
+        status: "ci_unresolved",
+      }
+    }
+
+    await input.run.onProgress?.({ phase: "re-enqueueing PR", type: "phase" })
+    const status = await mergeWithQueue(input.run, input.exec, editor.account)
+
+    return {
+      ciReports,
+      editorOutput,
+      headSha: editedHeadSha,
+      outputs: rereview.outputs,
+      posted: rereview.posted,
+      status,
+    }
+  }
+
+  return {
+    ciReports,
+    editorOutput,
+    headSha: editedHeadSha,
+    outputs: rereview.outputs,
+    posted: rereview.posted,
+  }
+}
+
 export function hasBlockingCiReports(reports: CheckWaitReport[]): boolean {
   return reports.some(
     (report) =>
@@ -1104,6 +1416,23 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
         outputs: reportOutputs,
         posted: reportPosted,
       })
+    let previousHeadSha = review.headSha
+    const ciReports = [...review.ciReports]
+    const threadAttempts: Record<string, ThreadResolutionAttempt> = {}
+    let dryRunThreads = input.dryRun
+      ? syntheticReviewThreads(reportOutputs)
+      : undefined
+    let conflictRecoveryAttempted = false
+    const applyConflictRecovery = (recovery: ConflictRecoveryResult) => {
+      editorOutputs.push(recovery.editorOutput)
+      ciReports.length = 0
+      ciReports.push(...recovery.ciReports)
+      reportCiReports = [...recovery.ciReports]
+      if (Object.keys(recovery.outputs).length) reportOutputs = recovery.outputs
+      if (Object.keys(recovery.posted).length) reportPosted = recovery.posted
+      previousHeadSha = recovery.headSha
+      dryRunThreads = undefined
+    }
 
     if (review.verdict === "SAFETY_BLOCKED") {
       await input.onProgress?.({
@@ -1147,16 +1476,46 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
 
       await input.onProgress?.({ phase: "merging PR", type: "phase" })
       const status = await mergeWithQueue(input, exec, editor.account)
-      await input.onProgress?.({ status, type: "merge_completed" })
-      return complete({ cycles: 0, pr: input.pr, status })
-    }
 
-    let previousHeadSha = review.headSha
-    const ciReports = [...review.ciReports]
-    const threadAttempts: Record<string, ThreadResolutionAttempt> = {}
-    let dryRunThreads = input.dryRun
-      ? syntheticReviewThreads(reportOutputs)
-      : undefined
+      if (
+        status === "dequeued" &&
+        input.repository.automation.conflict &&
+        input.repository.merge.mergeQueue
+      ) {
+        if (!review.worktreePath) throw new Error("Review worktree is missing")
+        conflictRecoveryAttempted = true
+        const recovery = await recoverMergeQueueConflict({
+          ciReports,
+          cycle: 1,
+          exec,
+          previousHeadSha,
+          run: abortableInput,
+          sessionIds: review.sessionIds,
+          worktreePath: review.worktreePath,
+        })
+
+        if (recovery) {
+          applyConflictRecovery(recovery)
+          if (recovery.status) {
+            await input.onProgress?.({
+              status: recovery.status,
+              type: "merge_completed",
+            })
+            return complete({
+              cycles: 1,
+              pr: input.pr,
+              status: recovery.status,
+            })
+          }
+        } else {
+          await input.onProgress?.({ status, type: "merge_completed" })
+          return complete({ cycles: 0, pr: input.pr, status })
+        }
+      } else {
+        await input.onProgress?.({ status, type: "merge_completed" })
+        return complete({ cycles: 0, pr: input.pr, status })
+      }
+    }
 
     for (let cycle = 1; ; cycle += 1) {
       const unresolvedThreads = input.dryRun
@@ -1380,6 +1739,39 @@ export async function runMerge(input: MergeRunInput): Promise<MergeRunResult> {
 
         await input.onProgress?.({ phase: "merging PR", type: "phase" })
         const status = await mergeWithQueue(input, exec, editor.account)
+        if (
+          status === "dequeued" &&
+          input.repository.automation.conflict &&
+          input.repository.merge.mergeQueue &&
+          !conflictRecoveryAttempted
+        ) {
+          conflictRecoveryAttempted = true
+          const recovery = await recoverMergeQueueConflict({
+            ciReports,
+            cycle: cycle + 1,
+            exec,
+            previousHeadSha,
+            run: abortableInput,
+            sessionIds: review.sessionIds,
+            worktreePath: review.worktreePath,
+          })
+
+          if (recovery) {
+            applyConflictRecovery(recovery)
+            if (recovery.status) {
+              await input.onProgress?.({
+                status: recovery.status,
+                type: "merge_completed",
+              })
+              return complete({
+                cycles: cycle + 1,
+                pr: input.pr,
+                status: recovery.status,
+              })
+            }
+            continue
+          }
+        }
         await input.onProgress?.({ status, type: "merge_completed" })
         return complete({ cycles: cycle, pr: input.pr, status })
       }

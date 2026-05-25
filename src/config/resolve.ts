@@ -212,6 +212,7 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
     agents: resolveAgents(config),
     automation: {
       close: config.merge?.automation?.close ?? false,
+      conflict: config.merge?.automation?.conflict ?? false,
       merge: config.merge?.automation?.merge ?? true,
     },
     checks: {

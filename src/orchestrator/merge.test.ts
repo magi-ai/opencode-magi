@@ -33,19 +33,26 @@ vi.mock("./review", async (importOriginal) => {
 })
 
 const composeRereviewCloseReconsiderationPromptMock = vi.hoisted(() => vi.fn())
+const composeMergeConflictPromptMock = vi.hoisted(() => vi.fn())
 const composeRereviewPromptMock = vi.hoisted(() => vi.fn())
 const runModelWithRepairMock = vi.hoisted(() => vi.fn())
+const waitForChecksWithClassificationMock = vi.hoisted(() => vi.fn())
 
 vi.mock("../prompts/compose", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../prompts/compose")>()
 
   return {
     ...actual,
+    composeMergeConflictPrompt: composeMergeConflictPromptMock,
     composeRereviewCloseReconsiderationPrompt:
       composeRereviewCloseReconsiderationPromptMock,
     composeRereviewPrompt: composeRereviewPromptMock,
   }
 })
+
+vi.mock("./ci", () => ({
+  waitForChecksWithClassification: waitForChecksWithClassificationMock,
+}))
 
 vi.mock("./model", () => ({
   runModelWithRepair: runModelWithRepairMock,
@@ -131,6 +138,25 @@ const emptyThreads = JSON.stringify({
   },
 })
 
+function prMeta(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    baseRefName: "main",
+    baseRefOid: "base-sha",
+    headRefName: "feature",
+    headRefOid: "head-sha",
+    headRepository: { name: "repo" },
+    headRepositoryOwner: { login: "owner" },
+    isDraft: false,
+    number: 281,
+    state: "OPEN",
+    title: "Test PR",
+    url: "https://github.example.com/owner/repo/pull/281",
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
 })
@@ -155,14 +181,18 @@ function thread(threadId: string): ReviewThread {
 
 beforeEach(() => {
   composeRereviewCloseReconsiderationPromptMock.mockReset()
+  composeMergeConflictPromptMock.mockReset()
   composeRereviewPromptMock.mockReset()
   runModelWithRepairMock.mockReset()
   runReviewMock.mockReset()
+  waitForChecksWithClassificationMock.mockReset()
 
   composeRereviewCloseReconsiderationPromptMock.mockResolvedValue(
     "rereview close reconsideration prompt",
   )
+  composeMergeConflictPromptMock.mockResolvedValue("conflict prompt")
   composeRereviewPromptMock.mockResolvedValue("rereview prompt")
+  waitForChecksWithClassificationMock.mockResolvedValue(undefined)
 })
 
 describe("merge", () => {
@@ -184,6 +214,197 @@ describe("merge", () => {
         repository,
       }),
     ).rejects.toThrow("merge.editor is required for magi_merge")
+  })
+
+  test("returns dequeued without conflict recovery when conflict automation is disabled", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-merge-test-"))
+    const mergeRepository: ResolvedRepository = {
+      ...editorRepository,
+      merge: { ...editorRepository.merge, mergeQueue: true },
+    }
+    let queueStatusCalls = 0
+    const exec = vi.fn(async (command: string) => {
+      if (command.startsWith("gh pr view")) return JSON.stringify(prMeta())
+      if (command.includes("/rules/branches/")) {
+        return JSON.stringify([{ type: "merge_queue" }])
+      }
+      if (command.startsWith("gh auth token")) return "token"
+      if (command.includes("id headRefOid")) {
+        return JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: { headRefOid: "head-sha", id: "PR_id" },
+            },
+          },
+        })
+      }
+      if (command.includes("enqueuePullRequest")) return "entry"
+      if (command.includes("isInMergeQueue")) {
+        queueStatusCalls += 1
+
+        return JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                isInMergeQueue: false,
+                mergeQueueEntry: null,
+                state: "OPEN",
+              },
+            },
+          },
+        })
+      }
+
+      return ""
+    })
+
+    runReviewMock.mockResolvedValueOnce({
+      baseSha: "base-sha",
+      ciReports: [],
+      discardedFindings: [],
+      headSha: "head-sha",
+      outputs: {},
+      posted: {},
+      pr: 281,
+      report: "",
+      sessionIds: {},
+      verdict: "MERGE",
+      worktreePath: directory,
+    })
+
+    const result = await runMerge({
+      client: { session: { create: vi.fn(), prompt: vi.fn() } },
+      config: {},
+      directory,
+      exec,
+      pr: 281,
+      repository: mergeRepository,
+    })
+
+    expect(result.status).toBe("dequeued")
+    expect(queueStatusCalls).toBe(1)
+    expect(exec).not.toHaveBeenCalledWith(
+      expect.stringContaining("git merge --no-commit"),
+      expect.anything(),
+    )
+  })
+
+  test("recovers one merge queue conflict and re-enqueues", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "magi-merge-test-"))
+    const reviewers = ["alpha", "bravo", "charlie"].map((key, index) => ({
+      account: `${key}-bot`,
+      index,
+      key,
+      model: "test/model",
+      permission: "allow" as const,
+    }))
+    const mergeRepository: ResolvedRepository = {
+      ...editorRepository,
+      agents: { ...editorRepository.agents, reviewers },
+      automation: { close: true, conflict: true, merge: true },
+      merge: { ...editorRepository.merge, mergeQueue: true },
+    }
+    let queueStatusCalls = 0
+    let unmergedCalls = 0
+    const commands: string[] = []
+    const exec = vi.fn(async (command: string) => {
+      commands.push(command)
+      if (command.startsWith("gh pr view")) return JSON.stringify(prMeta())
+      if (command.includes("/rules/branches/")) {
+        return JSON.stringify([{ type: "merge_queue" }])
+      }
+      if (command.startsWith("gh auth token")) return "token"
+      if (command.includes("id headRefOid")) {
+        return JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: { headRefOid: "head-sha", id: "PR_id" },
+            },
+          },
+        })
+      }
+      if (command.includes("enqueuePullRequest")) return "entry"
+      if (command.includes("isInMergeQueue")) {
+        queueStatusCalls += 1
+
+        return JSON.stringify({
+          data: {
+            repository: {
+              pullRequest:
+                queueStatusCalls === 1
+                  ? {
+                      isInMergeQueue: false,
+                      mergeQueueEntry: null,
+                      state: "OPEN",
+                    }
+                  : {
+                      isInMergeQueue: false,
+                      mergeQueueEntry: null,
+                      state: "MERGED",
+                    },
+            },
+          },
+        })
+      }
+      if (command.startsWith("git merge --no-commit")) {
+        throw new Error("conflict")
+      }
+      if (command === "git diff --name-only --diff-filter=U") {
+        unmergedCalls += 1
+
+        return unmergedCalls === 1 ? "src/file.ts\n" : ""
+      }
+      if (command === "git rev-parse HEAD") return "resolved-head"
+      if (command.startsWith("git cat-file -e")) return ""
+      if (command.startsWith("git diff --no-ext-diff")) return ""
+      if (command.includes("reviewThreads")) return emptyThreads
+
+      return ""
+    })
+
+    runReviewMock.mockResolvedValueOnce({
+      baseSha: "base-sha",
+      ciReports: [],
+      discardedFindings: [],
+      headSha: "head-sha",
+      outputs: {},
+      posted: {},
+      pr: 281,
+      report: "",
+      sessionIds: {},
+      verdict: "MERGE",
+      worktreePath: directory,
+    })
+    runModelWithRepairMock.mockImplementation(async (input) => ({
+      raw: "{}",
+      sessionId: `${input.schemaName}-session`,
+      value:
+        input.schemaName === "edit"
+          ? { ...editOutput(), commitSha: "resolved-head" }
+          : mergeOutput(),
+    }))
+
+    const result = await runMerge({
+      client: { session: { create: vi.fn(), prompt: vi.fn() } },
+      config: {},
+      directory,
+      exec,
+      pr: 281,
+      repository: mergeRepository,
+    })
+
+    expect(result.status).toBe("merged")
+    expect(queueStatusCalls).toBe(2)
+    expect(composeMergeConflictPromptMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseBranch: "main",
+        baseSha: "base-sha",
+        conflictedFiles: JSON.stringify(["src/file.ts"], null, 2),
+        headSha: "head-sha",
+      }),
+    )
+    expect(commands).toContainEqual(expect.stringContaining("git push"))
+    expect(waitForChecksWithClassificationMock).toHaveBeenCalledOnce()
   })
 
   test("uses dry-run edited head for rereview close reconsideration prompts", async () => {

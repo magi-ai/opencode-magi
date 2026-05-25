@@ -50,6 +50,17 @@ export interface EditPromptInput {
   worktreePath: string
 }
 
+export interface MergeConflictPromptInput {
+  baseBranch: string
+  baseSha: string
+  conflictedFiles: string
+  directory: string
+  headSha: string
+  pr: number
+  repository: ResolvedRepository
+  worktreePath: string
+}
+
 export interface FindingValidationPromptInput extends ReviewPromptInput {
   findings: string
   includeReviewGuidelines?: boolean
@@ -198,6 +209,20 @@ function editValues(input: EditPromptInput): Record<string, string> {
     pr: String(input.pr),
     reviewFindings: input.reviewFindings,
     unresolvedThreads: input.unresolvedThreads,
+    worktreePath: input.worktreePath,
+  }
+}
+
+function mergeConflictValues(
+  input: MergeConflictPromptInput,
+): Record<string, string> {
+  return {
+    ...repositoryValues(input.repository),
+    baseBranch: input.baseBranch,
+    baseSha: input.baseSha,
+    conflictedFiles: input.conflictedFiles,
+    headSha: input.headSha,
+    pr: String(input.pr),
     worktreePath: input.worktreePath,
   }
 }
@@ -373,6 +398,32 @@ export async function composeEditPrompt(
   const task = await taskBlock({
     builtin: "merge/edit",
     customPath: input.repository.prompts.edit,
+    directory: input.directory,
+    values,
+  })
+  const persona = input.repository.agents.editor?.persona
+
+  return [
+    task,
+    languageBlock(input.repository.language),
+    personaBlock(persona),
+    await editGuidelinesBlock({
+      directory: input.directory,
+      path: input.repository.prompts.editGuidelines,
+      values,
+    }),
+    editOutputContract,
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+}
+
+export async function composeMergeConflictPrompt(
+  input: MergeConflictPromptInput,
+): Promise<string> {
+  const values = mergeConflictValues(input)
+  const task = await taskBlock({
+    builtin: "merge/conflict",
     directory: input.directory,
     values,
   })
