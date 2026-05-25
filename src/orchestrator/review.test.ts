@@ -58,15 +58,16 @@ const repository: ResolvedRepository = {
     mergeQueue: false,
     method: "squash",
   },
+  mode: "multi",
   prompts: {},
-  review: { mode: "multi" },
   safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
 }
 
 function singleReviewRepository(): ResolvedRepository {
   return {
     ...repository,
-    review: { account: "review-bot", mode: "single" },
+    account: "review-bot",
+    mode: "single",
   }
 }
 

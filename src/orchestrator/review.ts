@@ -191,16 +191,17 @@ export interface ReviewFindingMarker {
 function resolvedReviewMode(
   repository: ResolvedRepository,
 ): "multi" | "single" {
-  return repository.review?.mode === "multi" ? "multi" : "single"
+  return repository.mode === "multi" ? "multi" : "single"
 }
 
 export function reviewPostingAccount(
   repository: ResolvedRepository,
   reviewer: ResolvedRepository["agents"]["reviewers"][number],
 ): string {
-  return resolvedReviewMode(repository) === "single"
-    ? (repository.review?.account ?? reviewer.account)
-    : reviewer.account
+  if (resolvedReviewMode(repository) !== "single") return reviewer.account
+  if (repository.account) return repository.account
+
+  throw new Error("account is required for single review mode")
 }
 
 function reviewAssignmentKey(
@@ -1056,10 +1057,9 @@ export async function postSingleConsensusReview(input: {
   repository: ResolvedRepository
   verdict: "CHANGES_REQUESTED" | "CLOSE" | "MERGE"
 }): Promise<string> {
-  const account = input.repository.review?.account
+  const account = input.repository.account
 
-  if (!account)
-    throw new Error("review.account is required for single review mode")
+  if (!account) throw new Error("account is required for single review mode")
 
   const body = singleReviewBody(input)
 
@@ -1597,7 +1597,7 @@ export async function runReview(
   )
   const preliminaryMode = singleReviewMode
     ? resolveSingleAccountReviewMode({
-        account: input.repository.review?.account ?? "",
+        account: input.repository.account ?? "",
         current: freshnessTarget,
         pr: input.pr,
         reviewerKeys,
@@ -1622,7 +1622,7 @@ export async function runReview(
   )
 
   if (singleReviewMode) {
-    const account = input.repository.review?.account ?? ""
+    const account = input.repository.account ?? ""
     const threads = await fetchUnresolvedThreads(
       exec,
       input.repository,
@@ -1671,7 +1671,7 @@ export async function runReview(
   const mode = singleReviewMode
     ? pendingThreadReplyReviewers.size
       ? resolveSingleAccountReviewMode({
-          account: input.repository.review?.account ?? "",
+          account: input.repository.account ?? "",
           current: freshnessTarget,
           pendingReviewers: pendingThreadReplyReviewers,
           pr: input.pr,
@@ -2187,7 +2187,7 @@ export async function runReview(
                 consensus: input.dryRun
                   ? `dry-run:would-post-single-review:${verdict}`
                   : await (async () => {
-                      const account = input.repository.review?.account ?? ""
+                      const account = input.repository.account ?? ""
 
                       await Promise.all(
                         Object.values(activeOutputs).flatMap((output) => {
@@ -2270,7 +2270,7 @@ export async function runReview(
         }
 
     const automationAccount = singleReviewMode
-      ? input.repository.review?.account
+      ? input.repository.account
       : input.repository.agents.reviewers[0]?.account
     const enableReviewAutomation = input.enableReviewAutomation ?? true
     if (

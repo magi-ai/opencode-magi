@@ -83,8 +83,8 @@ const repository: ResolvedRepository = {
     mergeQueue: false,
     method: "squash",
   },
+  mode: "multi",
   prompts: {},
-  review: { mode: "multi" },
   safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
 }
 
@@ -949,7 +949,8 @@ describe("merge", () => {
         reviewers,
       },
       automation: { ...editorRepository.automation, merge: false },
-      review: { account: "review-bot", mode: "single" },
+      account: "review-bot",
+      mode: "single",
     }
     let rereviewThreads: unknown
     const marker = (author: string) =>

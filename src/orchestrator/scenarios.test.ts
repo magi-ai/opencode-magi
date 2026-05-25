@@ -77,7 +77,7 @@ const repository: ResolvedRepository = {
     method: "squash",
   },
   prompts: {},
-  review: { mode: "multi" },
+  mode: "multi",
   safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
 }
 

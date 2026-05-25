@@ -11,6 +11,7 @@ const config: MagiConfig = {
   agents: {},
   github: { owner: "owner", repo: "repo" },
   language: "en",
+  mode: "multi",
   review: {
     reviewers: [
       {
@@ -64,7 +65,8 @@ describe("resolveRepository", () => {
       merge: true,
     })
     expect(repo.reviewAutomation).toEqual({ close: false, merge: true })
-    expect(repo.review).toEqual({ account: undefined, mode: "single" })
+    expect(repo.account).toBeUndefined()
+    expect(repo.mode).toBe("multi")
     expect(repo.concurrency).toEqual({ runs: 3, reviewers: 3 })
     expect(repo.checks.exclude).toEqual([])
     expect(repo.checks.waitAfterEdit).toBe(true)
@@ -76,8 +78,8 @@ describe("resolveRepository", () => {
   test("resolves default single review account as reviewer posting account", () => {
     const repo = resolveRepository({
       github: { owner: "owner", repo: "repo" },
+      account: "review-bot",
       review: {
-        account: "review-bot",
         reviewers: [
           { id: "general", model: "openai/gpt" },
           { id: "security", model: "openai/gpt" },
@@ -86,7 +88,8 @@ describe("resolveRepository", () => {
       },
     })
 
-    expect(repo.review).toEqual({ account: "review-bot", mode: "single" })
+    expect(repo.account).toBe("review-bot")
+    expect(repo.mode).toBe("single")
     expect(repo.agents.reviewers.map((reviewer) => reviewer.account)).toEqual([
       "review-bot",
       "review-bot",

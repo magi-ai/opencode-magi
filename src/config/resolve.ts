@@ -182,9 +182,7 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
   const editor = config.merge?.editor
   const creator = config.triage?.creator
   const singleReviewAccount =
-    config.review && config.review.mode !== "multi"
-      ? config.review.account
-      : undefined
+    config.review && config.mode !== "multi" ? config.account : undefined
 
   return {
     editor: editor
@@ -265,6 +263,8 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
       repo: config.github.repo,
     },
     language: config.language,
+    account: config.account,
+    mode: config.mode ?? "single",
     merge: {
       approvalPolicy: config.review?.merge?.approvalPolicy ?? "majority",
       method: config.review?.merge?.method ?? "squash",
@@ -284,10 +284,6 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
       rereview: config.review?.prompts?.rereview,
       review: config.review?.prompts?.review,
       reviewGuidelines: config.review?.prompts?.reviewGuidelines,
-    },
-    review: {
-      account: config.review?.account,
-      mode: config.review?.mode ?? "single",
     },
     reviewAutomation: {
       close: config.review?.automation?.close ?? false,
