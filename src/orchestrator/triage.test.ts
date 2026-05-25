@@ -413,7 +413,7 @@ function withSingleTriageAgent(
   }
 }
 
-describe("triage orchestration", () => {
+describe("triage", () => {
   test("resolves issue category from configured labels and issue types", () => {
     expect(resolveIssueCategory(issue({ type: "Bug" }), repository)).toBe("bug")
     expect(resolveIssueCategory(issue({ type: "Feature" }), repository)).toBe(

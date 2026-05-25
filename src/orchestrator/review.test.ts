@@ -209,7 +209,7 @@ function expectActiveAssignments(
   )
 }
 
-describe("review flow", () => {
+describe("review", () => {
   for (const {
     expectedAssignments,
     pendingThreadReplyAccounts,
