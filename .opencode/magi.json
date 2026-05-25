@@ -40,7 +40,7 @@
         "account": "hirotomoyamada",
         "model": [
           {
-            "id": "openai/gpt-5.5",
+            "id": "openai/gpt-5.5-fast",
             "options": { "reasoningEffort": "high" }
           }
         ],

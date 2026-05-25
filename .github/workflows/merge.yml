@@ -106,7 +106,7 @@ jobs:
         env:
           OPENCODE_AUTH_CONTENT: ${{ secrets.OPENCODE_AUTH_CONTENT }}
         run: |
-          opencode run --dir "$GITHUB_WORKSPACE" --model "openai/gpt-5.5" --command "magi:merge" "${{ github.event.pull_request.number || github.event.issue.number }} --sync"
+          opencode run --dir "$GITHUB_WORKSPACE" --model "openai/gpt-5.5-fast" --command "magi:merge" "${{ github.event.pull_request.number || github.event.issue.number }} --sync"
 
       - name: Remove label
         if: ${{ always() }}
