@@ -26,6 +26,7 @@ export interface ReviewPromptInput {
   ciFailureContext?: string
   directory: string
   headSha: string
+  mergeConflictContext?: string
   pr: number
   repository: ResolvedRepository
   reviewContext?: string
@@ -166,6 +167,7 @@ function repositoryValues(
 
 function reviewValues(input: ReviewPromptInput): Record<string, string> {
   const ciFailureContext = input.ciFailureContext?.trim() ?? ""
+  const mergeConflictContext = input.mergeConflictContext?.trim() ?? ""
 
   return {
     ...repositoryValues(input.repository),
@@ -176,6 +178,10 @@ function reviewValues(input: ReviewPromptInput): Record<string, string> {
       : "",
     headSha: input.headSha,
     jsonEncodedWorktreePath: JSON.stringify(input.worktreePath),
+    mergeConflictContext,
+    mergeConflictContextBlock: mergeConflictContext
+      ? `<merge_conflict_context>\n${mergeConflictContext}\n</merge_conflict_context>`
+      : "",
     pr: String(input.pr),
     reviewContext: input.reviewContext ?? "",
     worktreePath: input.worktreePath,
@@ -244,6 +250,14 @@ function previousReviewBlock(previousReview?: string): string {
 
 function reviewContextBlock(reviewContext?: string): string {
   return reviewContext?.trim() ? reviewContext.trim() : ""
+}
+
+function mergeConflictContextBlock(mergeConflictContext?: string): string {
+  const body = mergeConflictContext?.trim()
+
+  return body
+    ? `<merge_conflict_context>\n${body}\n</merge_conflict_context>`
+    : ""
 }
 
 async function reviewGuidelinesBlock(input: {
@@ -320,6 +334,7 @@ export async function composeReviewPrompt(
   return [
     task,
     reviewContextBlock(input.reviewContext),
+    mergeConflictContextBlock(input.mergeConflictContext),
     languageBlock(input.repository.language),
     personaBlock(input.reviewer.persona),
     await reviewGuidelinesBlock({
@@ -347,6 +362,7 @@ export async function composeRereviewPrompt(
   return [
     task,
     reviewContextBlock(input.reviewContext),
+    mergeConflictContextBlock(input.mergeConflictContext),
     input.includeSessionContext === false
       ? ""
       : languageBlock(input.repository.language),
