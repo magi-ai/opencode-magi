@@ -182,7 +182,9 @@ export function resolveAgents(config: MagiConfig): ResolvedAgents {
   const editor = config.merge?.editor
   const creator = config.triage?.creator
   const singleReviewAccount =
-    config.review?.mode === "single" ? config.review.account : undefined
+    config.review && config.review.mode !== "multi"
+      ? config.review.account
+      : undefined
 
   return {
     editor: editor
@@ -285,7 +287,7 @@ export function resolveRepository(config: MagiConfig): ResolvedRepository {
     },
     review: {
       account: config.review?.account,
-      mode: config.review?.mode ?? "multi",
+      mode: config.review?.mode ?? "single",
     },
     reviewAutomation: {
       close: config.review?.automation?.close ?? false,

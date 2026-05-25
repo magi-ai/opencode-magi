@@ -106,30 +106,30 @@ Review artifacts are written to the run output directory:
 
 Important settings for `/magi:review`:
 
-| Setting                               | Purpose                                                       |
-| ------------------------------------- | ------------------------------------------------------------- |
-| `review.reviewers`                    | Reviewer agents, models, personas, permissions, and accounts. |
-| `review.mode`                         | `multi` or `single` GitHub posting identity mode.             |
-| `review.account`                      | Shared reviewer posting account for single mode.              |
-| `review.checks.wait`                  | Wait for required PR checks before review.                    |
-| `review.checks.exclude`               | Ignore matching failed checks.                                |
-| `review.checks.retryFailedJobs`       | Retry scope-outside GitHub Actions jobs.                      |
-| `review.concurrency.reviewers`        | Maximum reviewer agents running at once.                      |
-| `review.concurrency.runs`             | Maximum PR runs processed at once.                            |
-| `github.apiRetryAttempts`             | Retry count for GitHub CLI API rate limit errors.             |
-| `review.output`                       | PR run output directory.                                      |
-| `output.repairAttempts`               | Model output repair attempts.                                 |
-| `review.prompts.review`               | Initial review prompt template.                               |
-| `review.prompts.rereview`             | Re-review prompt template.                                    |
-| `review.prompts.reviewGuidelines`     | Shared review guidance file.                                  |
-| `review.prompts.ciClassification`     | Failed-check classification prompt template.                  |
-| `review.prompts.findingValidation`    | Finding validation prompt template.                           |
-| `review.prompts.closeReconsideration` | Close reconsideration prompt template.                        |
-| `review.safety.requiredLabels`        | Required PR labels before review.                             |
-| `review.safety.blockedPaths`          | Changed-file glob patterns that block review.                 |
-| `review.safety.maxChangedFiles`       | Maximum changed file count before review is blocked.          |
-| `review.safety.allowAuthors`          | Allowed PR authors when configured.                           |
-| `review.worktree`                     | Temporary PR worktree base directory.                         |
+| Setting                               | Purpose                                                                 |
+| ------------------------------------- | ----------------------------------------------------------------------- |
+| `review.reviewers`                    | Reviewer agents, models, personas, permissions, and accounts.           |
+| `review.mode`                         | `multi` or `single` GitHub posting identity mode. Defaults to `single`. |
+| `review.account`                      | Shared reviewer posting account for single mode.                        |
+| `review.checks.wait`                  | Wait for required PR checks before review.                              |
+| `review.checks.exclude`               | Ignore matching failed checks.                                          |
+| `review.checks.retryFailedJobs`       | Retry scope-outside GitHub Actions jobs.                                |
+| `review.concurrency.reviewers`        | Maximum reviewer agents running at once.                                |
+| `review.concurrency.runs`             | Maximum PR runs processed at once.                                      |
+| `github.apiRetryAttempts`             | Retry count for GitHub CLI API rate limit errors.                       |
+| `review.output`                       | PR run output directory.                                                |
+| `output.repairAttempts`               | Model output repair attempts.                                           |
+| `review.prompts.review`               | Initial review prompt template.                                         |
+| `review.prompts.rereview`             | Re-review prompt template.                                              |
+| `review.prompts.reviewGuidelines`     | Shared review guidance file.                                            |
+| `review.prompts.ciClassification`     | Failed-check classification prompt template.                            |
+| `review.prompts.findingValidation`    | Finding validation prompt template.                                     |
+| `review.prompts.closeReconsideration` | Close reconsideration prompt template.                                  |
+| `review.safety.requiredLabels`        | Required PR labels before review.                                       |
+| `review.safety.blockedPaths`          | Changed-file glob patterns that block review.                           |
+| `review.safety.maxChangedFiles`       | Maximum changed file count before review is blocked.                    |
+| `review.safety.allowAuthors`          | Allowed PR authors when configured.                                     |
+| `review.worktree`                     | Temporary PR worktree base directory.                                   |
 
 See [Config](/docs/config.md) for the complete configuration reference.
 

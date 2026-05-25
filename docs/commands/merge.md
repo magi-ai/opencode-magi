@@ -108,31 +108,31 @@ The merge flow also writes the review artifacts listed in [`/magi:review`](revie
 
 Important settings for `/magi:merge`:
 
-| Setting                               | Purpose                                                            |
-| ------------------------------------- | ------------------------------------------------------------------ |
-| `merge.editor`                        | Editor agent, model, persona, permissions, GitHub account, author. |
-| `review.mode`                         | `multi` or `single` GitHub posting identity mode for reviewers.    |
-| `review.account`                      | Shared reviewer posting account for single mode.                   |
-| `review.reviewers`                    | Reviewer agents used for initial review and re-review.             |
-| `merge.automation.close`              | Run `gh pr close` after a close decision.                          |
-| `merge.automation.merge`              | Merge or enqueue the PR after approval.                            |
-| `merge.automation.conflict`           | Resolve one merge queue dequeue conflict with the editor.          |
-| `merge.checks.wait`                   | Wait for required PR checks after editor changes.                  |
-| `review.merge.approvalPolicy`         | Decide readiness by `majority` or `unanimous`.                     |
-| `review.merge.auto`                   | Pass `--auto` to `gh pr merge` outside merge queue mode.           |
-| `review.merge.deleteBranch`           | Delete the PR branch during non-queue merges when configured.      |
-| `merge.maxThreadResolutionCycles`     | Maximum fix/reply attempts per unresolved review thread.           |
-| `review.merge.queue`                  | Enqueue the PR through GitHub GraphQL and poll queue completion.   |
-| `review.merge.method`                 | Merge method: `merge`, `squash`, or `rebase`.                      |
-| `merge.prompts.edit`                  | Editor prompt template.                                            |
-| `merge.prompts.editGuidelines`        | Shared edit guidance file.                                         |
-| `merge.prompts.ciClassification`      | Post-edit failed-check classification prompt template.             |
-| `review.prompts.rereview`             | Re-review prompt template.                                         |
-| `review.prompts.closeReconsideration` | Close reconsideration prompt template used during re-review.       |
-| `review.safety.requiredLabels`        | Required PR labels before merge flow.                              |
-| `review.safety.blockedPaths`          | Changed-file glob patterns that block merge flow.                  |
-| `review.safety.maxChangedFiles`       | Maximum changed file count before merge flow is blocked.           |
-| `review.safety.allowAuthors`          | Allowed PR authors when configured.                                |
+| Setting                               | Purpose                                                                               |
+| ------------------------------------- | ------------------------------------------------------------------------------------- |
+| `merge.editor`                        | Editor agent, model, persona, permissions, GitHub account, author.                    |
+| `review.mode`                         | `multi` or `single` GitHub posting identity mode for reviewers. Defaults to `single`. |
+| `review.account`                      | Shared reviewer posting account for single mode.                                      |
+| `review.reviewers`                    | Reviewer agents used for initial review and re-review.                                |
+| `merge.automation.close`              | Run `gh pr close` after a close decision.                                             |
+| `merge.automation.merge`              | Merge or enqueue the PR after approval.                                               |
+| `merge.automation.conflict`           | Resolve one merge queue dequeue conflict with the editor.                             |
+| `merge.checks.wait`                   | Wait for required PR checks after editor changes.                                     |
+| `review.merge.approvalPolicy`         | Decide readiness by `majority` or `unanimous`.                                        |
+| `review.merge.auto`                   | Pass `--auto` to `gh pr merge` outside merge queue mode.                              |
+| `review.merge.deleteBranch`           | Delete the PR branch during non-queue merges when configured.                         |
+| `merge.maxThreadResolutionCycles`     | Maximum fix/reply attempts per unresolved review thread.                              |
+| `review.merge.queue`                  | Enqueue the PR through GitHub GraphQL and poll queue completion.                      |
+| `review.merge.method`                 | Merge method: `merge`, `squash`, or `rebase`.                                         |
+| `merge.prompts.edit`                  | Editor prompt template.                                                               |
+| `merge.prompts.editGuidelines`        | Shared edit guidance file.                                                            |
+| `merge.prompts.ciClassification`      | Post-edit failed-check classification prompt template.                                |
+| `review.prompts.rereview`             | Re-review prompt template.                                                            |
+| `review.prompts.closeReconsideration` | Close reconsideration prompt template used during re-review.                          |
+| `review.safety.requiredLabels`        | Required PR labels before merge flow.                                                 |
+| `review.safety.blockedPaths`          | Changed-file glob patterns that block merge flow.                                     |
+| `review.safety.maxChangedFiles`       | Maximum changed file count before merge flow is blocked.                              |
+| `review.safety.allowAuthors`          | Allowed PR authors when configured.                                                   |
 
 See [Config](/docs/config.md) for the complete configuration reference.
 

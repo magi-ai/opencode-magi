@@ -13,6 +13,7 @@ const config: MagiConfig = {
   github: { owner: "owner", repo: "repo" },
   language: "en",
   review: {
+    mode: "multi",
     reviewers: [
       {
         model: "anthropic/claude",
@@ -69,6 +70,7 @@ describe("validateConfig", () => {
       },
       github: { owner: "owner", repo: "repo" },
       review: {
+        mode: "multi",
         reviewers: [
           { ref: "shared", id: "alpha", account: "bot-a" },
           {
@@ -142,6 +144,7 @@ describe("validateConfig", () => {
       agents: { refs: { shared: { model: "openai/gpt" } } },
       github: { owner: "owner", repo: "repo" },
       review: {
+        mode: "multi",
         reviewers: [
           { ref: "missing", account: "bot-a" },
           { ref: 1, account: "bot-b" },
@@ -170,6 +173,7 @@ describe("validateConfig", () => {
       },
       github: { owner: "owner", repo: "repo" },
       review: {
+        mode: "multi",
         reviewers: [
           { model: "openai/gpt", account: "bot-a" },
           { model: "openai/gpt", account: "bot-b" },
@@ -196,6 +200,7 @@ describe("validateConfig", () => {
       },
       github: { owner: "owner", repo: "repo" },
       review: {
+        mode: "multi",
         reviewers: [
           { ref: "creator", account: "bot-a" },
           { model: "openai/gpt", account: "bot-b" },
@@ -248,7 +253,7 @@ describe("validateConfig", () => {
 
   test("allows global config without github", async () => {
     const globalConfig: MagiConfig = {
-      review: { reviewers },
+      review: { mode: "multi", reviewers },
     }
 
     await expect(
@@ -583,7 +588,25 @@ describe("validateConfig", () => {
     )
   })
 
-  test("defaults to multi mode account validation", async () => {
+  test("defaults to single mode account validation", async () => {
+    const result = await validateConfig({
+      ...config,
+      review: {
+        prompts: config.review?.prompts,
+        reviewers: [
+          { id: "general", model: "openai/gpt" },
+          { id: "security", model: "openai/gpt" },
+          { id: "compat", model: "openai/gpt" },
+        ],
+      },
+    })
+
+    expect(result.errors).toContain(
+      "review.account is required when review.mode is single",
+    )
+  })
+
+  test("enforces reviewer accounts in multi mode", async () => {
     const missingAccount = await validateConfig({
       ...config,
       review: {
@@ -940,6 +963,7 @@ describe("validateConfig", () => {
         },
       },
       review: {
+        mode: "multi",
         reviewers: [
           { ref: "shared" },
           { account: "bot-b", model: ["missing/model", "openai/gpt"] },
@@ -1019,6 +1043,7 @@ describe("validateConfig", () => {
         },
       },
       review: {
+        mode: "multi",
         reviewers: [
           { ref: "shared" },
           {

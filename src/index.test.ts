@@ -481,6 +481,7 @@ describe("magi_validate", () => {
 
     await writeConfig(globalPath, {
       review: {
+        mode: "multi",
         reviewers: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },
@@ -562,6 +563,7 @@ describe("magi_validate", () => {
 
     await writeConfig(globalPath, {
       review: {
+        mode: "multi",
         reviewers: [
           { account: "bot-a", model: "openai/gpt" },
           { account: "bot-b", model: "openai/gpt" },

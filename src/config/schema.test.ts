@@ -3,6 +3,10 @@ import { describe, expect, test } from "vitest"
 import schema from "../../schema.json" with { type: "json" }
 
 describe("schema", () => {
+  test("declares single as the default review mode", () => {
+    expect(schema.$defs.review.properties.mode.default).toBe("single")
+  })
+
   test("accepts merge conflict automation", () => {
     const ajv = new Ajv2020()
     const validate = ajv.compile(schema)

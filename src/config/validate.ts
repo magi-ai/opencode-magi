@@ -558,7 +558,7 @@ function validateReviewerList(
   path: string,
   errors: string[],
   catalog?: ModelCatalog,
-  mode = "multi",
+  mode = "single",
 ): void {
   if (reviewers == null) return
   if (!Array.isArray(reviewers)) {
@@ -665,7 +665,7 @@ function validateResolvedReviewers(
   reviewers: { account: string; key: string }[],
   path: string,
   errors: string[],
-  mode = "multi",
+  mode = "single",
 ): void {
   const keys = new Set<string>()
   const accounts = new Set<string>()
@@ -682,7 +682,7 @@ function validateResolvedReviewers(
 }
 
 function reviewMode(config: MagiConfig): "multi" | "single" {
-  return config.review?.mode === "single" ? "single" : "multi"
+  return config.review?.mode === "multi" ? "multi" : "single"
 }
 
 function validateReviewIdentity(config: MagiConfig, errors: string[]): void {
@@ -694,7 +694,7 @@ function validateReviewIdentity(config: MagiConfig, errors: string[]): void {
 
   validateString(config.review?.account, "review.account", errors)
 
-  if (mode === "single" && !config.review?.account) {
+  if ((mode == null || mode === "single") && !config.review?.account) {
     errors.push("review.account is required when review.mode is single")
   }
 }

@@ -366,7 +366,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "mode": { "enum": ["multi", "single"], "default": "multi" },
+        "mode": { "enum": ["multi", "single"], "default": "single" },
         "account": { "type": "string", "minLength": 1 },
         "reviewers": {
           "type": "array",
