@@ -14,7 +14,10 @@ import type {
 import type { Exec, ResolvedRepository } from "../types"
 import type { ApprovalPolicy } from "./majority"
 import type { ModelClient } from "./model"
-import { DEFAULT_TRIAGE_LABEL_RULES } from "../config/resolve"
+import {
+  DEFAULT_TRIAGE_LABEL_RULES,
+  resolveRepository,
+} from "../config/resolve"
 import { runMerge } from "./merge"
 import { runReview } from "./review"
 import { runTriage } from "./triage"
@@ -79,6 +82,48 @@ const repository: ResolvedRepository = {
   prompts: {},
   mode: "multi",
   safety: { allowAuthors: [], blockedPaths: [], requiredLabels: [] },
+}
+
+function singleModeRepository(): ResolvedRepository {
+  return resolveRepository({
+    account: "single-bot",
+    github: { owner: "owner", repo: "repo" },
+    mode: "single",
+    review: {
+      automation: { merge: false },
+      checks: { wait: false },
+      reviewers: [
+        { id: "alpha", model: "mock/model" },
+        { id: "beta", model: "mock/model" },
+        { id: "gamma", model: "mock/model" },
+      ],
+    },
+    merge: {
+      checks: { wait: false },
+      editor: {
+        account: "editor-bot",
+        author: { email: "editor@example.com", name: "Editor Bot" },
+        model: "mock/model",
+        permissions: "deny",
+      },
+      maxThreadResolutionCycles: 2,
+    },
+  })
+}
+
+function singleModeTriageRepository(): ResolvedRepository {
+  return resolveRepository({
+    account: "single-bot",
+    github: { owner: "owner", repo: "repo" },
+    mode: "single",
+    triage: {
+      voters: [
+        { id: "alpha", model: "mock/model" },
+        { id: "beta", model: "mock/model" },
+        { id: "gamma", model: "mock/model" },
+      ],
+    },
+  })
 }
 
 const temporaryDirs: string[] = []
@@ -865,6 +910,42 @@ function comment(overrides: Partial<IssueComment>): IssueComment {
 }
 
 describe("scenario: /magi:review", () => {
+  test("posts single-account consensus through the top-level account", async () => {
+    const result = await runReviewScenario({
+      outputs: [
+        reviewOutput("MERGE"),
+        reviewOutput("MERGE"),
+        reviewOutput("MERGE"),
+      ],
+      repository: singleModeRepository(),
+    })
+
+    const tokenCommands = result.commands.filter((command) =>
+      command.startsWith("gh auth token"),
+    )
+
+    expect(result.result.verdict).toBe("MERGE")
+    expect(result.result.posted).toEqual({
+      consensus: "https://github.com/owner/repo/pull/7#pullrequestreview-1",
+    })
+    expect(result.sessionTitles).toEqual(
+      expect.arrayContaining([
+        "magi review repo#7 alpha",
+        "magi review repo#7 beta",
+        "magi review repo#7 gamma",
+      ]),
+    )
+    expect(
+      result.commands.filter((command) =>
+        command.includes("/pulls/7/reviews --method POST"),
+      ),
+    ).toHaveLength(1)
+    expect(tokenCommands.length).toBeGreaterThan(0)
+    expect(
+      tokenCommands.every((command) => command.includes("'single-bot'")),
+    ).toBe(true)
+  })
+
   test("posts deterministic approvals without live GitHub calls", async () => {
     const result = await runReviewScenario({
       outputs: [
@@ -1009,6 +1090,42 @@ describe("scenario: /magi:review", () => {
 })
 
 describe("scenario: /magi:merge", () => {
+  test("merges after single-account review uses the top-level account", async () => {
+    const result = await runMergeScenario({
+      outputs: [
+        reviewOutput("MERGE"),
+        reviewOutput("MERGE"),
+        reviewOutput("MERGE"),
+      ],
+      repository: singleModeRepository(),
+    })
+
+    const tokenCommands = result.commands.filter((command) =>
+      command.startsWith("gh auth token"),
+    )
+
+    expect(result.result.status).toBe("merged")
+    expect(result.result.cycles).toBe(0)
+    expect(
+      result.commands.filter((command) =>
+        command.includes("/pulls/7/reviews --method POST"),
+      ),
+    ).toHaveLength(1)
+    expect(
+      tokenCommands.some((command) => command.includes("'single-bot'")),
+    ).toBe(true)
+    expect(
+      tokenCommands.some((command) =>
+        ["'bot-a'", "'bot-b'", "'bot-c'"].some((account) =>
+          command.includes(account),
+        ),
+      ),
+    ).toBe(false)
+    expect(
+      result.commands.some((command) => command.startsWith("gh pr merge 7")),
+    ).toBe(true)
+  })
+
   test("merges an approved PR without a merge queue", async () => {
     const result = await runMergeScenario({
       outputs: [
@@ -1194,6 +1311,41 @@ describe("scenario: /magi:merge", () => {
 })
 
 describe("scenario: /magi:triage", () => {
+  test("posts single-mode triage results through the top-level account", async () => {
+    const result = await runTriageScenario({
+      dryRun: false,
+      issue: triageIssue({ type: "Bug" }),
+      outputs: [triageVote("YES"), triageVote("YES"), triageVote("YES")],
+      repository: singleModeTriageRepository(),
+    })
+
+    const tokenCommands = result.commands.filter((command) =>
+      command.startsWith("gh auth token"),
+    )
+
+    expect(result.result.result).toEqual({
+      category: "bug",
+      disposition: "accepted",
+      signals: [],
+    })
+    expect(result.sessionTitles).toEqual(
+      expect.arrayContaining([
+        "Magi triage triage acceptance #1 (alpha)",
+        "Magi triage triage acceptance #1 (beta)",
+        "Magi triage triage acceptance #1 (gamma)",
+      ]),
+    )
+    expect(tokenCommands.length).toBeGreaterThan(0)
+    expect(
+      tokenCommands.every((command) => command.includes("'single-bot'")),
+    ).toBe(true)
+    expect(
+      result.commands.some((command) =>
+        command.includes("repos/owner/repo/issues/1/comments"),
+      ),
+    ).toBe(true)
+  })
+
   test("skips classification when issue type maps to a category", async () => {
     const result = await runTriageScenario({
       issue: triageIssue({ type: "Bug" }),
