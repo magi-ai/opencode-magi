@@ -1,5 +1,13 @@
 # opencode-magi
 
+## 0.10.0
+
+### Minor Changes
+
+- [#298](https://github.com/magi-ai/opencode-magi/pull/298) [`a0a11c5`](https://github.com/magi-ai/opencode-magi/commit/a0a11c55671abdaa838971fd767b211f151bb9a7) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Add single-mode identity support for issue triage.
+
+- [#295](https://github.com/magi-ai/opencode-magi/pull/295) [`8a5cd77`](https://github.com/magi-ai/opencode-magi/commit/8a5cd779494605f8b6c6589f2f99b93f153b3b06) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Promote review identity mode and account settings to top-level configuration.
+
 ## 0.9.0
 
 ### Minor Changes
