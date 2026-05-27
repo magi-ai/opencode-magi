@@ -1,6 +1,10 @@
-export const MAGI_COMMANDS = {
+import { Config } from "@opencode-ai/plugin"
+
+export const commands: Config["command"] = {
   "magi:clear": {
-    description: "Clear inactive Magi runs, sessions, worktrees, and outputs",
+    description: [
+      "Clear inactive Magi runs, sessions, worktrees, and outputs",
+    ].join("\n"),
     template: "Call the `magi_clear` tool.",
   },
   "magi:merge": {
@@ -19,6 +23,6 @@ export const MAGI_COMMANDS = {
   },
   "magi:validate": {
     description: "Validate Magi config",
-    template: "Call the `magi_validate` tool.",
+    template: ["Call the `magi_validate` tool."].join("\n"),
   },
 }
