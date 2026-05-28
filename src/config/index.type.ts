@@ -35,8 +35,10 @@ export interface Output {
 }
 
 export type PermissionAction = "allow" | "ask" | "deny"
-export type PermissionRule = PermissionAction | Record<string, PermissionAction>
-export type Permissions = PermissionAction | Record<string, PermissionRule>
+export type PermissionRule =
+  | PermissionAction
+  | { [key: string]: PermissionAction }
+export type Permissions = PermissionAction | { [key: string]: PermissionRule }
 
 export interface ModelOptions extends Record<string, unknown> {}
 
@@ -45,7 +47,7 @@ export interface ModelWithOptions {
   options?: ModelOptions
 }
 
-export type Model = string | ModelWithOptions | (string | ModelWithOptions)[]
+export type Model = (ModelWithOptions | string)[] | ModelWithOptions | string
 
 export interface Author {
   email: string
@@ -63,10 +65,10 @@ export interface AgentRef {
 
 export interface Agents {
   permissions: Permissions
-  refs?: Record<string, AgentRef>
+  refs?: { [key: string]: AgentRef }
 }
 
-export type Agent = Reviewer | Editor | Creator | Voter
+export type Agent = Creator | Editor | Reviewer | Voter
 
 export interface Reviewer extends Omit<AgentRef, "author" | "id"> {
   id: string
@@ -84,14 +86,14 @@ export interface Review {
     wait: boolean
   }
   concurrency: {
-    runs: number
     reviewers: number
+    runs: number
   }
   merge: {
     approvalPolicy: "majority" | "unanimous"
     auto: boolean
     deleteBranch: boolean
-    method: "merge" | "squash" | "rebase"
+    method: "merge" | "rebase" | "squash"
     queue: boolean
   }
   output: string

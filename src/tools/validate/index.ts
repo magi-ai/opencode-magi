@@ -1,6 +1,7 @@
-import { getConfig, validateConfig } from "@/config"
-import { createExec, Tool } from "@/utils"
+import type { Tool } from "@/utils"
 import { tool } from "@opencode-ai/plugin"
+import { getConfig, validateConfig } from "@/config"
+import { createExec } from "@/utils"
 
 function formatValidation(errors: string[]): string {
   return [
@@ -16,9 +17,9 @@ export const validate: Tool = function (input) {
 
   return {
     magi_validate: tool({
+      args: {},
       description:
         "Validate global and project Magi config presence, merged settings, reviewer rules, model IDs, and GitHub authentication.",
-      args: {},
       async execute() {
         try {
           const config = await getConfig(input)

@@ -1,4 +1,4 @@
-import { Config } from "@opencode-ai/plugin"
+import type { Config } from "@opencode-ai/plugin"
 
 export const commands: Config["command"] = {
   "magi:clear": {
@@ -11,15 +11,15 @@ export const commands: Config["command"] = {
     description: "Review and merge pull requests with Magi",
     template: [`Call the \`magi_merge\` tool.`, "PR: $ARGUMENTS"].join("\n"),
   },
+  "magi:review": {
+    description: "Review pull requests with Magi",
+    template: [`Call the \`magi_review\` tool.`, "PR: $ARGUMENTS"].join("\n"),
+  },
   "magi:triage": {
     description: "Triage GitHub issues with Magi",
     template: [`Call the \`magi_triage\` tool.`, "Issue: $ARGUMENTS"].join(
       "\n",
     ),
-  },
-  "magi:review": {
-    description: "Review pull requests with Magi",
-    template: [`Call the \`magi_review\` tool.`, "PR: $ARGUMENTS"].join("\n"),
   },
   "magi:validate": {
     description: "Validate Magi config",

@@ -1,7 +1,8 @@
+import type { Config } from "."
+import type { Exec } from "@/utils"
 import { Ajv2020 } from "ajv/dist/2020"
+import { createExecWithGitHubApiRetry } from "@/utils"
 import schema from "../../schema.json" with { type: "json" }
-import { Config } from "."
-import { Exec, createExecWithGitHubApiRetry } from "@/utils"
 
 function required(
   required: boolean,
@@ -26,35 +27,35 @@ function schemaErrors(config: Config.Root): string[] {
 function requiredErrors(
   config: Config.Root,
   {
-    github = true,
     creator = false,
+    editor = false,
+    github = true,
     reviewers = false,
     voters = false,
-    editor = false,
   }: ValidationOptions["require"] = {},
 ): string[] {
   const errors = [
-    required(github, config.github?.owner, "github.owner"),
-    required(github, config.github?.repo, "github.repo"),
-    required(reviewers, config.review?.reviewers, "review.reviewers"),
-    ...(config.review?.reviewers ?? []).map((reviewer, index) =>
+    required(github, config.github.owner, "github.owner"),
+    required(github, config.github.repo, "github.repo"),
+    required(reviewers, config.review.reviewers, "review.reviewers"),
+    ...(config.review.reviewers ?? []).map((reviewer, index) =>
       required(reviewers, reviewer.model, `review.reviewers[${index}].model`),
     ),
-    required(editor, config.merge?.editor, "merge.editor"),
-    required(editor, config.merge?.editor?.model, "merge.editor.model"),
-    required(voters, config.triage?.voters, "triage.voters"),
-    ...(config.triage?.voters ?? []).map((voter, index) =>
+    required(editor, config.merge.editor, "merge.editor"),
+    required(editor, config.merge.editor.model, "merge.editor.model"),
+    required(voters, config.triage.voters, "triage.voters"),
+    ...(config.triage.voters ?? []).map((voter, index) =>
       required(voters, voter.model, `triage.voters[${index}].model`),
     ),
-    required(creator, config.triage?.creator, "triage.creator"),
-    required(creator, config.triage?.creator?.model, "triage.creator.model"),
+    required(creator, config.triage.creator, "triage.creator"),
+    required(creator, config.triage.creator.model, "triage.creator.model"),
   ]
 
   if (config.mode === "single") {
     errors.push(required(true, config.account, "account"))
   } else {
     errors.push(
-      ...(config.review?.reviewers ?? []).map((reviewer, index) =>
+      ...(config.review.reviewers ?? []).map((reviewer, index) =>
         required(
           reviewers,
           reviewer.account,
@@ -63,17 +64,17 @@ function requiredErrors(
       ),
     )
     errors.push(
-      required(editor, config.merge?.editor?.account, "merge.editor.account"),
+      required(editor, config.merge.editor.account, "merge.editor.account"),
     )
     errors.push(
-      ...(config.triage?.voters ?? []).map((voter, index) =>
+      ...(config.triage.voters ?? []).map((voter, index) =>
         required(voters, voter.account, `triage.voters[${index}].account`),
       ),
     )
     errors.push(
       required(
         creator,
-        config.triage?.creator?.account,
+        config.triage.creator.account,
         "triage.creator.account",
       ),
     )
@@ -116,8 +117,8 @@ function agentGroupErrors(
 
 function groupErrors(config: Config.Root): string[] {
   return [
-    ...agentGroupErrors(config.review?.reviewers, "review.reviewers"),
-    ...agentGroupErrors(config.triage?.voters, "triage.voters"),
+    ...agentGroupErrors(config.review.reviewers, "review.reviewers"),
+    ...agentGroupErrors(config.triage.voters, "triage.voters"),
   ]
 }
 
@@ -151,14 +152,14 @@ async function authErrors(config: Config.Root, exec: Exec): Promise<string[]> {
           `review.reviewers[${index}]`,
         ]),
       ),
-      [config.merge.editor!.account!]: "merge.editor",
+      [config.merge.editor.account!]: "merge.editor",
       ...Object.fromEntries(
         config.triage.voters!.map(({ account }, index) => [
           account!,
           `triage.voters[${index}]`,
         ]),
       ),
-      [config.triage.creator!.account!]: "triage.creator",
+      [config.triage.creator.account!]: "triage.creator",
     }
 
     return [
@@ -173,11 +174,11 @@ async function authErrors(config: Config.Root, exec: Exec): Promise<string[]> {
 export interface ValidationOptions {
   exec?: Exec
   require?: {
+    creator?: boolean
     editor?: boolean
     github?: boolean
     reviewers?: boolean
     voters?: boolean
-    creator?: boolean
   }
 }
 

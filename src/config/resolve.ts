@@ -1,9 +1,9 @@
-import { Config } from "."
-import { CONFIG_PATH, DEFAULT_CONFIG } from "@/constant"
-import { PluginInput } from "@opencode-ai/plugin"
+import type { PluginInput } from "@opencode-ai/plugin"
+import type { Config } from "."
 import { readFile } from "node:fs/promises"
-import { getModels, isArray, isObject, isString, merge } from "@/utils"
 import { join } from "node:path"
+import { CONFIG_PATH, DEFAULT_CONFIG } from "@/constant"
+import { getModels, isArray, isObject, isString, merge } from "@/utils"
 
 function mergePermissions(
   base: Config.Permissions,
@@ -19,18 +19,14 @@ function mergePermissions(
 }
 
 function mergeAgent<T extends Config.Agent>(base: Config.Root, agent: T): T {
-  if (base.agents) {
-    if (base.agents.refs && agent.ref) {
-      agent = { ...base.agents.refs[agent.ref], ...agent }
-    }
-
-    if (base.agents.permissions) {
-      agent.permissions = mergePermissions(
-        base.agents?.permissions,
-        agent.permissions,
-      )
-    }
+  if (base.agents.refs && agent.ref) {
+    agent = { ...base.agents.refs[agent.ref], ...agent }
   }
+
+  agent.permissions = mergePermissions(
+    base.agents.permissions,
+    agent.permissions,
+  )
 
   if (base.account) agent.account ??= base.account
 
@@ -42,9 +38,9 @@ function resolveModel(
   model: Config.Model | undefined,
 ): Config.ModelWithOptions | undefined {
   if (isArray(model)) {
-    model = model.filter((model) =>
+    model = model.find((model) =>
       isString(model) ? models.includes(model) : models.includes(model.id),
-    )[0]
+    )
   }
 
   if (!model) return undefined
@@ -91,42 +87,38 @@ export async function getConfig(input: PluginInput): Promise<Config.Root> {
     DEFAULT_CONFIG,
   )
 
-  if (config.review?.reviewers) {
+  if (config.review.reviewers) {
     config.review.reviewers = config.review.reviewers.map((agent, index) => {
       const { id, model, ...rest } = mergeAgent(config, agent)
 
       return {
         ...rest,
-        id: id ?? `reviewer-${index + 1}`,
+        id: id || `reviewer-${index + 1}`,
         model: resolveModel(models, model),
       }
     })
   }
 
-  if (config.merge?.editor) {
-    config.merge.editor = mergeAgent(config, config.merge.editor)
-    config.merge.editor.model = resolveModel(models, config.merge.editor.model)
-  }
+  config.merge.editor = mergeAgent(config, config.merge.editor)
+  config.merge.editor.model = resolveModel(models, config.merge.editor.model)
 
-  if (config.triage?.voters) {
+  if (config.triage.voters) {
     config.triage.voters = config.triage.voters.map((agent, index) => {
       const { id, model, ...rest } = mergeAgent(config, agent)
 
       return {
         ...rest,
-        id: id ?? `voter-${index + 1}`,
+        id: id || `voter-${index + 1}`,
         model: resolveModel(models, model),
       }
     })
   }
 
-  if (config.triage?.creator) {
-    config.triage.creator = mergeAgent(config, config.triage.creator)
-    config.triage.creator.model = resolveModel(
-      models,
-      config.triage.creator.model,
-    )
-  }
+  config.triage.creator = mergeAgent(config, config.triage.creator)
+  config.triage.creator.model = resolveModel(
+    models,
+    config.triage.creator.model,
+  )
 
   return config
 }

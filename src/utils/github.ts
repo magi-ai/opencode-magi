@@ -1,5 +1,5 @@
-import { isObject } from "./assertion"
 import type { Exec } from "./exec"
+import { isObject } from "./assertion"
 
 function getErrorMessage(e: unknown): string {
   if (!e || !isObject(e)) return String(e)

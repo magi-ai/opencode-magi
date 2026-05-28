@@ -7,7 +7,7 @@ export type Exec = (
   command: string,
   options?: {
     cwd?: string
-    env?: Record<string, string>
+    env?: { [key: string]: string }
     signal?: AbortSignal
   },
 ) => Promise<string>

@@ -1,6 +1,6 @@
-import { join } from "node:path"
+import type { Config } from "./config"
 import { homedir } from "node:os"
-import { Config } from "./config"
+import { join } from "node:path"
 import commonPermissions from "./permissions/common.json" with { type: "json" }
 import editPermissions from "./permissions/editor.json" with { type: "json" }
 
@@ -9,87 +9,68 @@ export const CONFIG_PATH = {
   PROJECT: join(".opencode", "magi.json"),
 }
 export const DEFAULT_CONFIG: Config.Root = {
-  github: { host: "github.com", apiRetryAttempts: 3 },
-  mode: "single",
-  language: "en",
   agents: {
     permissions: commonPermissions as Config.Permissions,
   },
+  clear: {
+    branch: true,
+    output: true,
+    session: true,
+    worktree: true,
+  },
+  github: { apiRetryAttempts: 3, host: "github.com" },
+  language: "en",
+  merge: {
+    automation: {
+      close: false,
+      conflict: false,
+      merge: true,
+    },
+    checks: {
+      wait: true,
+    },
+    editor: {
+      permissions: editPermissions as Config.Permissions,
+    },
+    maxThreadResolutionCycles: 5,
+  },
+  mode: "single",
   output: {
     repairAttempts: 3,
   },
   review: {
+    automation: {
+      close: false,
+      merge: true,
+    },
     checks: {
       exclude: [],
-      wait: true,
       retryFailedJobs: 3,
-    },
-    safety: {
-      requiredLabels: [],
-      blockedPaths: [],
-      allowAuthors: [],
-    },
-    automation: {
-      merge: true,
-      close: false,
+      wait: true,
     },
     concurrency: {
-      runs: 3,
       reviewers: 3,
+      runs: 3,
     },
     merge: {
       approvalPolicy: "majority",
-      method: "squash",
       auto: true,
       deleteBranch: true,
+      method: "squash",
       queue: false,
     },
     output: ".magi/runs/pr",
+    safety: {
+      allowAuthors: [],
+      blockedPaths: [],
+      requiredLabels: [],
+    },
     worktree: ".magi/worktrees/pr",
   },
-  merge: {
-    editor: {
-      permissions: editPermissions as Config.Permissions,
-    },
-    checks: {
-      wait: true,
-    },
-    automation: {
-      merge: true,
-      close: false,
-      conflict: false,
-    },
-    maxThreadResolutionCycles: 5,
-  },
   triage: {
-    categories: [
-      {
-        description: "Something is broken or behaves incorrectly.",
-        id: "bug",
-        labels: ["bug"],
-        types: ["Bug"],
-      },
-      {
-        description: "Maintenance, refactoring, chores, or planned work.",
-        id: "task",
-        labels: ["task"],
-        types: ["Task"],
-      },
-      {
-        description: "New or improved user-facing capability.",
-        id: "feature",
-        labels: ["enhancement"],
-        types: ["Feature"],
-      },
-    ],
-    creator: {
-      permissions: editPermissions as Config.Permissions,
-    },
     automation: {
-      create: false,
-      merge: false,
       close: false,
-      review: false,
+      create: false,
       label: [
         { remove: ["triage"], when: { disposition: "accepted" } },
         {
@@ -115,24 +96,43 @@ export const DEFAULT_CONFIG: Config.Root = {
         { add: ["question"], when: { disposition: "needs_category" } },
         { add: ["question"], when: { disposition: "needs_acceptance" } },
       ],
+      merge: false,
+      review: false,
     },
-    safety: {
-      requiredLabels: ["triage"],
-      blockedLabels: [],
-      allowAuthors: [],
-      allowMentionActors: [],
-      allowMentionRoles: ["AUTHOR", "OWNER", "MEMBER", "COLLABORATOR"],
-    },
+    categories: [
+      {
+        description: "Something is broken or behaves incorrectly.",
+        id: "bug",
+        labels: ["bug"],
+        types: ["Bug"],
+      },
+      {
+        description: "Maintenance, refactoring, chores, or planned work.",
+        id: "task",
+        labels: ["task"],
+        types: ["Task"],
+      },
+      {
+        description: "New or improved user-facing capability.",
+        id: "feature",
+        labels: ["enhancement"],
+        types: ["Feature"],
+      },
+    ],
     concurrency: {
       runs: 3,
     },
+    creator: {
+      permissions: editPermissions as Config.Permissions,
+    },
     output: ".magi/runs/issue",
+    safety: {
+      allowAuthors: [],
+      allowMentionActors: [],
+      allowMentionRoles: ["AUTHOR", "OWNER", "MEMBER", "COLLABORATOR"],
+      blockedLabels: [],
+      requiredLabels: ["triage"],
+    },
     worktree: ".magi/worktrees/issue",
-  },
-  clear: {
-    output: true,
-    worktree: true,
-    session: true,
-    branch: true,
   },
 }

@@ -1,14 +1,14 @@
-import { Tool } from "@/utils"
-import { validate } from "./validate"
+import type { Tool } from "@/utils"
+import { clear } from "./clear"
 import { merge } from "./merge"
 import { review } from "./review"
 import { triage } from "./triage"
-import { clear } from "./clear"
+import { validate } from "./validate"
 
-export const tools: Record<string, Tool> = {
-  validate,
-  review,
-  merge,
-  triage,
+export const tools: { [key: string]: Tool } = {
   clear,
+  merge,
+  review,
+  triage,
+  validate,
 }

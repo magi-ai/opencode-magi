@@ -1,3 +1,3 @@
-export * as Config from "./index.type"
-export * from "./validate"
+export type * as Config from "./index.type"
 export * from "./resolve"
+export * from "./validate"
