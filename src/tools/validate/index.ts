@@ -2,7 +2,7 @@ import type { Tool } from "@/magi"
 import { tool } from "@opencode-ai/plugin"
 import { getConfig, validateConfig } from "@/config"
 
-function formatValidation(errors: string[]): string {
+function createReport(errors: string[]): string {
   return [
     `Magi config validation: ${errors.length ? "failed" : "passed"}`,
     "",
@@ -22,9 +22,9 @@ export const validate: Tool = function (magi) {
           const config = await getConfig(magi.input)
           const errors = await validateConfig(config, { exec: magi.exec })
 
-          return formatValidation(errors)
+          return createReport(errors)
         } catch (e) {
-          return formatValidation([(e as Error).message])
+          return createReport([(e as Error).message])
         }
       },
     }),

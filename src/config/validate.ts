@@ -1,7 +1,8 @@
 import type { Config } from "."
 import type { Exec } from "@/utils"
 import { Ajv2020 } from "ajv/dist/2020"
-import { createExecWithGitHubApiRetry, filterEmpty } from "@/utils"
+import { createExecWithGitHubApiRetry } from "@/github"
+import { filterEmpty } from "@/utils"
 import schema from "../../schema.json" with { type: "json" }
 
 function required(
@@ -43,12 +44,14 @@ function requiredErrors(
     ),
     required(editor, config.merge.editor, "merge.editor"),
     required(editor, config.merge.editor.model, "merge.editor.model"),
+    required(editor, config.merge.editor.author, "merge.editor.author"),
     required(voters, config.triage.voters, "triage.voters"),
     ...(config.triage.voters ?? []).map((voter, index) =>
       required(voters, voter.model, `triage.voters[${index}].model`),
     ),
     required(creator, config.triage.creator, "triage.creator"),
     required(creator, config.triage.creator.model, "triage.creator.model"),
+    required(creator, config.triage.creator.author, "triage.creator.author"),
   ]
 
   if (config.mode === "single") {
