@@ -3,7 +3,14 @@ import type { Config } from "."
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { CONFIG_PATH, DEFAULT_CONFIG } from "@/constant"
-import { getModels, isArray, isObject, isString, merge } from "@/utils"
+import {
+  filterEmpty,
+  getModels,
+  isArray,
+  isObject,
+  isString,
+  merge,
+} from "@/utils"
 
 function mergePermissions(
   base: Config.Permissions,
@@ -74,7 +81,7 @@ export async function getConfig(input: PluginInput): Promise<Config.Root> {
     readConfig(CONFIG_PATH.GLOBAL),
     readConfig(projectPath),
   ])
-  const results = data.filter((data) => !!data)
+  const results = filterEmpty(data)
 
   if (!results.length) {
     throw new Error(

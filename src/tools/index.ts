@@ -1,4 +1,4 @@
-import type { Tool } from "@/utils"
+import type { Tool } from "@/magi"
 import { clear } from "./clear"
 import { merge } from "./merge"
 import { review } from "./review"

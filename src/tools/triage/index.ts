@@ -1,11 +1,7 @@
-import type { Tool } from "@/utils"
+import type { Tool } from "@/magi"
 import { tool } from "@opencode-ai/plugin"
-import { getConfig, validateConfig } from "@/config"
-import { createExec } from "@/utils"
 
-export const triage: Tool = function (input) {
-  const exec = createExec(input.directory)
-
+export const triage: Tool = function (magi) {
   return {
     magi_triage: tool({
       args: {
@@ -20,13 +16,7 @@ export const triage: Tool = function (input) {
         issues: _issues,
         sync: _sync = false,
       }) {
-        const config = await getConfig(input)
-        const errors = await validateConfig(config, {
-          exec,
-          require: { creator: true, voters: true },
-        })
-
-        if (errors.length) throw new Error(errors.join("\n"))
+        const _config = await magi.getConfig({ creator: true, voters: true })
 
         return ""
       },

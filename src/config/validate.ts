@@ -1,7 +1,7 @@
 import type { Config } from "."
 import type { Exec } from "@/utils"
 import { Ajv2020 } from "ajv/dist/2020"
-import { createExecWithGitHubApiRetry } from "@/utils"
+import { createExecWithGitHubApiRetry, filterEmpty } from "@/utils"
 import schema from "../../schema.json" with { type: "json" }
 
 function required(
@@ -32,7 +32,7 @@ function requiredErrors(
     github = true,
     reviewers = false,
     voters = false,
-  }: ValidationOptions["require"] = {},
+  }: ConfigValidationOptions["require"] = {},
 ): string[] {
   const errors = [
     required(github, config.github.owner, "github.owner"),
@@ -80,7 +80,7 @@ function requiredErrors(
     )
   }
 
-  return errors.filter((e) => e !== undefined)
+  return filterEmpty(errors)
 }
 
 function duplicateErrors(
@@ -124,7 +124,7 @@ function groupErrors(config: Config.Root): string[] {
 
 async function authError(
   config: Config.Root,
-  exec: NonNullable<ValidationOptions["exec"]>,
+  exec: NonNullable<ConfigValidationOptions["exec"]>,
   account: string,
 ): Promise<string | undefined> {
   try {
@@ -141,9 +141,7 @@ async function authError(
 
 async function authErrors(config: Config.Root, exec: Exec): Promise<string[]> {
   if (config.mode === "single") {
-    return [await authError(config, exec, config.account!)].filter(
-      (e) => e !== undefined,
-    )
+    return filterEmpty([await authError(config, exec, config.account!)])
   } else {
     const accounts = {
       ...Object.fromEntries(
@@ -162,16 +160,21 @@ async function authErrors(config: Config.Root, exec: Exec): Promise<string[]> {
       [config.triage.creator.account!]: "triage.creator",
     }
 
-    return [
+    return filterEmpty([
       ...duplicateErrors(
         Object.keys(accounts),
         (value) => `${accounts[value]} has duplicate account: ${value}`,
       ),
-    ]
+      ...(await Promise.all(
+        Object.keys(accounts).map((account) =>
+          authError(config, exec, account),
+        ),
+      )),
+    ])
   }
 }
 
-export interface ValidationOptions {
+export interface ConfigValidationOptions {
   exec?: Exec
   require?: {
     creator?: boolean
@@ -184,7 +187,7 @@ export interface ValidationOptions {
 
 export async function validateConfig(
   config: Config.Root,
-  { exec, require }: ValidationOptions = {},
+  { exec, require }: ConfigValidationOptions = {},
 ) {
   const errors = [
     ...schemaErrors(config),

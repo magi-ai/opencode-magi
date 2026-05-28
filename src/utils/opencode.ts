@@ -1,22 +1,4 @@
-import type {
-  Config,
-  PluginInput,
-  PluginOptions,
-  ToolDefinition,
-} from "@opencode-ai/plugin"
-
-export interface Client extends NonNullable<PluginInput["client"]> {}
-
-export interface Command extends NonNullable<Config["command"]> {}
-
-export interface Tool {
-  (
-    input: PluginInput,
-    options?: PluginOptions,
-  ): {
-    [key: string]: ToolDefinition
-  }
-}
+import type { PluginInput } from "@opencode-ai/plugin"
 
 export async function getModels(input: PluginInput): Promise<string[]> {
   const providers = await input.client.config
