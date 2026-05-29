@@ -108,10 +108,10 @@ export interface Review {
   }
   reviewers?: Reviewer[]
   safety: {
-    allowAuthors?: string[]
-    blockedPaths?: string[]
+    allowAuthors: string[]
+    blockedPaths: string[]
     maxChangedFiles?: number
-    requiredLabels?: string[]
+    requiredLabels: string[]
   }
   worktree: string
 }
