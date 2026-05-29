@@ -17,7 +17,7 @@ export function toTitleCase(value: string): string {
 }
 
 export function command(
-  ...values: (null | number | string | undefined)[]
+  ...values: (false | null | number | string | undefined)[]
 ): string {
   return filterEmpty(values).join(" ")
 }

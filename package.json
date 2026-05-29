@@ -47,6 +47,7 @@
   "dependencies": {
     "@opencode-ai/plugin": "^1.15.10",
     "ajv": "^8.20.0",
+    "json-to-graphql-query": "^2.3.0",
     "picomatch": "^4.0.4",
     "valibot": "^1.4.1"
   },

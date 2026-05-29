@@ -2,10 +2,12 @@ import type { ToolContext } from "@opencode-ai/plugin"
 import type { Config } from "@/config"
 import type { Magi, State } from "@/magi"
 import type { Exec } from "@/utils"
+import { jsonToGraphQLQuery, VariableType } from "json-to-graphql-query"
 import { join } from "node:path"
+import picomatch from "picomatch"
 import { createExecWithGitHubApiRetry } from "@/github"
 import { MagiError } from "@/magi"
-import { quote, toTitleCase } from "@/utils"
+import { command, isNumber, quote, toTitleCase } from "@/utils"
 
 export interface Check {
   bucket?: string
@@ -120,13 +122,63 @@ export class Review {
 
     const metadata = await this.getMetadata()
 
+    if (metadata.isDraft) throw new MagiError("blocked", `PR is a draft`)
+
+    if (
+      this.config.review.safety.allowAuthors.length ||
+      this.config.review.safety.blockedPaths.length ||
+      this.config.review.safety.requiredLabels.length ||
+      isNumber(this.config.review.safety.maxChangedFiles)
+    ) {
+      const errors: string[] = []
+      const { author, changedFiles, files, labels } =
+        await this.getAdditionalMetadata()
+
+      if (this.config.review.safety.allowAuthors.length) {
+        if (!this.config.review.safety.allowAuthors.includes(author))
+          errors.push(`Author is not allowed: ${author}.`)
+      }
+
+      if (this.config.review.safety.blockedPaths.length) {
+        const isBlocked = picomatch(this.config.review.safety.blockedPaths, {
+          dot: true,
+        })
+        const blocked = files.filter((file) => isBlocked(file))
+
+        if (blocked.length)
+          errors.push(`Blocked paths changed: ${blocked.join(", ")}.`)
+      }
+
+      if (this.config.review.safety.requiredLabels.length) {
+        const missingLabels = this.config.review.safety.requiredLabels.filter(
+          (label) => !labels.includes(label),
+        )
+
+        if (missingLabels.length)
+          errors.push(`Required labels missing: ${missingLabels.join(", ")}.`)
+      }
+
+      if (
+        isNumber(this.config.review.safety.maxChangedFiles) &&
+        changedFiles > this.config.review.safety.maxChangedFiles
+      ) {
+        errors.push(
+          `Changed files exceed limit: ${changedFiles} > ${this.config.review.safety.maxChangedFiles}.`,
+        )
+      }
+
+      if (errors.length) {
+        throw new MagiError(
+          "blocked",
+          `PR is safety blocked. ${errors.join(" ")}`,
+        )
+      }
+    }
+
     this.state = await this.magi.updateState(this.state.output, {
       pr: { metadata },
       text: `Finished checking PR ${this.getLink()}.`,
     })
-
-    if (metadata.isDraft)
-      throw new MagiError("blocked", `PR #${this.number} is a draft`)
 
     return this.state
   }
@@ -200,12 +252,116 @@ export class Review {
     return metadata
   }
 
+  private async getAdditionalMetadata() {
+    const query = jsonToGraphQLQuery(
+      {
+        query: {
+          __variables: {
+            filesCursor: "String",
+            owner: "String!",
+            pr: "Int!",
+            repo: "String!",
+          },
+          repository: {
+            __args: {
+              name: new VariableType("repo"),
+              owner: new VariableType("owner"),
+            },
+            pullRequest: {
+              __args: { number: new VariableType("pr") },
+              author: { login: true },
+              changedFiles: true,
+              files: {
+                __args: { after: new VariableType("filesCursor"), first: 100 },
+                nodes: { path: true },
+                pageInfo: { endCursor: true, hasNextPage: true },
+              },
+              labels: {
+                __args: { first: 100 },
+                nodes: { name: true },
+              },
+            },
+          },
+        },
+      },
+      { pretty: true },
+    )
+    const files: string[] = []
+
+    let author = ""
+    let changedFiles = 0
+    let labels: string[] = []
+    let cursor: string | undefined
+
+    for (;;) {
+      const raw = await this.exec(
+        command(
+          "gh",
+          "api",
+          this.config.github.host !== "github.com" &&
+            `--hostname ${quote(this.config.github.host)}`,
+          "graphql",
+          "-f",
+          `query=${quote(query)}`,
+          "-F",
+          `owner=${quote(this.config.github.owner!)}`,
+          "-F",
+          `repo=${quote(this.config.github.repo!)}`,
+          "-F",
+          `pr=${this.number}`,
+          cursor && `-F filesCursor=${quote(cursor)}`,
+        ),
+        { signal: this.context.abort },
+      )
+      const { data } = JSON.parse(raw) as {
+        data: {
+          repository: {
+            pullRequest: {
+              author?: { login?: string }
+              changedFiles: number
+              files: {
+                nodes: { path: string }[]
+                pageInfo: { endCursor?: string; hasNextPage: boolean }
+              }
+              labels: { nodes: { name: string }[] }
+            }
+          }
+        }
+      }
+      const { pullRequest: pr } = data.repository
+
+      author = pr.author?.login ?? author
+      changedFiles = pr.changedFiles
+      labels = pr.labels.nodes.map(({ name }) => name)
+
+      files.push(...pr.files.nodes.map(({ path }) => path))
+
+      if (!pr.files.pageInfo.hasNextPage) break
+
+      cursor = pr.files.pageInfo.endCursor
+
+      if (!cursor) break
+    }
+
+    return { author, changedFiles, files, labels }
+  }
+
   private async getChecks() {
     const fields = "name,state,bucket,link,workflow"
 
     try {
       const raw = await this.exec(
-        `gh pr checks ${this.number} --repo ${this.state.repo} --json ${fields} --required`,
+        command(
+          "gh",
+          "pr",
+          "checks",
+          this.number,
+          "--repo",
+          this.state.repo,
+          "--json",
+          fields,
+          "--required",
+        ),
         { signal: this.context.abort },
       )
 
@@ -235,7 +391,16 @@ export class Review {
 
   private async watchChecks() {
     await this.exec(
-      `gh pr checks ${this.number} --repo ${this.state.repo} --watch --required`,
+      command(
+        "gh",
+        "pr",
+        "checks",
+        this.number,
+        "--repo",
+        this.state.repo,
+        "--watch",
+        "--required",
+      ),
       { signal: this.context.abort },
     )
   }
