@@ -133,7 +133,7 @@ async function authError(
   try {
     await createExecWithGitHubApiRetry(
       exec,
-      config.github.apiRetryAttempts,
+      config.github.retryApiAttempts,
     )(`gh auth token --user ${JSON.stringify(account)}`)
 
     return undefined

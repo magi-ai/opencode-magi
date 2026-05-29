@@ -94,6 +94,8 @@ export async function getConfig(input: PluginInput): Promise<Config.Root> {
     DEFAULT_CONFIG,
   )
 
+  config.github.url = `https://${config.github.host}/${config.github.owner}/${config.github.repo}`
+
   if (config.review.reviewers) {
     config.review.reviewers = config.review.reviewers.map((agent, index) => {
       const { id, model, ...rest } = mergeAgent(config, agent)

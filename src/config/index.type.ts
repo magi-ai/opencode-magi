@@ -17,10 +17,11 @@ export interface Root {
 export type Mode = "multi" | "single"
 
 export interface GitHub {
-  apiRetryAttempts: number
   host: string
   owner?: string
   repo?: string
+  retryApiAttempts: number
+  url: string
 }
 
 export interface Clear {
