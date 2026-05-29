@@ -65,6 +65,8 @@ export default defineConfig({
     "typescript/prefer-string-starts-ends-with": "warn",
     "typescript/require-await": "error",
 
+    "import/consistent-type-specifier-style": ["error", "prefer-top-level"],
+
     "unused-imports/no-unused-imports": "error",
 
     "import-alias/import-alias": [
