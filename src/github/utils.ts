@@ -1,5 +1,29 @@
-import type { Exec } from "./exec"
-import { isObject } from "./assertion"
+import type { Exec } from "@/utils"
+import { filterEmpty, isObject } from "@/utils"
+
+export function parseIssues(value: string): number[] {
+  const numbers = filterEmpty(
+    value
+      .split(/[\s,]+/)
+      .map((item) => item.match(/(?:issues\/|#)?(\d+)$/)?.[1]),
+  ).map(Number)
+
+  if (!numbers.length)
+    throw new Error("Specify one or more issue numbers or issue URLs.")
+
+  return numbers
+}
+
+export function parsePrs(value: string): number[] {
+  const numbers = filterEmpty(
+    value.split(/[\s,]+/).map((item) => item.match(/(?:pull\/|#)?(\d+)$/)?.[1]),
+  ).map(Number)
+
+  if (!numbers.length)
+    throw new Error("Specify one or more PR numbers or PR URLs.")
+
+  return numbers
+}
 
 function getErrorMessage(e: unknown): string {
   if (!e || !isObject(e)) return String(e)
