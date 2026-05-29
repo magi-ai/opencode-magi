@@ -4,13 +4,13 @@ import type {
   ToolDefinition,
 } from "@opencode-ai/plugin"
 import type { Checks, Metadata } from "./tools/review/review"
-import type { ConfigValidationOptions } from "@/config"
+import type { Config, ConfigValidationOptions } from "@/config"
 import type { DeepPartial, Exec } from "@/utils"
 import { randomUUID } from "node:crypto"
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
-import { type Config, getConfig, validateConfig } from "@/config"
-import { createExec, filterEmpty, merge, quote } from "@/utils"
+import { getConfig, validateConfig } from "@/config"
+import { command, createExec, filterEmpty, merge, quote } from "@/utils"
 
 export interface Tool {
   (magi: Magi): {
@@ -253,7 +253,9 @@ export class Magi {
     try {
       const path = this.getPath(value)
 
-      await this.exec(`git worktree remove --force ${quote(path)}`)
+      await this.exec(
+        command("git", "worktree", "remove", "--force", quote(path)),
+      )
       await rm(path, { force: true, recursive: true })
 
       return 1
@@ -264,7 +266,7 @@ export class Magi {
 
   private async deleteBranch(branch: string) {
     try {
-      await this.exec(`git branch -D ${quote(branch)}`)
+      await this.exec(command("git", "branch", "-D", quote(branch)))
 
       return 1
     } catch {

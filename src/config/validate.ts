@@ -2,7 +2,7 @@ import type { Config } from "."
 import type { Exec } from "@/utils"
 import { Ajv2020 } from "ajv/dist/2020"
 import { createExecWithGitHubApiRetry } from "@/github"
-import { filterEmpty } from "@/utils"
+import { command, filterEmpty } from "@/utils"
 import schema from "../../schema.json" with { type: "json" }
 
 function required(
@@ -134,7 +134,7 @@ async function authError(
     await createExecWithGitHubApiRetry(
       exec,
       config.github.retryApiAttempts,
-    )(`gh auth token --user ${JSON.stringify(account)}`)
+    )(command("gh", "auth", "token", "--user", JSON.stringify(account)))
 
     return undefined
   } catch {

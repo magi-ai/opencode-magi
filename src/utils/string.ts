@@ -15,3 +15,9 @@ export function toTitleCase(value: string): string {
     .replace(/^./, (str) => str.toUpperCase())
     .trim()
 }
+
+export function command(
+  ...values: (null | number | string | undefined)[]
+): string {
+  return filterEmpty(values).join(" ")
+}
