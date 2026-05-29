@@ -2,7 +2,7 @@ import type { Config } from "@/config"
 import type { State, Tool } from "@/magi"
 import { tool } from "@opencode-ai/plugin"
 import { parsePrs } from "@/github"
-import { split, Worker } from "@/utils"
+import { filterEmpty, split, Worker } from "@/utils"
 import { Review } from "./review"
 
 function overrideConfig(
@@ -81,7 +81,6 @@ export const review: Tool = function (magi) {
           args.dryRun,
           args.sync,
         )
-        const run = new Review(magi, config, context, { dryRun })
         const worker = new Worker<State>(config.review.concurrency.runs)
         const states: State[] = []
         const tasks: Promise<State>[] = []
@@ -89,48 +88,18 @@ export const review: Tool = function (magi) {
         for (const pr of prs) {
           context.abort.throwIfAborted()
 
-          const state = await run.createState(pr)
+          const run = await Review.init(pr, magi, config, context, { dryRun })
 
-          states.push(state)
+          states.push(run.state)
 
           const task = worker.run(async () => {
             try {
-              await magi.updateState(
-                state.output,
-                {
-                  phase: "checking CI",
-                  status: "running",
-                },
-                `Checking CI for ${run.createLink(state)}.`,
-              )
+              await run.checkPr()
+              await run.checkCi()
 
-              const checks = await run.checkCi(pr)
-
-              await magi.updateState(
-                state.output,
-                { checks },
-                `Finished checking CI for ${run.createLink(state)}.`,
-              )
-
-              return magi.updateState(
-                state.output,
-                {
-                  completedAt: new Date().toISOString(),
-                  status: "completed",
-                },
-                `Finished reviewing ${run.createLink(state)}.`,
-              )
+              return run.createReport()
             } catch (e) {
-              const error = e instanceof Error ? e.message : String(e)
-
-              return magi.updateState(
-                state.output,
-                {
-                  error,
-                  status: context.abort.aborted ? "cancelled" : "failed",
-                },
-                `Failed reviewing ${run.createLink(state)}: ${error}`,
-              )
+              return run.createReport(e)
             }
           })
 
@@ -141,24 +110,18 @@ export const review: Tool = function (magi) {
 
         if (sync) {
           const results = await Promise.all(tasks)
-          const output = results
-            .map((state) => {
-              if (state.status === "completed") {
-                return `Finished reviewing ${run.createLink(state)}.`
-              } else {
-                return `Failed reviewing ${run.createLink(state)}${state.error ? `: ${state.error}` : "."}`
-              }
-            })
-            .join("\n")
+          const output = filterEmpty(results.map(({ text }) => text)).join("\n")
 
-          if (results.some(({ status }) => status !== "completed"))
+          if (
+            results.some(
+              ({ status }) => status === "failed" || status === "cancelled",
+            )
+          )
             throw new Error(output)
 
           return output
         } else {
-          return states
-            .map((state) => `Started reviewing ${run.createLink(state)}.`)
-            .join("\n")
+          return filterEmpty(states.map(({ text }) => text)).join("\n")
         }
       },
     }),

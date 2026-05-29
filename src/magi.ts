@@ -3,9 +3,9 @@ import type {
   PluginOptions,
   ToolDefinition,
 } from "@opencode-ai/plugin"
-import type { Checks } from "./tools/review/review"
+import type { Checks, Metadata } from "./tools/review/review"
 import type { ConfigValidationOptions } from "@/config"
-import type { Exec } from "@/utils"
+import type { DeepPartial, Exec } from "@/utils"
 import { randomUUID } from "node:crypto"
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
@@ -20,6 +20,7 @@ export interface Tool {
 
 export type Command = "merge" | "review" | "triage"
 export type Status =
+  | "blocked"
   | "cancelled"
   | "completed"
   | "failed"
@@ -44,12 +45,12 @@ export interface State {
   id: string
   issue?: { number: number; url: string }
   output: string
-  phase?: string
-  pr?: { number: number; url: string }
+  pr?: { metadata?: Metadata; number: number; url: string }
   repo: string
   reviewers?: { [key: string]: AgentState }
   sessionId: string
   status: Status
+  text?: string
   updatedAt: string
   voters?: { [key: string]: AgentState }
   worktree?: {
@@ -59,6 +60,16 @@ export interface State {
 }
 
 const active: Set<Status> = new Set(["preparing", "running"])
+
+export class MagiError extends Error {
+  constructor(
+    public status: Status,
+    message: string,
+  ) {
+    super(message)
+    this.name = "MagiError"
+  }
+}
 
 export class Magi {
   public input: PluginInput
@@ -137,7 +148,6 @@ export class Magi {
       createdAt,
       id,
       output: join(this.getPath(dir), id),
-      phase: "queued",
       status: "preparing",
       updatedAt: createdAt,
       ...initialState,
@@ -148,7 +158,7 @@ export class Magi {
     return state
   }
 
-  public async updateState(dir: string, next: Partial<State>, text?: string) {
+  public async updateState(dir: string, next: DeepPartial<State>) {
     next.updatedAt = new Date().toISOString()
 
     const prev = await this.getState(dir)
@@ -156,7 +166,7 @@ export class Magi {
 
     const values = [this.createStateFile(state)]
 
-    if (text) values.push(this.notify(prev.sessionId, text))
+    if (next.text) values.push(this.notify(prev.sessionId, next.text))
 
     await Promise.all(values)
 
