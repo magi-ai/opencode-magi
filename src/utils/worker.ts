@@ -1,32 +1,43 @@
-export interface WorkerOptions {
-  limit: number
-  signal?: AbortSignal
+interface Task<T> {
+  reject: (e: unknown) => void
+  resolve: (value: T) => void
+  run: () => Promise<T>
 }
 
-export function worker<T, U>(items: T[], { limit, signal }: WorkerOptions) {
-  const length = items.length
-  const concurrency = Math.max(1, Math.floor(limit))
-  const results = Array.from<U>({ length })
+export class Worker<T> {
+  private active = 0
+  private tasks: Task<T>[] = []
+  private limit: number
 
-  return async function (run: (value: T, index: number) => Promise<U>) {
-    let nextIndex = 0
+  constructor(limit: number) {
+    this.limit = Math.max(1, Math.floor(limit))
+  }
 
-    async function next(): Promise<void> {
-      while (nextIndex < length) {
-        signal?.throwIfAborted()
+  public async run(run: () => Promise<T>) {
+    const task = new Promise<T>((resolve, reject) => {
+      this.tasks.push({ reject, resolve, run })
+    })
 
-        const index = nextIndex
+    this.drain()
 
-        nextIndex += 1
+    return task
+  }
 
-        results[index] = await run(items[index]!, index)
-      }
+  private drain() {
+    while (this.active < this.limit) {
+      const task = this.tasks.shift()
+
+      if (!task) return
+
+      this.active += 1
+
+      void task
+        .run()
+        .then(task.resolve, task.reject)
+        .finally(() => {
+          this.active -= 1
+          this.drain()
+        })
     }
-
-    await Promise.all(
-      Array.from({ length: Math.min(concurrency, length) }, next),
-    )
-
-    return results
   }
 }

@@ -3,28 +3,14 @@ import type {
   PluginOptions,
   ToolDefinition,
 } from "@opencode-ai/plugin"
+import type { Checks } from "./tools/review/review"
 import type { ConfigValidationOptions } from "@/config"
 import type { Exec } from "@/utils"
-import { readdir, readFile, rm } from "node:fs/promises"
+import { randomUUID } from "node:crypto"
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { type Config, getConfig, validateConfig } from "@/config"
-import { createExec, filterDuplicates, filterEmpty, quote } from "@/utils"
-
-interface State {
-  creator?: AgentState
-  editor?: AgentState
-  outputDir?: string
-  reviewers?: { [key: string]: AgentState }
-  sessionIds?: { [key: string]: string }
-  status?: string
-  voters?: { [key: string]: AgentState }
-  worktreeBranch?: string
-  worktreePath?: string
-}
-
-interface AgentState {
-  sessionId?: string
-}
+import { createExec, filterEmpty, merge, quote } from "@/utils"
 
 export interface Tool {
   (magi: Magi): {
@@ -32,7 +18,47 @@ export interface Tool {
   }
 }
 
-const active = new Set(["blocked", "posting", "preparing", "running"])
+export type Command = "merge" | "review" | "triage"
+export type Status =
+  | "cancelled"
+  | "completed"
+  | "failed"
+  | "preparing"
+  | "running"
+
+export interface AgentState {
+  account?: string
+  sessionId?: string
+  status?: string
+}
+
+export interface State {
+  checks?: Checks
+  command: Command
+  completedAt?: string
+  createdAt: string
+  creator?: AgentState
+  dryRun: boolean
+  editor?: AgentState
+  error?: string
+  id: string
+  issue?: { number: number; url: string }
+  output: string
+  phase?: string
+  pr?: { number: number; url: string }
+  repo: string
+  reviewers?: { [key: string]: AgentState }
+  sessionId: string
+  status: Status
+  updatedAt: string
+  voters?: { [key: string]: AgentState }
+  worktree?: {
+    branch: string
+    path: string
+  }
+}
+
+const active: Set<Status> = new Set(["preparing", "running"])
 
 export class Magi {
   public input: PluginInput
@@ -45,7 +71,14 @@ export class Magi {
     this.exec = createExec(input.directory)
   }
 
-  async clear(config: Config.Root) {
+  public async notify(id: string, text: string) {
+    await this.input.client.session.promptAsync({
+      body: { parts: [{ synthetic: true, text, type: "text" }] },
+      path: { id },
+    })
+  }
+
+  public async clear(config: Config.Root) {
     const summary = {
       branch: 0,
       output: 0,
@@ -57,7 +90,7 @@ export class Magi {
     const states = await this.getStates(config)
 
     for (const state of states) {
-      if (state.status && active.has(state.status)) {
+      if (active.has(state.status)) {
         summary.skipped += 1
 
         continue
@@ -66,14 +99,14 @@ export class Magi {
       if (config.clear.session)
         summary.session += await this.deleteSessions(state)
 
-      if (config.clear.worktree && state.worktreePath)
-        summary.worktree += await this.deleteWorktree(state.worktreePath)
+      if (config.clear.worktree && state.worktree?.path)
+        summary.worktree += await this.deleteWorktree(state.worktree.path)
 
-      if (config.clear.branch && state.worktreeBranch)
-        summary.branch += await this.deleteBranch(state.worktreeBranch)
+      if (config.clear.branch && state.worktree?.branch)
+        summary.branch += await this.deleteBranch(state.worktree.branch)
 
-      if (config.clear.output && state.outputDir)
-        summary.output += await this.deleteOutput(state.outputDir)
+      if (config.clear.output && state.output)
+        summary.output += await this.deleteOutput(state.output)
 
       summary.run += 1
     }
@@ -81,7 +114,7 @@ export class Magi {
     return summary
   }
 
-  async getConfig(require?: ConfigValidationOptions["require"]) {
+  public async getConfig(require?: ConfigValidationOptions["require"]) {
     const config = await getConfig(this.input)
     const errors = await validateConfig(config, { exec: this.exec, require })
 
@@ -90,8 +123,56 @@ export class Magi {
     return config
   }
 
-  private getPath(value: string) {
+  public async createState(
+    dir: string,
+    initialState: Omit<
+      State,
+      "createdAt" | "id" | "output" | "status" | "updatedAt"
+    >,
+  ) {
+    const id = `run-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`
+    const createdAt = new Date().toISOString()
+
+    const state: State = {
+      createdAt,
+      id,
+      output: join(this.getPath(dir), id),
+      phase: "queued",
+      status: "preparing",
+      updatedAt: createdAt,
+      ...initialState,
+    }
+
+    await this.createStateFile(state)
+
+    return state
+  }
+
+  public async updateState(dir: string, next: Partial<State>, text?: string) {
+    next.updatedAt = new Date().toISOString()
+
+    const prev = await this.getState(dir)
+    const state = merge<State>(prev, next)
+
+    const values = [this.createStateFile(state)]
+
+    if (text) values.push(this.notify(prev.sessionId, text))
+
+    await Promise.all(values)
+
+    return state
+  }
+
+  public getPath(value: string) {
     return isAbsolute(value) ? value : join(this.input.directory, value)
+  }
+
+  private async createStateFile(state: State) {
+    await mkdir(state.output, { recursive: true })
+    await writeFile(
+      join(state.output, "state.json"),
+      `${JSON.stringify(state, null, 2)}\n`,
+    )
   }
 
   private async getStates(config: Config.Root) {
@@ -103,8 +184,12 @@ export class Magi {
     return Promise.all(
       files
         .flat()
-        .map(async (file) => JSON.parse(await readFile(file, "utf8"))),
+        .map(async (file) => JSON.parse(await readFile(file, "utf8")) as State),
     )
+  }
+
+  private async getState(dir: string) {
+    return JSON.parse(await readFile(join(dir, "state.json"), "utf8")) as State
   }
 
   private async getStateFiles(dir: string) {
@@ -123,12 +208,10 @@ export class Magi {
   }
 
   private getSessionIds(state: State) {
-    return filterDuplicates(
-      filterEmpty([
-        ...Object.values(state.sessionIds ?? {}),
-        ...this.getAgents(state).map(({ sessionId }) => sessionId),
-      ]),
-    )
+    return [
+      state.sessionId,
+      ...filterEmpty(this.getAgents(state).map(({ sessionId }) => sessionId)),
+    ]
   }
 
   private getAgents(state: State) {
