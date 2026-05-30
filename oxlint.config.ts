@@ -18,6 +18,7 @@ export default defineConfig({
   plugins: ["eslint", "typescript", "unicorn", "import", "vitest"],
   rules: {
     "no-console": ["warn", { allow: ["warn", "error"] }],
+    "no-duplicate-imports": ["error", { allowSeparateTypeImports: true }],
     "no-empty": "off",
     "no-prototype-builtins": "off",
     "no-useless-escape": "off",
