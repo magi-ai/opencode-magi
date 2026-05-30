@@ -48,6 +48,7 @@
     "@opencode-ai/plugin": "^1.15.10",
     "ajv": "^8.20.0",
     "json-to-graphql-query": "^2.3.0",
+    "octokit": "^5.0.5",
     "picomatch": "^4.0.4",
     "valibot": "^1.4.1"
   },
@@ -57,6 +58,7 @@
     "@commitlint/cli": "^21.0.1",
     "@commitlint/config-conventional": "^21.0.1",
     "@limegrass/eslint-plugin-import-alias": "^1.6.1",
+    "@octokit/plugin-throttling": "^11.0.3",
     "@types/node": "^25.9.1",
     "@types/picomatch": "^4.0.3",
     "@typescript/native-preview": "7.0.0-dev.20260525.1",

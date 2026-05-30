@@ -1,8 +1,7 @@
 import type { Config } from "@/config"
 import type { State, Tool } from "@/magi"
 import { tool } from "@opencode-ai/plugin"
-import { parsePrs } from "@/github"
-import { filterEmpty, split, Worker } from "@/utils"
+import { filterEmpty, parsePrs, split, Worker } from "@/utils"
 import { Review } from "./review"
 
 function overrideConfig(

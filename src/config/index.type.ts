@@ -18,8 +18,8 @@ export type Mode = "multi" | "single"
 
 export interface GitHub {
   host: string
-  owner?: string
-  repo?: string
+  owner: string
+  repo: string
   retryApiAttempts: number
   url: string
 }

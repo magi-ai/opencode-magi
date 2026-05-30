@@ -18,7 +18,13 @@ export const DEFAULT_CONFIG: Config.Root = {
     session: true,
     worktree: true,
   },
-  github: { host: "github.com", retryApiAttempts: 3, url: "" },
+  github: {
+    host: "github.com",
+    owner: "",
+    repo: "",
+    retryApiAttempts: 3,
+    url: "",
+  },
   language: "en",
   merge: {
     automation: {

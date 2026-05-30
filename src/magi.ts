@@ -1,3 +1,4 @@
+import type { ThrottlingOptions } from "@octokit/plugin-throttling"
 import type {
   PluginInput,
   PluginOptions,
@@ -9,6 +10,7 @@ import type { DeepPartial, Exec } from "@/utils"
 import { randomUUID } from "node:crypto"
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
+import { Octokit } from "octokit"
 import { getConfig, validateConfig } from "@/config"
 import { command, createExec, filterEmpty, merge, quote } from "@/utils"
 
@@ -80,6 +82,25 @@ export class Magi {
     this.input = input
     this.options = options
     this.exec = createExec(input.directory)
+  }
+
+  public async createOctokit(config: Config.Root, signal?: AbortSignal) {
+    const token = await this.exec(command("gh", "auth", "token"))
+    const retries = config.github.retryApiAttempts
+
+    return new Octokit({
+      auth: token.trim(),
+      request: { signal },
+      retry: { retries },
+      throttle: {
+        onRateLimit(_, options) {
+          if (options.request.retryCount < retries) return true
+        },
+        onSecondaryRateLimit(_, options) {
+          if (options.request.retryCount < retries) return true
+        },
+      } satisfies ThrottlingOptions,
+    })
   }
 
   public async notify(id: string, text: string) {

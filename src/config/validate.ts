@@ -1,8 +1,7 @@
 import type { Config } from "."
 import type { Exec } from "@/utils"
 import { Ajv2020 } from "ajv/dist/2020"
-import { createExecWithGitHubApiRetry } from "@/github"
-import { command, filterEmpty } from "@/utils"
+import { command, createExecWithGitHubApiRetry, filterEmpty } from "@/utils"
 import schema from "../../schema.json" with { type: "json" }
 
 function required(
