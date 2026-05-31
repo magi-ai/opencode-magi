@@ -1,5 +1,7 @@
 # OpenCode Magi
 
+This is test.
+
 Multi-agent GitHub pull request review and merge orchestration for OpenCode.
 
 ## Why Magi?
