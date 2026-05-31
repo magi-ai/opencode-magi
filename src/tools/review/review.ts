@@ -1,7 +1,7 @@
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { Octokit } from "octokit"
 import type { Config } from "@/config"
-import type { Magi, State } from "@/magi"
+import type { AgentState, Magi, State } from "@/magi"
 import type { Exec } from "@/utils"
 import { join } from "node:path"
 import picomatch from "picomatch"
@@ -14,25 +14,33 @@ import {
   toTitleCase,
 } from "@/utils"
 
-export interface Check {
+export interface PullRequestCheck {
   bucket?: string
   name: string
   state?: string
 }
 
-export interface Checks {
-  excluded: Check[]
-  failed: Check[]
-  passed: Check[]
-  pending: Check[]
+export interface PullRequestChecks {
+  excluded: PullRequestCheck[]
+  failed: PullRequestCheck[]
+  passed: PullRequestCheck[]
+  pending: PullRequestCheck[]
 }
 
-export type Metadata = Awaited<
+export type PullRequestMetadata = Awaited<
   ReturnType<Octokit["rest"]["pulls"]["get"]>
 >["data"]
 
+export type PullRequestReview = Awaited<
+  ReturnType<Octokit["rest"]["pulls"]["listReviews"]>
+>["data"][number]
+
+export type PullRequestCommit = Awaited<
+  ReturnType<Octokit["rest"]["pulls"]["listCommits"]>
+>["data"][number]
+
 const ci = {
-  isExcluded(exclude: string[], { name }: Check) {
+  isExcluded(exclude: string[], { name }: PullRequestCheck) {
     return exclude.some((pattern) => {
       if (
         pattern.startsWith("/") &&
@@ -45,13 +53,13 @@ const ci = {
       return pattern === name
     })
   },
-  isFailed(check: Check) {
+  isFailed(check: PullRequestCheck) {
     return check.bucket === "fail" || check.state === "FAILURE"
   },
-  isPassed(check: Check) {
+  isPassed(check: PullRequestCheck) {
     return check.bucket === "pass" || check.state === "SUCCESS"
   },
-  isPending(check: Check) {
+  isPending(check: PullRequestCheck) {
     return !this.isFailed(check) && !this.isPassed(check)
   },
 }
@@ -122,8 +130,8 @@ export class Review {
     const { files, metadata } = await this.getMetadata()
 
     if (metadata.state !== "open")
-      throw new MagiError("blocked", `PR is not open`)
-    if (metadata.draft) throw new MagiError("blocked", `PR is a draft`)
+      throw new MagiError("blocked", `PR is not open.`)
+    if (metadata.draft) throw new MagiError("blocked", `PR is a draft.`)
 
     const errors: string[] = []
 
@@ -171,8 +179,6 @@ export class Review {
       pr: { metadata },
       text: `Finished checking PR ${this.getLink()}.`,
     })
-
-    return this.state
   }
 
   public async checkCi() {
@@ -190,8 +196,70 @@ export class Review {
       checks,
       text: `Finished checking CI for ${this.getLink()}.`,
     })
+  }
 
-    return checks
+  public async checkExistingReviews() {
+    this.context.abort.throwIfAborted()
+
+    this.state = await this.magi.updateState(this.state.output, {
+      text: `Fetching existing reviews for ${this.getLink()}.`,
+    })
+
+    if (!this.state.pr?.metadata)
+      throw new MagiError("blocked", "PR metadata not found.")
+    if (!this.config.review.reviewers?.length)
+      throw new MagiError("blocked", "No reviewers configured.")
+
+    const [reviews, commits] = await Promise.all([
+      this.getReviews(),
+      this.getCommits(),
+    ])
+    this.state = await this.magi.updateState(this.state.output, {
+      pr: { commits, reviews },
+    })
+    const latestNonMergeCommit = commits
+      .toReversed()
+      .find(({ parents }) => parents.length < 2)
+    const reviewers: { [key: string]: AgentState } = Object.fromEntries(
+      this.config.review.reviewers.map(({ account, id }) => {
+        const targetReviews = reviews.filter(
+          ({ state, user }) => state !== "DISMISSED" && user!.login === account,
+        )
+
+        if (!targetReviews.length) {
+          return [id, { account, status: "initial" }]
+        } else {
+          const latestReview = targetReviews.filter(
+            ({ submitted_at }) =>
+              latestNonMergeCommit?.commit.author?.date &&
+              submitted_at &&
+              submitted_at.localeCompare(
+                latestNonMergeCommit.commit.author.date,
+              ) >= 0,
+          )
+
+          if (latestReview.length) {
+            return [id, { account, status: "skip" }]
+          } else {
+            return [id, { account, status: "rereview" }]
+          }
+        }
+      }),
+    )
+    const skip = Object.values(reviewers).every(
+      ({ status }) => status === "skip",
+    )
+
+    this.state = await this.magi.updateState(this.state.output, {
+      reviewers,
+      text: `Finished fetching existing reviews for ${this.getLink()}.`,
+    })
+
+    if (skip)
+      throw new MagiError(
+        "blocked",
+        "PR has already been reviewed by all configured accounts.",
+      )
   }
 
   public async createReport(e?: unknown) {
@@ -236,6 +304,32 @@ export class Review {
     return { files: files.map(({ filename }) => filename), metadata: data }
   }
 
+  private async getReviews() {
+    const reviews = await this.octokit.paginate(
+      this.octokit.rest.pulls.listReviews,
+      {
+        owner: this.config.github.owner,
+        pull_number: this.number,
+        repo: this.config.github.repo,
+      },
+    )
+
+    return reviews
+  }
+
+  private async getCommits() {
+    const commits = await this.octokit.paginate(
+      this.octokit.rest.pulls.listCommits,
+      {
+        owner: this.config.github.owner,
+        pull_number: this.number,
+        repo: this.config.github.repo,
+      },
+    )
+
+    return commits
+  }
+
   private async getChecks() {
     const fields = "name,state,bucket,link,workflow"
 
@@ -255,7 +349,7 @@ export class Review {
         { signal: this.context.abort },
       )
 
-      return (JSON.parse(raw) as Check[]).reduce<Checks>(
+      return (JSON.parse(raw) as PullRequestCheck[]).reduce<PullRequestChecks>(
         (prev, check) => {
           if (ci.isExcluded(this.config.review.checks.exclude, check)) {
             prev.excluded.push(check)

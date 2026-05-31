@@ -94,7 +94,7 @@ export const review: Tool = function (magi) {
           const task = worker.run(async () => {
             try {
               await run.checkPr()
-              // fetching existing reviews
+              await run.checkExistingReviews()
               // fetching review context
               await run.checkCi()
               // creating worktree

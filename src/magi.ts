@@ -4,7 +4,12 @@ import type {
   PluginOptions,
   ToolDefinition,
 } from "@opencode-ai/plugin"
-import type { Checks, Metadata } from "./tools/review/review"
+import type {
+  PullRequestChecks,
+  PullRequestCommit,
+  PullRequestMetadata,
+  PullRequestReview,
+} from "./tools/review/review"
 import type { Config, ConfigValidationOptions } from "@/config"
 import type { DeepPartial, Exec } from "@/utils"
 import { randomUUID } from "node:crypto"
@@ -36,7 +41,7 @@ export interface AgentState {
 }
 
 export interface State {
-  checks?: Checks
+  checks?: PullRequestChecks
   command: Command
   completedAt?: string
   createdAt: string
@@ -47,7 +52,13 @@ export interface State {
   id: string
   issue?: { number: number; url: string }
   output: string
-  pr?: { metadata?: Metadata; number: number; url: string }
+  pr?: {
+    commits?: PullRequestCommit[]
+    metadata?: PullRequestMetadata
+    number: number
+    reviews?: PullRequestReview[]
+    url: string
+  }
   repo: string
   reviewers?: { [key: string]: AgentState }
   sessionId: string
