@@ -7,12 +7,20 @@ export type Primitive =
   | symbol
   | undefined
 
-export interface Dict<Y = any> {
-  [key: string]: Y
+export interface Dict<T = any> {
+  [key: string]: T
 }
 
-export type DeepPartial<Y> = Y extends any[] | Date | Function | Primitive
-  ? Y
+export type DeepPartial<T> = T extends any[] | Date | Function | Primitive
+  ? T
   : {
-      [P in keyof Y]?: DeepPartial<Y[P]>
+      [P in keyof T]?: DeepPartial<T[P]>
     }
+
+export type DeepNonNullable<T> = T extends Date | Function | Primitive
+  ? NonNullable<T>
+  : T extends ReadonlyArray<infer U>
+    ? DeepNonNullable<NonNullable<U>>[]
+    : {
+        [P in keyof T]-?: DeepNonNullable<NonNullable<T[P]>>
+      }

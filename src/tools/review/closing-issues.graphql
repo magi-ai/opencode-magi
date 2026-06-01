@@ -1,0 +1,38 @@
+query closingIssues(
+  $cursor: String
+  $owner: String!
+  $repo: String!
+  $pr: Int!
+) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      closingIssuesReferences(first: 50, after: $cursor) {
+        nodes {
+          author {
+            login
+          }
+          body
+          comments(last: 50) {
+            nodes {
+              author {
+                login
+              }
+              body
+              createdAt
+              databaseId
+              url
+            }
+          }
+          number
+          state
+          title
+          url
+        }
+        pageInfo {
+          endCursor
+          hasNextPage
+        }
+      }
+    }
+  }
+}

@@ -1,6 +1,12 @@
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { Octokit } from "octokit"
 import type { Config } from "@/config"
+import type {
+  ClosingIssuesQuery,
+  ExpectNode,
+  Graphql,
+  ReviewThreadsQuery,
+} from "@/graphql"
 import type { AgentState, Magi, State } from "@/magi"
 import type { Exec } from "@/utils"
 import { join } from "node:path"
@@ -9,6 +15,7 @@ import { MagiError } from "@/magi"
 import {
   command,
   createExecWithGitHubApiRetry,
+  filterEmpty,
   isNumber,
   quote,
   toTitleCase,
@@ -38,6 +45,24 @@ export type PullRequestReview = Awaited<
 export type PullRequestCommit = Awaited<
   ReturnType<Octokit["rest"]["pulls"]["listCommits"]>
 >["data"][number]
+
+export type PullRequestComment = Awaited<
+  ReturnType<Octokit["rest"]["issues"]["listComments"]>
+>["data"][number]
+
+export interface PullRequestClosingIssue extends Omit<
+  ExpectNode<ClosingIssuesQuery>,
+  "comments"
+> {
+  comments: ExpectNode<ExpectNode<ClosingIssuesQuery>["comments"]>[]
+}
+
+export interface PullRequestReviewThread extends Omit<
+  ExpectNode<ReviewThreadsQuery>,
+  "comments"
+> {
+  comments: ExpectNode<ExpectNode<ReviewThreadsQuery>["comments"]>[]
+}
 
 const ci = {
   isExcluded(exclude: string[], { name }: PullRequestCheck) {
@@ -77,6 +102,7 @@ export class Review {
     private config: Config.Root,
     private context: ToolContext,
     private octokit: Octokit,
+    private graphql: Graphql,
     private exec: Exec,
     state: State,
   ) {
@@ -96,6 +122,7 @@ export class Review {
   ) {
     const url = `${config.github.url}/pull/${number}`
     const octokit = await magi.createOctokit(config, context.abort)
+    const graphql = magi.createGraphql(octokit)
     const state = await magi.createState(
       join(config.review.output, number.toString()),
       {
@@ -112,7 +139,16 @@ export class Review {
       config.github.retryApiAttempts,
     )
 
-    return new Review(number, magi, config, context, octokit, exec, state)
+    return new Review(
+      number,
+      magi,
+      config,
+      context,
+      octokit,
+      graphql,
+      exec,
+      state,
+    )
   }
 
   public getLink() {
@@ -176,7 +212,7 @@ export class Review {
     }
 
     this.state = await this.magi.updateState(this.state.output, {
-      pr: { metadata },
+      pr: { files, metadata },
       text: `Finished checking PR ${this.getLink()}.`,
     })
   }
@@ -262,6 +298,25 @@ export class Review {
       )
   }
 
+  public async fetchReviewContext() {
+    this.context.abort.throwIfAborted()
+
+    this.state = await this.magi.updateState(this.state.output, {
+      text: `Fetching review context for ${this.getLink()}.`,
+    })
+
+    const [comments, issues, threads] = await Promise.all([
+      this.getComments(),
+      this.getClosingIssues(),
+      this.getReviewThreads(),
+    ])
+
+    this.state = await this.magi.updateState(this.state.output, {
+      pr: { comments, issues, threads },
+      text: `Finished fetching review context for ${this.getLink()}.`,
+    })
+  }
+
   public async createReport(e?: unknown) {
     if (!e) {
       return this.magi.updateState(this.state.output, {
@@ -304,30 +359,58 @@ export class Review {
     return { files: files.map(({ filename }) => filename), metadata: data }
   }
 
-  private async getReviews() {
-    const reviews = await this.octokit.paginate(
-      this.octokit.rest.pulls.listReviews,
-      {
-        owner: this.config.github.owner,
-        pull_number: this.number,
-        repo: this.config.github.repo,
-      },
-    )
+  private async getComments() {
+    return await this.octokit.paginate(this.octokit.rest.issues.listComments, {
+      issue_number: this.number,
+      owner: this.config.github.owner,
+      repo: this.config.github.repo,
+    })
+  }
 
-    return reviews
+  private async getClosingIssues(): Promise<PullRequestClosingIssue[]> {
+    const data = await this.graphql.paginate(this.graphql.closingIssues, {
+      owner: this.config.github.owner,
+      pr: this.number,
+      repo: this.config.github.repo,
+    })
+
+    return filterEmpty(
+      data.repository?.pullRequest?.closingIssuesReferences?.nodes?.map(
+        (node) =>
+          node && { ...node, comments: filterEmpty(node.comments.nodes ?? []) },
+      ) ?? [],
+    )
+  }
+
+  private async getReviewThreads() {
+    const data = await this.graphql.paginate(this.graphql.reviewThreads, {
+      owner: this.config.github.owner,
+      pr: this.number,
+      repo: this.config.github.repo,
+    })
+
+    return filterEmpty(
+      data.repository?.pullRequest?.reviewThreads.nodes?.map(
+        (node) =>
+          node && { ...node, comments: filterEmpty(node.comments.nodes ?? []) },
+      ) ?? [],
+    )
+  }
+
+  private async getReviews() {
+    return await this.octokit.paginate(this.octokit.rest.pulls.listReviews, {
+      owner: this.config.github.owner,
+      pull_number: this.number,
+      repo: this.config.github.repo,
+    })
   }
 
   private async getCommits() {
-    const commits = await this.octokit.paginate(
-      this.octokit.rest.pulls.listCommits,
-      {
-        owner: this.config.github.owner,
-        pull_number: this.number,
-        repo: this.config.github.repo,
-      },
-    )
-
-    return commits
+    return await this.octokit.paginate(this.octokit.rest.pulls.listCommits, {
+      owner: this.config.github.owner,
+      pull_number: this.number,
+      repo: this.config.github.repo,
+    })
   }
 
   private async getChecks() {
