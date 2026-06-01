@@ -5,7 +5,14 @@ export default defineConfig({
     builtin: true,
     node: true,
   },
-  ignorePatterns: ["dist", "node_modules", "coverage", ".magi"],
+  ignorePatterns: [
+    "dist",
+    "node_modules",
+    "coverage",
+    ".magi",
+    ".worktrees",
+    "*.generated.ts",
+  ],
   jsPlugins: [
     "eslint-plugin-unused-imports",
     "eslint-plugin-perfectionist",

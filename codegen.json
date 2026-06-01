@@ -1,0 +1,21 @@
+{
+  "schema": "node_modules/@octokit/graphql-schema/schema.graphql",
+  "documents": "src/**/*.graphql",
+  "generates": {
+    "src/graphql/index.generated.ts": {
+      "plugins": ["typescript-operations", "typescript-generic-sdk"],
+      "config": {
+        "avoidOptionals": true,
+        "enumsAsTypes": true,
+        "maybeValue": "T | null",
+        "onlyOperationTypes": true,
+        "preResolveTypes": true,
+        "scalars": {
+          "DateTime": "string",
+          "URI": "string"
+        },
+        "skipTypename": true
+      }
+    }
+  }
+}

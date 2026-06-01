@@ -4,19 +4,25 @@ import type {
   PluginOptions,
   ToolDefinition,
 } from "@opencode-ai/plugin"
+import type { DocumentNode } from "graphql"
+import type { Config, ConfigValidationOptions } from "@/config"
 import type {
   PullRequestChecks,
+  PullRequestClosingIssue,
+  PullRequestComment,
   PullRequestCommit,
   PullRequestMetadata,
   PullRequestReview,
-} from "./tools/review/review"
-import type { Config, ConfigValidationOptions } from "@/config"
-import type { DeepPartial, Exec } from "@/utils"
+  PullRequestReviewThread,
+} from "@/tools/review/review"
+import type { DeepPartial, Dict, Exec } from "@/utils"
+import { print } from "graphql"
 import { randomUUID } from "node:crypto"
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { Octokit } from "octokit"
 import { getConfig, validateConfig } from "@/config"
+import { graphql } from "@/graphql"
 import { command, createExec, filterEmpty, merge, quote } from "@/utils"
 
 export interface Tool {
@@ -53,10 +59,14 @@ export interface State {
   issue?: { number: number; url: string }
   output: string
   pr?: {
+    comments?: PullRequestComment[]
     commits?: PullRequestCommit[]
+    files?: string[]
+    issues?: PullRequestClosingIssue[]
     metadata?: PullRequestMetadata
     number: number
     reviews?: PullRequestReview[]
+    threads?: PullRequestReviewThread[]
     url: string
   }
   repo: string
@@ -112,6 +122,12 @@ export class Magi {
         },
       } satisfies ThrottlingOptions,
     })
+  }
+
+  public createGraphql(octokit: Octokit) {
+    return graphql(<T, U>(document: DocumentNode, variables?: U) =>
+      octokit.graphql<T>(print(document), variables as Dict),
+    )
   }
 
   public async notify(id: string, text: string) {
