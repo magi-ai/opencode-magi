@@ -97,7 +97,7 @@ export const review: Tool = function (magi) {
               await run.checkExistingReviews()
               await run.checkCi()
               await run.fetchReviewContext()
-              // creating worktree
+              await run.createWorktree()
               // reviewing
               // validating review findings
               // reconsidering close verdicts

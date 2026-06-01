@@ -19,7 +19,7 @@ import type { DeepPartial, Dict, Exec } from "@/utils"
 import { print } from "graphql"
 import { randomUUID } from "node:crypto"
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
-import { isAbsolute, join } from "node:path"
+import { dirname, isAbsolute, join } from "node:path"
 import { Octokit } from "octokit"
 import { getConfig, validateConfig } from "@/config"
 import { graphql } from "@/graphql"
@@ -128,6 +128,45 @@ export class Magi {
     return graphql(<T, U>(document: DocumentNode, variables?: U) =>
       octokit.graphql<T>(print(document), variables as Dict),
     )
+  }
+
+  public async createWorktree(
+    dir: string,
+    number: number,
+    id: string,
+    signal?: AbortSignal,
+  ) {
+    const path = this.getPath(join(dir, number.toString(), id))
+
+    try {
+      await mkdir(dirname(path), { recursive: true })
+      await this.exec(command("git", "worktree", "add", quote(path)), {
+        signal,
+      })
+      await this.exec(command("gh", "pr", "checkout", number), {
+        cwd: path,
+        signal,
+      })
+      const branch = (
+        await this.exec("git branch --show-current", {
+          cwd: path,
+          signal,
+        })
+      ).trim()
+
+      if (!branch) throw new Error("Failed to determine worktree branch")
+
+      return { branch, path }
+    } catch (e) {
+      try {
+        await this.exec(
+          command("git", "worktree", "remove", "--force", quote(path)),
+        )
+        await this.exec(command("git", "worktree", "prune"))
+      } catch {}
+
+      throw e
+    }
   }
 
   public async notify(id: string, text: string) {

@@ -317,6 +317,26 @@ export class Review {
     })
   }
 
+  public async createWorktree() {
+    this.context.abort.throwIfAborted()
+
+    this.state = await this.magi.updateState(this.state.output, {
+      text: `Creating worktree for ${this.getLink()}.`,
+    })
+
+    const worktree = await this.magi.createWorktree(
+      this.config.review.worktree,
+      this.number,
+      this.state.id,
+      this.context.abort,
+    )
+
+    this.state = await this.magi.updateState(this.state.output, {
+      text: `Finished creating worktree for ${this.getLink()}.`,
+      worktree,
+    })
+  }
+
   public async createReport(e?: unknown) {
     if (!e) {
       return this.magi.updateState(this.state.output, {
