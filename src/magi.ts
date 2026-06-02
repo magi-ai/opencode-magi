@@ -156,6 +156,27 @@ export class Magi {
     }
   }
 
+  public async promptSession(sessionID: string, text: string) {
+    const result = await this.input.client.session.prompt({
+      parts: [{ text, type: "text" }],
+      sessionID,
+    })
+
+    if (result.error) {
+      throw new Error(result.response.statusText)
+    } else {
+      const output = result.data.parts
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("\n")
+
+      if (!output)
+        throw new Error("OpenCode session.prompt did not return text output.")
+
+      return output
+    }
+  }
+
   public async createWorktree(
     dir: string,
     number: number,
