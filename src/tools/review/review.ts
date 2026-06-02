@@ -327,7 +327,7 @@ export class Review {
     return Object.fromEntries(
       await Promise.all(
         this.config.review.reviewers.map(
-          async ({ account, id, permissions }) =>
+          async ({ account, id, model, permissions }) =>
             [
               id,
               {
@@ -335,7 +335,7 @@ export class Review {
                 sessionId: await this.magi.createSession(
                   this.state.sessionId,
                   `magi review #${this.number} ${id}`,
-                  permissions,
+                  { model, permissions },
                 ),
               },
             ] as const,

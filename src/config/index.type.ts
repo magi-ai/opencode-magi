@@ -41,11 +41,9 @@ export type PermissionRule =
   | { [key: string]: PermissionAction }
 export type Permissions = PermissionAction | { [key: string]: PermissionRule }
 
-export interface ModelOptions extends Record<string, unknown> {}
-
 export interface ModelWithOptions {
   id: string
-  options?: ModelOptions
+  variant?: string
 }
 
 export type Model = (ModelWithOptions | string)[] | ModelWithOptions | string

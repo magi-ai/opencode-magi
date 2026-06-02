@@ -11,7 +11,7 @@
         "model": [
           {
             "id": "opencode-go/minimax-m2.7",
-            "options": { "reasoningEffort": "high" }
+            "variant": "high"
           }
         ]
       },
@@ -21,7 +21,7 @@
         "model": [
           {
             "id": "opencode-go/deepseek-v4-pro",
-            "options": { "reasoningEffort": "high" }
+            "variant": "high"
           }
         ]
       },
@@ -31,9 +31,7 @@
         "model": [
           {
             "id": "opencode-go/qwen3.6-plus",
-            "options": {
-              "thinking": { "type": "enabled", "budgetTokens": 16000 }
-            }
+            "variant": "high"
           }
         ]
       },
@@ -42,7 +40,7 @@
         "model": [
           {
             "id": "openai/gpt-5.5-fast",
-            "options": { "reasoningEffort": "high" }
+            "variant": "high"
           }
         ],
         "author": {

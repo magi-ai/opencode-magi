@@ -24,7 +24,16 @@ import { dirname, isAbsolute, join } from "node:path"
 import { Octokit } from "octokit"
 import { getConfig, resolvePermissions, validateConfig } from "@/config"
 import { graphql } from "@/graphql"
-import { command, createExec, filterEmpty, merge, quote } from "@/utils"
+import {
+  command,
+  createExec,
+  filterEmpty,
+  isArray,
+  isObject,
+  isString,
+  merge,
+  quote,
+} from "@/utils"
 
 export interface Tool {
   (magi: Magi): {
@@ -139,9 +148,24 @@ export class Magi {
   public async createSession(
     parentID: string,
     title: string,
-    permissions?: Config.Permissions,
+    {
+      model,
+      permissions,
+    }: {
+      model: Config.Model | undefined
+      permissions?: Config.Permissions
+    },
   ) {
+    if (isArray(model) || !isObject(model)) throw new Error()
+
+    const [providerId, modelId] = model.id.split("/")
+
     const result = await this.input.client.session.create({
+      model: {
+        id: modelId!,
+        providerID: providerId!,
+        variant: isString(model) ? undefined : model.variant,
+      },
       parentID,
       permission: resolvePermissions(permissions),
       title,
