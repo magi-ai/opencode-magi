@@ -1,6 +1,6 @@
 import type { ThrottlingOptions } from "@octokit/plugin-throttling"
 import type {
-  PluginInput,
+  PluginInput as OriginalPluginInput,
   PluginOptions,
   ToolDefinition,
 } from "@opencode-ai/plugin"
@@ -15,13 +15,14 @@ import type {
   PullRequestReview,
   PullRequestReviewThread,
 } from "@/tools/review/review"
-import type { DeepPartial, Dict, Exec } from "@/utils"
+import type { DeepPartial, Dict, Exec, PluginInput } from "@/utils"
+import { createOpencodeClient } from "@opencode-ai/sdk/v2"
 import { print } from "graphql"
 import { randomUUID } from "node:crypto"
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join } from "node:path"
 import { Octokit } from "octokit"
-import { getConfig, validateConfig } from "@/config"
+import { getConfig, resolvePermissions, validateConfig } from "@/config"
 import { graphql } from "@/graphql"
 import { command, createExec, filterEmpty, merge, quote } from "@/utils"
 
@@ -99,8 +100,13 @@ export class Magi {
   public options: PluginOptions | undefined
   public exec: Exec
 
-  constructor(input: PluginInput, options?: PluginOptions) {
-    this.input = input
+  constructor(input: OriginalPluginInput, options?: PluginOptions) {
+    const client = createOpencodeClient({
+      baseUrl: input.serverUrl.toString(),
+      directory: input.directory,
+    })
+
+    this.input = { ...input, client }
     this.options = options
     this.exec = createExec(input.directory)
   }
@@ -128,6 +134,26 @@ export class Magi {
     return graphql(<T, U>(document: DocumentNode, variables?: U) =>
       octokit.graphql<T>(print(document), variables as Dict),
     )
+  }
+
+  public async createSession(
+    parentID: string,
+    title: string,
+    permissions?: Config.Permissions,
+  ) {
+    const result = await this.input.client.session.create({
+      parentID,
+      permission: resolvePermissions(permissions),
+      title,
+    })
+
+    if (result.error) {
+      throw new Error(result.response.statusText)
+    } else {
+      const id = result.data.id
+
+      return id
+    }
   }
 
   public async createWorktree(
@@ -169,10 +195,10 @@ export class Magi {
     }
   }
 
-  public async notify(id: string, text: string) {
+  public async notify(sessionID: string, text: string) {
     await this.input.client.session.promptAsync({
-      body: { parts: [{ synthetic: true, text, type: "text" }] },
-      path: { id },
+      parts: [{ synthetic: true, text, type: "text" }],
+      sessionID,
     })
   }
 
@@ -325,9 +351,9 @@ export class Magi {
 
     let count = 0
 
-    for (const id of sessionIds) {
+    for (const sessionID of sessionIds) {
       try {
-        await this.input.client.session.delete({ path: { id } })
+        await this.input.client.session.delete({ sessionID })
 
         count += 1
       } catch {}

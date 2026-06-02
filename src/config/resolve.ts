@@ -1,5 +1,5 @@
-import type { PluginInput } from "@opencode-ai/plugin"
 import type { Config } from "."
+import type { PluginInput } from "@/utils"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { CONFIG_PATH, DEFAULT_CONFIG } from "@/constant"
@@ -11,6 +11,51 @@ import {
   isString,
   merge,
 } from "@/utils"
+
+type PermissionRuleset = {
+  action: Config.PermissionAction
+  pattern: string
+  permission: string
+}[]
+
+export function resolvePermissions(
+  permissions?: Config.Permissions,
+): PermissionRuleset | undefined {
+  if (!permissions) return undefined
+
+  if (isString(permissions)) {
+    return [
+      "read",
+      "edit",
+      "glob",
+      "grep",
+      "bash",
+      "task",
+      "skill",
+      "lsp",
+      "webfetch",
+      "websearch",
+      "external_directory",
+      "doom_loop",
+    ].map((permission) => ({
+      action: permissions,
+      pattern: "*",
+      permission,
+    }))
+  } else {
+    return Object.entries(permissions).flatMap(([permission, rule]) => {
+      if (isString(rule)) {
+        return [{ action: rule, pattern: "*", permission }]
+      } else {
+        return Object.entries(rule).map(([pattern, action]) => ({
+          action,
+          pattern,
+          permission,
+        }))
+      }
+    })
+  }
+}
 
 function mergePermissions(
   base: Config.Permissions,
