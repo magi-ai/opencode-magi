@@ -227,6 +227,9 @@ export class Review {
     if (this.config.review.checks.wait) await this.watchChecks()
 
     const checks = await this.getChecks()
+    const _results = checks.failed.length
+      ? await this.classifyChecks()
+      : undefined
 
     this.state = await this.magi.updateState(this.state.output, {
       checks,
@@ -315,6 +318,30 @@ export class Review {
       pr: { comments, issues, threads },
       text: `Finished fetching review context for ${this.getLink()}.`,
     })
+  }
+
+  public async createSessions() {
+    if (!this.config.review.reviewers?.length)
+      throw new MagiError("blocked", "No reviewers configured.")
+
+    return Object.fromEntries(
+      await Promise.all(
+        this.config.review.reviewers.map(
+          async ({ account, id, permissions }) =>
+            [
+              id,
+              {
+                account,
+                sessionId: await this.magi.createSession(
+                  this.state.sessionId,
+                  `magi review #${this.number} ${id}`,
+                  permissions,
+                ),
+              },
+            ] as const,
+        ),
+      ),
+    )
   }
 
   public async createWorktree() {
@@ -475,6 +502,8 @@ export class Review {
       throw e
     }
   }
+
+  private async classifyChecks() {}
 
   private async watchChecks() {
     await this.exec(
