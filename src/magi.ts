@@ -48,7 +48,6 @@ export interface AgentState {
 }
 
 export interface State {
-  checks?: PullRequestChecks
   command: Command
   completedAt?: string
   createdAt: string
@@ -60,6 +59,7 @@ export interface State {
   issue?: { number: number; url: string }
   output: string
   pr?: {
+    checks?: PullRequestChecks
     comments?: PullRequestComment[]
     commits?: PullRequestCommit[]
     files?: string[]

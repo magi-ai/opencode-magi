@@ -232,7 +232,7 @@ export class Review {
       : undefined
 
     this.state = await this.magi.updateState(this.state.output, {
-      checks,
+      pr: { checks },
       text: `Finished checking CI for ${this.getLink()}.`,
     })
   }
