@@ -30,7 +30,6 @@ import {
   filterEmpty,
   isArray,
   isObject,
-  isString,
   merge,
   quote,
 } from "@/utils"
@@ -158,13 +157,14 @@ export class Magi {
   ) {
     if (isArray(model) || !isObject(model)) throw new Error()
 
-    const [providerId, modelId] = model.id.split("/")
+    const { id, variant } = model
+    const [providerId, modelId] = id.split("/")
 
     const result = await this.input.client.session.create({
       model: {
         id: modelId!,
         providerID: providerId!,
-        variant: isString(model) ? undefined : model.variant,
+        variant,
       },
       parentID,
       permission: resolvePermissions(permissions),
