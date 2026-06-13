@@ -87,4 +87,4 @@ jobs:
         uses: ./.github/composite-actions/setup
 
       - name: Run test
-        run: pnpm test
+        run: sleep 45 && pnpm test
