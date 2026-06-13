@@ -8,23 +8,32 @@ import type {
   ReviewThreadsQuery,
 } from "@/graphql"
 import type { AgentState, Magi, State } from "@/magi"
-import type { Exec } from "@/utils"
+import type { Dict, Exec } from "@/utils"
 import { join } from "node:path"
 import picomatch from "picomatch"
 import { MagiError } from "@/magi"
+import { Prompt } from "@/prompts"
 import {
   command,
   createExecWithGitHubApiRetry,
   filterEmpty,
   isNumber,
   quote,
+  retry,
   toTitleCase,
+  Worker,
 } from "@/utils"
 
 export interface PullRequestCheck {
-  bucket?: string
+  bucket: string
+  classifieds?: PullRequestClassifiedChecks
+  id: string
+  link: string
+  log?: string
   name: string
-  state?: string
+  scope?: boolean
+  state: string
+  workflow: string
 }
 
 export interface PullRequestChecks {
@@ -32,6 +41,10 @@ export interface PullRequestChecks {
   failed: PullRequestCheck[]
   passed: PullRequestCheck[]
   pending: PullRequestCheck[]
+}
+
+export interface PullRequestClassifiedChecks {
+  [key: string]: { reason: string; scope: boolean }
 }
 
 export type PullRequestMetadata = Awaited<
@@ -226,10 +239,13 @@ export class Review {
 
     if (this.config.review.checks.wait) await this.watchChecks()
 
-    const checks = await this.getChecks()
-    const _results = checks.failed.length
-      ? await this.classifyChecks()
-      : undefined
+    let checks = await this.getChecks()
+
+    if (checks.failed.length) {
+      checks.failed = await this.classifyChecks(checks.failed)
+
+      checks = await this.rerunChecks(checks)
+    }
 
     this.state = await this.magi.updateState(this.state.output, {
       pr: { checks },
@@ -324,7 +340,7 @@ export class Review {
     if (!this.config.review.reviewers?.length)
       throw new MagiError("blocked", "No reviewers configured.")
 
-    return Object.fromEntries(
+    const reviewers = Object.fromEntries(
       await Promise.all(
         this.config.review.reviewers.map(
           async ({ account, id, model, permissions }) =>
@@ -342,6 +358,10 @@ export class Review {
         ),
       ),
     )
+
+    this.state = await this.magi.updateState(this.state.output, { reviewers })
+
+    return reviewers
   }
 
   public async createWorktree() {
@@ -462,6 +482,12 @@ export class Review {
 
   private async getChecks() {
     const fields = "name,state,bucket,link,workflow"
+    const checks: PullRequestChecks = {
+      excluded: [],
+      failed: [],
+      passed: [],
+      pending: [],
+    }
 
     try {
       const raw = await this.exec(
@@ -478,32 +504,256 @@ export class Review {
         ),
         { signal: this.context.abort },
       )
+      const data = JSON.parse(raw) as PullRequestCheck[]
 
-      return (JSON.parse(raw) as PullRequestCheck[]).reduce<PullRequestChecks>(
-        (prev, check) => {
+      await Promise.all(
+        data.map(async (check) => {
+          check.id = check.link.match(/\/actions\/runs\/\d+\/job\/(\d+)/)![1]!
+
           if (ci.isExcluded(this.config.review.checks.exclude, check)) {
-            prev.excluded.push(check)
+            checks.excluded.push(check)
           } else if (ci.isFailed(check)) {
-            prev.failed.push(check)
-          } else if (ci.isPassed(check)) {
-            prev.passed.push(check)
-          } else if (ci.isPending(check)) {
-            prev.pending.push(check)
-          }
+            const log = await this.getCheckLog(check.id)
 
-          return prev
-        },
-        { excluded: [], failed: [], passed: [], pending: [] },
+            checks.failed.push({ ...check, log })
+          } else if (ci.isPassed(check)) {
+            checks.passed.push(check)
+          } else if (ci.isPending(check)) {
+            checks.pending.push(check)
+          }
+        }),
       )
     } catch (e) {
-      if (/no checks reported on the '.+' branch/i.test(String(e)))
-        return { excluded: [], failed: [], passed: [], pending: [] }
+      if (!/no checks reported on the '.+' branch/i.test(String(e))) throw e
+    }
 
-      throw e
+    return checks
+  }
+
+  private async classifyChecks(checks: PullRequestCheck[]) {
+    const worker = new Worker(this.config.review.concurrency.reviewers)
+    const classifiedChecks: { [key: string]: PullRequestClassifiedChecks } =
+      Object.fromEntries(checks.map(({ id }) => [id, {}]))
+    const prompt = await Prompt.init(
+      this.magi,
+      this.config,
+      "review/ci-classification",
+    )
+    const taskMessage = await prompt.create(
+      this.config.review.prompts?.ciClassification,
+      ["output_contract"],
+      {
+        failedChecks: JSON.stringify(checks, null, 2),
+        owner: this.config.github.owner,
+        pr: this.number.toString(),
+        repo: this.config.github.repo,
+      },
+    )
+    const repairMessage = await prompt.repair()
+
+    await Promise.all(
+      Object.entries(this.state.reviewers ?? {}).map(([id, { sessionId }]) =>
+        worker.run(async () => {
+          if (!sessionId)
+            throw new Error(`No session ID found for reviewer ${id}.`)
+
+          await this.magi.notify(
+            this.state.sessionId,
+            `Classifying CI checks for ${this.getLink()} with reviewer ${id}.`,
+          )
+
+          const data = await retry(
+            async (count) => {
+              const raw = await this.magi.promptSession(
+                sessionId,
+                count === 1 ? taskMessage : repairMessage,
+              )
+              const parsed = prompt.parse(raw)
+
+              if (!prompt.validate(parsed))
+                throw new Error(`Invalid output for reviewer ${id}.`)
+
+              return parsed
+            },
+            {
+              error: (_, count) =>
+                this.magi.notify(
+                  this.state.sessionId,
+                  `Attempt ${count} failed to classify CI checks for ${this.getLink()} with reviewer ${id}. Retrying...`,
+                ),
+              retries: this.config.output.repairAttempts,
+            },
+          )
+
+          if (!data) throw new Error(`Invalid output for reviewer ${id}.`)
+
+          data.checks.forEach((data: Dict) => {
+            classifiedChecks[data.id]![id] = {
+              reason: data.reason,
+              scope: data.classification === "SCOPE_IN",
+            }
+          })
+        }),
+      ),
+    )
+
+    return checks.map((check) => {
+      const classifieds = classifiedChecks[check.id]!
+      const values = Object.values(classifieds)
+      const scope =
+        values.reduce((acc, { scope }) => acc + (scope ? 1 : 0), 0) >
+        values.length / 2
+
+      return { ...check, classifieds, scope }
+    })
+  }
+
+  private async getCheckLog(id: string) {
+    const log = await this.exec(
+      command(
+        "gh",
+        "run",
+        "view",
+        "--repo",
+        this.state.repo,
+        "--job",
+        quote(id),
+        "--log-failed",
+      ),
+      { signal: this.context.abort },
+    )
+
+    return (
+      log
+        // oxlint-disable-next-line no-control-regex
+        .replaceAll(/\u001B\[[0-9;]*m/g, "")
+        .split("\n")
+        .filter((line) => line.trim())
+        .join("\n")
+    )
+  }
+
+  private async rerunChecks(checks: PullRequestChecks) {
+    await Promise.all(
+      checks.failed.map(async ({ classifieds = {}, name, scope = false }) => {
+        const reasons = {
+          in: Object.entries(classifieds)
+            .filter(([, { scope }]) => scope)
+            .map(([id, { reason }]) => `- ${id}: ${reason}`),
+          out: Object.entries(classifieds)
+            .filter(([, { scope }]) => !scope)
+            .map(([id, { reason }]) => `- ${id}: ${reason}`),
+        }
+
+        await this.magi.notify(
+          this.state.sessionId,
+          filterEmpty([
+            scope
+              ? `Check ${name} for ${this.getLink()} was classified as in scope by majority vote.`
+              : `Check ${name} for ${this.getLink()} was classified as out of scope by majority vote. Rerunning it.`,
+            reasons.in.length
+              ? `In scope reasons:\n${reasons.in.join("\n")}`
+              : "",
+            reasons.out.length
+              ? `Out of scope reasons:\n${reasons.out.join("\n")}`
+              : "",
+          ]).join("\n\n"),
+        )
+      }),
+    )
+
+    const failedChecks = checks.failed.filter(({ scope }) => !scope)
+
+    if (failedChecks.length) {
+      let label = failedChecks.map(({ name }) => name).join(", ")
+
+      await retry(
+        async () => {
+          await this.magi.notify(
+            this.state.sessionId,
+            `Rerunning checks ${label} for ${this.getLink()}.`,
+          )
+          await Promise.all(
+            checks.failed
+              .filter(({ scope }) => !scope)
+              .map(async ({ id }) => this.rerunCheck(id)),
+          )
+          await this.watchChecks()
+
+          const { failed, passed } = await this.getChecks()
+
+          checks.passed = passed.map((check) => {
+            const { classifieds, scope } =
+              checks.failed.find(
+                ({ name, workflow }) =>
+                  check.name === name && check.workflow === workflow,
+              ) ?? {}
+
+            return { ...check, classifieds, scope }
+          })
+          checks.failed = failed.map((check) => {
+            const { classifieds, scope } =
+              checks.failed.find(
+                ({ name, workflow }) =>
+                  check.name === name && check.workflow === workflow,
+              ) ?? {}
+
+            return { ...check, classifieds, scope }
+          })
+
+          const failedChecks = checks.failed.filter(({ scope }) => !scope)
+
+          if (!failedChecks.length) return
+
+          label = failedChecks.map(({ name }) => name).join(", ")
+
+          throw new Error(`Checks ${label} for ${this.getLink()} still failed.`)
+        },
+        {
+          error: (_, count) =>
+            this.magi.notify(
+              this.state.sessionId,
+              `Attempt ${count} failed to rerun checks ${label} for ${this.getLink()}. Retrying...`,
+            ),
+          retries: this.config.review.checks.retryFailedJobs,
+        },
+      )
+
+      const passedChecksAfterRerun = checks.passed.filter(
+        (check) => "scope" in check && !check.scope,
+      )
+      const failedChecksAfterRerun = checks.failed.filter(({ scope }) => !scope)
+      const message = filterEmpty([
+        passedChecksAfterRerun.length
+          ? `Reran checks ${passedChecksAfterRerun.map(({ name }) => name).join(", ")} for ${this.getLink()} passed.`
+          : "",
+        failedChecksAfterRerun.length
+          ? `Reran checks ${failedChecksAfterRerun.map(({ name }) => name).join(", ")} for ${this.getLink()} failed.`
+          : "",
+      ]).join("\n")
+
+      if (message) await this.magi.notify(this.state.sessionId, message)
+
+      return checks
+    } else {
+      return checks
     }
   }
 
-  private async classifyChecks() {}
+  private async rerunCheck(id: string) {
+    await this.exec(
+      command(
+        "gh",
+        "run",
+        "rerun",
+        "--repo",
+        this.state.repo,
+        "--job",
+        quote(id),
+      ),
+      { signal: this.context.abort },
+    )
+  }
 
   private async watchChecks() {
     await this.exec(
