@@ -539,14 +539,22 @@ export class Review {
       this.config,
       "review/ci-classification",
     )
+    if (!this.state.pr?.metadata)
+      throw new MagiError("blocked", "PR metadata not found.")
+    if (!this.state.worktree)
+      throw new MagiError("blocked", "PR worktree not found.")
+
     const taskMessage = await prompt.create(
       this.config.review.prompts?.ciClassification,
       ["output_contract"],
       {
+        baseSha: this.state.pr.metadata.base.sha,
         failedChecks: JSON.stringify(checks, null, 2),
+        headSha: this.state.pr.metadata.head.sha,
         owner: this.config.github.owner,
         pr: this.number.toString(),
         repo: this.config.github.repo,
+        worktreePath: this.state.worktree.path,
       },
     )
     const repairMessage = await prompt.repair()
