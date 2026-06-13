@@ -661,10 +661,10 @@ export class Review {
               : `Check ${name} for ${this.getLink()} was classified as out of scope by majority vote. Rerunning it.`,
             reasons.in.length
               ? `In scope reasons:\n${reasons.in.join("\n")}`
-              : "",
+              : undefined,
             reasons.out.length
               ? `Out of scope reasons:\n${reasons.out.join("\n")}`
-              : "",
+              : undefined,
           ]).join("\n\n"),
         )
       }),
@@ -734,10 +734,10 @@ export class Review {
       const message = filterEmpty([
         passedChecksAfterRerun.length
           ? `Reran checks ${passedChecksAfterRerun.map(({ name }) => name).join(", ")} for ${this.getLink()} passed.`
-          : "",
+          : undefined,
         failedChecksAfterRerun.length
           ? `Reran checks ${failedChecksAfterRerun.map(({ name }) => name).join(", ")} for ${this.getLink()} failed.`
-          : "",
+          : undefined,
       ]).join("\n")
 
       if (message) await this.magi.notify(this.state.sessionId, message)
@@ -764,18 +764,20 @@ export class Review {
   }
 
   private async watchChecks() {
-    await this.exec(
-      command(
-        "gh",
-        "pr",
-        "checks",
-        this.number,
-        "--repo",
-        this.state.repo,
-        "--watch",
-        "--required",
-      ),
-      { signal: this.context.abort },
-    )
+    try {
+      await this.exec(
+        command(
+          "gh",
+          "pr",
+          "checks",
+          this.number,
+          "--repo",
+          this.state.repo,
+          "--watch",
+          "--required",
+        ),
+        { signal: this.context.abort },
+      )
+    } catch {}
   }
 }
