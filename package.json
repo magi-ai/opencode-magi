@@ -29,7 +29,7 @@
   ],
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "prebuild": "node scripts/copy-data.ts",
+    "postbuild": "node scripts/copy-data.ts",
     "build": "tsgo -p tsconfig.build.json",
     "clean": "rimraf node_modules dist coverage",
     "format:check": "oxfmt --check .",
