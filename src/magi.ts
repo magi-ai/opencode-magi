@@ -144,6 +144,157 @@ export class Magi {
     )
   }
 
+  public async notify(sessionID: string, text: string) {
+    await this.input.client.session.promptAsync({
+      parts: [{ synthetic: true, text, type: "text" }],
+      sessionID,
+    })
+  }
+
+  public async clear(config: Config.Root) {
+    const summary = {
+      branch: 0,
+      output: 0,
+      run: 0,
+      session: 0,
+      skipped: 0,
+      worktree: 0,
+    }
+    const states = await this.getStates(config)
+
+    for (const state of states) {
+      if (active.has(state.status)) {
+        summary.skipped += 1
+
+        continue
+      }
+
+      if (config.clear.session)
+        summary.session += await this.deleteSessions(state)
+
+      if (config.clear.worktree && state.worktree?.path)
+        summary.worktree += await this.deleteWorktree(state.worktree.path)
+
+      if (config.clear.branch && state.worktree?.branch)
+        summary.branch += await this.deleteBranch(state.worktree.branch)
+
+      if (config.clear.output && state.output)
+        summary.output += await this.deleteOutput(state.output)
+
+      summary.run += 1
+    }
+
+    return summary
+  }
+
+  public getPath(value: string) {
+    return isAbsolute(value) ? value : join(this.input.directory, value)
+  }
+
+  public async getConfig(require?: ConfigValidationOptions["require"]) {
+    const config = await getConfig(this.input)
+    const errors = await validateConfig(config, { exec: this.exec, require })
+
+    if (errors.length) throw new Error(errors.join("\n"))
+
+    return config
+  }
+
+  private async getStates(config: Config.Root) {
+    const files = await Promise.all([
+      this.getStateFiles(config.review.output),
+      this.getStateFiles(config.triage.output),
+    ])
+
+    return Promise.all(
+      files
+        .flat()
+        .map(async (file) => JSON.parse(await readFile(file, "utf8")) as State),
+    )
+  }
+
+  private async getState(dir: string) {
+    return JSON.parse(await readFile(join(dir, "state.json"), "utf8")) as State
+  }
+
+  private async getStateFiles(dir: string) {
+    try {
+      const entries = await readdir(this.getPath(dir), {
+        recursive: true,
+        withFileTypes: true,
+      })
+
+      return entries
+        .filter((entry) => entry.isFile() && entry.name === "state.json")
+        .map((entry) => join(entry.parentPath, entry.name))
+    } catch {
+      return []
+    }
+  }
+
+  private getAgents(state: State) {
+    return filterEmpty([
+      state.editor,
+      state.creator,
+      ...Object.values(state.reviewers ?? {}),
+      ...Object.values(state.voters ?? {}),
+    ])
+  }
+
+  public async createState(
+    dir: string,
+    initialState: Omit<
+      State,
+      "createdAt" | "id" | "output" | "status" | "updatedAt"
+    >,
+  ) {
+    const id = `run-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`
+    const createdAt = new Date().toISOString()
+
+    const state: State = {
+      createdAt,
+      id,
+      output: join(this.getPath(dir), id),
+      status: "preparing",
+      updatedAt: createdAt,
+      ...initialState,
+    }
+
+    await this.createStateFile(state)
+
+    return state
+  }
+
+  private async createStateFile(state: State) {
+    await mkdir(state.output, { recursive: true })
+    await writeFile(
+      join(state.output, "state.json"),
+      `${JSON.stringify(state, null, 2)}\n`,
+    )
+  }
+
+  public async updateState(dir: string, next: DeepPartial<State>) {
+    next.updatedAt = new Date().toISOString()
+
+    const prev = await this.getState(dir)
+    const state = merge<State>(prev, next)
+
+    const values = [this.createStateFile(state)]
+
+    if (next.text) values.push(this.notify(prev.sessionId, next.text))
+
+    await Promise.all(values)
+
+    return state
+  }
+
+  private getSessionIds(state: State) {
+    return [
+      state.sessionId,
+      ...filterEmpty(this.getAgents(state).map(({ sessionId }) => sessionId)),
+    ]
+  }
+
   public async createSession(
     parentID: string,
     title: string,
@@ -201,6 +352,22 @@ export class Magi {
     }
   }
 
+  private async deleteSessions(state: State) {
+    const sessionIds = this.getSessionIds(state)
+
+    let count = 0
+
+    for (const sessionID of sessionIds) {
+      try {
+        await this.input.client.session.delete({ sessionID })
+
+        count += 1
+      } catch {}
+    }
+
+    return count
+  }
+
   public async createWorktree(
     dir: string,
     number: number,
@@ -238,173 +405,6 @@ export class Magi {
 
       throw e
     }
-  }
-
-  public async notify(sessionID: string, text: string) {
-    await this.input.client.session.promptAsync({
-      parts: [{ synthetic: true, text, type: "text" }],
-      sessionID,
-    })
-  }
-
-  public async clear(config: Config.Root) {
-    const summary = {
-      branch: 0,
-      output: 0,
-      run: 0,
-      session: 0,
-      skipped: 0,
-      worktree: 0,
-    }
-    const states = await this.getStates(config)
-
-    for (const state of states) {
-      if (active.has(state.status)) {
-        summary.skipped += 1
-
-        continue
-      }
-
-      if (config.clear.session)
-        summary.session += await this.deleteSessions(state)
-
-      if (config.clear.worktree && state.worktree?.path)
-        summary.worktree += await this.deleteWorktree(state.worktree.path)
-
-      if (config.clear.branch && state.worktree?.branch)
-        summary.branch += await this.deleteBranch(state.worktree.branch)
-
-      if (config.clear.output && state.output)
-        summary.output += await this.deleteOutput(state.output)
-
-      summary.run += 1
-    }
-
-    return summary
-  }
-
-  public async getConfig(require?: ConfigValidationOptions["require"]) {
-    const config = await getConfig(this.input)
-    const errors = await validateConfig(config, { exec: this.exec, require })
-
-    if (errors.length) throw new Error(errors.join("\n"))
-
-    return config
-  }
-
-  public async createState(
-    dir: string,
-    initialState: Omit<
-      State,
-      "createdAt" | "id" | "output" | "status" | "updatedAt"
-    >,
-  ) {
-    const id = `run-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`
-    const createdAt = new Date().toISOString()
-
-    const state: State = {
-      createdAt,
-      id,
-      output: join(this.getPath(dir), id),
-      status: "preparing",
-      updatedAt: createdAt,
-      ...initialState,
-    }
-
-    await this.createStateFile(state)
-
-    return state
-  }
-
-  public async updateState(dir: string, next: DeepPartial<State>) {
-    next.updatedAt = new Date().toISOString()
-
-    const prev = await this.getState(dir)
-    const state = merge<State>(prev, next)
-
-    const values = [this.createStateFile(state)]
-
-    if (next.text) values.push(this.notify(prev.sessionId, next.text))
-
-    await Promise.all(values)
-
-    return state
-  }
-
-  public getPath(value: string) {
-    return isAbsolute(value) ? value : join(this.input.directory, value)
-  }
-
-  private async createStateFile(state: State) {
-    await mkdir(state.output, { recursive: true })
-    await writeFile(
-      join(state.output, "state.json"),
-      `${JSON.stringify(state, null, 2)}\n`,
-    )
-  }
-
-  private async getStates(config: Config.Root) {
-    const files = await Promise.all([
-      this.getStateFiles(config.review.output),
-      this.getStateFiles(config.triage.output),
-    ])
-
-    return Promise.all(
-      files
-        .flat()
-        .map(async (file) => JSON.parse(await readFile(file, "utf8")) as State),
-    )
-  }
-
-  private async getState(dir: string) {
-    return JSON.parse(await readFile(join(dir, "state.json"), "utf8")) as State
-  }
-
-  private async getStateFiles(dir: string) {
-    try {
-      const entries = await readdir(this.getPath(dir), {
-        recursive: true,
-        withFileTypes: true,
-      })
-
-      return entries
-        .filter((entry) => entry.isFile() && entry.name === "state.json")
-        .map((entry) => join(entry.parentPath, entry.name))
-    } catch {
-      return []
-    }
-  }
-
-  private getSessionIds(state: State) {
-    return [
-      state.sessionId,
-      ...filterEmpty(this.getAgents(state).map(({ sessionId }) => sessionId)),
-    ]
-  }
-
-  private getAgents(state: State) {
-    return filterEmpty([
-      state.editor,
-      state.creator,
-      ...Object.values(state.reviewers ?? {}),
-      ...Object.values(state.voters ?? {}),
-    ])
-  }
-
-  private async deleteSessions(state: State) {
-    const sessionIds = this.getSessionIds(state)
-
-    let count = 0
-
-    for (const sessionID of sessionIds) {
-      try {
-        await this.input.client.session.delete({ sessionID })
-
-        count += 1
-      } catch {}
-    }
-
-    return count
   }
 
   private async deleteWorktree(value: string) {
