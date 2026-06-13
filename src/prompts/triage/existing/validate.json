@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "required": ["vote", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "vote": {
+      "enum": ["RELATED_PR_HANDLES_ISSUE", "RELATED_PR_DOES_NOT_HANDLE_ISSUE"]
+    },
+    "reason": { "type": "string", "minLength": 1 },
+    "body": { "type": "string", "minLength": 1 }
+  },
+  "not": { "required": ["body"] }
+}

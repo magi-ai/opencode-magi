@@ -1,0 +1,77 @@
+{
+  "type": "object",
+  "required": ["verdict", "resolve", "followUps", "newFindings"],
+  "additionalProperties": false,
+  "properties": {
+    "verdict": { "enum": ["MERGE", "CHANGES_REQUESTED", "CLOSE"] },
+    "resolve": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["commentId", "threadId"],
+        "additionalProperties": false,
+        "properties": {
+          "commentId": { "type": "integer" },
+          "threadId": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "followUps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["commentId", "body"],
+        "additionalProperties": false,
+        "properties": {
+          "commentId": { "type": "integer" },
+          "body": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "newFindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "line", "body"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "line": { "type": "integer" },
+          "startLine": { "type": "integer" },
+          "body": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "reason": { "type": "string", "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "verdict": { "const": "MERGE" } } },
+      "then": {
+        "properties": {
+          "followUps": { "maxItems": 0 },
+          "newFindings": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "verdict": { "const": "CHANGES_REQUESTED" } } },
+      "then": {
+        "anyOf": [
+          { "properties": { "followUps": { "minItems": 1 } } },
+          { "properties": { "newFindings": { "minItems": 1 } } }
+        ]
+      }
+    },
+    {
+      "if": { "properties": { "verdict": { "const": "CLOSE" } } },
+      "then": {
+        "required": ["reason"],
+        "properties": {
+          "followUps": { "maxItems": 0 },
+          "newFindings": { "maxItems": 0 }
+        }
+      }
+    }
+  ]
+}

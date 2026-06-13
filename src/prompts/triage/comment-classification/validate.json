@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "required": ["comments"],
+  "additionalProperties": false,
+  "properties": {
+    "comments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["commentId", "classification", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "commentId": { "type": "integer" },
+          "classification": {
+            "enum": [
+              "OBJECTION",
+              "NEW_EVIDENCE",
+              "CLARIFICATION",
+              "ACKNOWLEDGEMENT",
+              "UNRELATED"
+            ]
+          },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "type": "object",
+  "required": ["verdict", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "verdict": { "enum": ["MERGE", "CHANGES_REQUESTED", "CLOSE"] },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "line", "issue", "fix"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "line": { "type": "integer" },
+          "startLine": { "type": "integer" },
+          "issue": { "type": "string", "minLength": 1 },
+          "fix": { "type": "string", "minLength": 1 },
+          "perspective": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "reason": { "type": "string", "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "verdict": { "const": "MERGE" } } },
+      "then": { "properties": { "findings": { "maxItems": 0 } } }
+    },
+    {
+      "if": { "properties": { "verdict": { "const": "CHANGES_REQUESTED" } } },
+      "then": { "properties": { "findings": { "minItems": 1 } } }
+    },
+    {
+      "if": { "properties": { "verdict": { "const": "CLOSE" } } },
+      "then": {
+        "required": ["reason"],
+        "properties": { "findings": { "maxItems": 0 } }
+      }
+    }
+  ]
+}
