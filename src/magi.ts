@@ -11,6 +11,7 @@ import type {
   PullRequestClosingIssue,
   PullRequestComment,
   PullRequestCommit,
+  PullRequestConflicts,
   PullRequestMetadata,
   PullRequestReview,
   PullRequestReviewThread,
@@ -70,6 +71,7 @@ export interface State {
     checks?: PullRequestChecks
     comments?: PullRequestComment[]
     commits?: PullRequestCommit[]
+    conflicts?: PullRequestConflicts
     files?: string[]
     issues?: PullRequestClosingIssue[]
     metadata?: PullRequestMetadata
