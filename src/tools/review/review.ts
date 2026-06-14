@@ -18,6 +18,7 @@ import {
   createExecWithGitHubApiRetry,
   filterEmpty,
   isNumber,
+  omitNullish,
   quote,
   retry,
   toTitleCase,
@@ -524,7 +525,8 @@ export class Review {
         }),
       )
     } catch (e) {
-      if (!/no checks reported on the '.+' branch/i.test(String(e))) throw e
+      if (!/no (required )?checks reported on the '.+' branch/i.test(String(e)))
+        throw e
     }
 
     return checks
@@ -697,7 +699,7 @@ export class Review {
                   check.name === name && check.workflow === workflow,
               ) ?? {}
 
-            return { ...check, classifieds, scope }
+            return omitNullish({ ...check, classifieds, scope })
           })
           checks.failed = failed.map((check) => {
             const { classifieds, scope } =
@@ -706,7 +708,7 @@ export class Review {
                   check.name === name && check.workflow === workflow,
               ) ?? {}
 
-            return { ...check, classifieds, scope }
+            return omitNullish({ ...check, classifieds, scope })
           })
 
           const failedChecks = checks.failed.filter(({ scope }) => !scope)
