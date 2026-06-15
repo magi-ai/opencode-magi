@@ -747,57 +747,67 @@ export class Review {
     if (failedChecks.length) {
       let label = failedChecks.map(({ name }) => name).join(", ")
 
-      await retry(
-        async () => {
-          await this.magi.notify(
-            this.state.sessionId,
-            `Rerunning checks ${label} for ${this.getLink()}.`,
-          )
-          await Promise.all(
-            checks.failed
-              .filter(({ scope }) => !scope)
-              .map(async ({ id }) => this.rerunCheck(id)),
-          )
-          await this.watchChecks()
-
-          const { failed, passed } = await this.getChecks()
-
-          checks.passed = passed.map((check) => {
-            const { classifieds, scope } =
-              checks.failed.find(
-                ({ name, workflow }) =>
-                  check.name === name && check.workflow === workflow,
-              ) ?? {}
-
-            return omitNullish({ ...check, classifieds, scope })
-          })
-          checks.failed = failed.map((check) => {
-            const { classifieds, scope } =
-              checks.failed.find(
-                ({ name, workflow }) =>
-                  check.name === name && check.workflow === workflow,
-              ) ?? {}
-
-            return omitNullish({ ...check, classifieds, scope })
-          })
-
-          const failedChecks = checks.failed.filter(({ scope }) => !scope)
-
-          if (!failedChecks.length) return
-
-          label = failedChecks.map(({ name }) => name).join(", ")
-
-          throw new Error(`Checks ${label} for ${this.getLink()} still failed.`)
-        },
-        {
-          error: (_, count) =>
-            this.magi.notify(
+      if (this.state.dryRun) {
+        checks.passed = [
+          ...checks.passed,
+          ...checks.failed.filter(({ scope }) => !scope),
+        ]
+        checks.failed = checks.failed.filter(({ scope }) => scope)
+      } else {
+        await retry(
+          async () => {
+            await this.magi.notify(
               this.state.sessionId,
-              `Attempt ${count} failed to rerun checks ${label} for ${this.getLink()}. Retrying...`,
-            ),
-          retries: this.config.review.checks.retryFailedJobs,
-        },
-      )
+              `Rerunning checks ${label} for ${this.getLink()}.`,
+            )
+            await Promise.all(
+              checks.failed
+                .filter(({ scope }) => !scope)
+                .map(async ({ id }) => this.rerunCheck(id)),
+            )
+            await this.watchChecks()
+
+            const { failed, passed } = await this.getChecks()
+
+            checks.passed = passed.map((check) => {
+              const { classifieds, scope } =
+                checks.failed.find(
+                  ({ name, workflow }) =>
+                    check.name === name && check.workflow === workflow,
+                ) ?? {}
+
+              return omitNullish({ ...check, classifieds, scope })
+            })
+            checks.failed = failed.map((check) => {
+              const { classifieds, scope } =
+                checks.failed.find(
+                  ({ name, workflow }) =>
+                    check.name === name && check.workflow === workflow,
+                ) ?? {}
+
+              return omitNullish({ ...check, classifieds, scope })
+            })
+
+            const failedChecks = checks.failed.filter(({ scope }) => !scope)
+
+            if (!failedChecks.length) return
+
+            label = failedChecks.map(({ name }) => name).join(", ")
+
+            throw new Error(
+              `Checks ${label} for ${this.getLink()} still failed.`,
+            )
+          },
+          {
+            error: (_, count) =>
+              this.magi.notify(
+                this.state.sessionId,
+                `Attempt ${count} failed to rerun checks ${label} for ${this.getLink()}. Retrying...`,
+              ),
+            retries: this.config.review.checks.retryFailedJobs,
+          },
+        )
+      }
 
       const passedChecksAfterRerun = checks.passed.filter(
         (check) => "scope" in check && !check.scope,
