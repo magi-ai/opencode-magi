@@ -13,10 +13,10 @@ import type {
   PullRequestCommit,
   PullRequestConflicts,
   PullRequestMetadata,
-  PullRequestOutput,
   PullRequestReview,
   PullRequestReviewThread,
-} from "@/tools/review/review"
+  ReviewOutput,
+} from "@/tools/review"
 import type { DeepPartial, Dict, Exec, PluginInput } from "@/utils"
 import { createOpencodeClient } from "@opencode-ai/sdk/v2"
 import { print } from "graphql"
@@ -57,7 +57,7 @@ export interface AgentState {
 }
 
 export interface ReviewerState extends AgentState {
-  output?: PullRequestOutput
+  output?: ReviewOutput
   review?: PullRequestReview
   status?: string
 }

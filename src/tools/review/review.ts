@@ -1,15 +1,18 @@
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { Octokit } from "octokit"
-import type { Config } from "@/config"
 import type {
-  ClosingIssuesQuery,
-  ExpectNode,
-  Graphql,
-  ReviewThreadsQuery,
-} from "@/graphql"
+  CiClassificationOutput,
+  FindingValidationOutput,
+  PullRequestCheck,
+  PullRequestChecks,
+  PullRequestClassifiedChecks,
+  ReviewOutput,
+} from "./index.type"
+import type { Config } from "@/config"
+import type { ExpectNode, Graphql, ReviewThreadsQuery } from "@/graphql"
 import type { Magi, ReviewerState, State } from "@/magi"
 import type { PromptTag } from "@/prompts"
-import type { Dict, Exec } from "@/utils"
+import type { Exec } from "@/utils"
 import { join } from "node:path"
 import picomatch from "picomatch"
 import { MagiError } from "@/magi"
@@ -25,89 +28,6 @@ import {
   toTitleCase,
   Worker,
 } from "@/utils"
-
-export type PullRequestVerdict = "CHANGES_REQUESTED" | "CLOSE" | "MERGE"
-
-export interface PullRequestCheck {
-  bucket: string
-  classifieds?: PullRequestClassifiedChecks
-  id: string
-  link: string
-  log?: string
-  name: string
-  scope?: boolean
-  state: string
-  workflow: string
-}
-
-export interface PullRequestChecks {
-  excluded: PullRequestCheck[]
-  failed: PullRequestCheck[]
-  passed: PullRequestCheck[]
-  pending: PullRequestCheck[]
-}
-
-export interface PullRequestClassifiedChecks {
-  [key: string]: { reason: string; scope: boolean }
-}
-
-export interface PullRequestFinding {
-  body: string
-  line: number
-  path: string
-  startLine?: number
-}
-
-export interface PullRequestFollowUp {
-  body: string
-  commentId: number
-}
-
-export interface PullRequestResolveThread {
-  commentId: number
-  threadId: string
-}
-
-export interface PullRequestOutput {
-  findings?: PullRequestFinding[]
-  followUps?: PullRequestFollowUp[]
-  newFindings?: PullRequestFinding[]
-  reason?: string
-  resolves?: PullRequestResolveThread[]
-  verdict: PullRequestVerdict
-}
-
-interface FindingValidationOutput {
-  votes: {
-    findingIndex: number
-    reason?: string
-    reviewer: string
-    vote: "AGREE" | "DISAGREE"
-  }[]
-}
-
-export type PullRequestMetadata = Awaited<
-  ReturnType<Octokit["rest"]["pulls"]["get"]>
->["data"]
-
-export type PullRequestReview = Awaited<
-  ReturnType<Octokit["rest"]["pulls"]["listReviews"]>
->["data"][number]
-
-export type PullRequestCommit = Awaited<
-  ReturnType<Octokit["rest"]["pulls"]["listCommits"]>
->["data"][number]
-
-export type PullRequestComment = Awaited<
-  ReturnType<Octokit["rest"]["issues"]["listComments"]>
->["data"][number]
-
-export interface PullRequestClosingIssue extends Omit<
-  ExpectNode<ClosingIssuesQuery>,
-  "comments"
-> {
-  comments: ExpectNode<ExpectNode<ClosingIssuesQuery>["comments"]>[]
-}
 
 export interface PullRequestConflicts {
   [path: string]: string
@@ -482,7 +402,7 @@ export class Review {
               )
               const parsed = prompt.parse(raw)
 
-              if (!prompt.validate(parsed))
+              if (!prompt.validate<CiClassificationOutput>(parsed))
                 throw new Error(`Invalid output for reviewer ${id}.`)
 
               return parsed
@@ -500,7 +420,7 @@ export class Review {
           if (!output)
             throw new MagiError("blocked", `Invalid output for reviewer ${id}.`)
 
-          output.checks.forEach((data: Dict) => {
+          output.checks.forEach((data) => {
             classifiedChecks[data.id]![id] = {
               reason: data.reason,
               scope: data.classification === "SCOPE_IN",
@@ -824,7 +744,7 @@ export class Review {
               )
               const repairMessage = await prompt.repair()
 
-              const output = await retry<PullRequestOutput>(
+              const output = await retry<ReviewOutput>(
                 async (count) => {
                   const raw = await this.magi.promptSession(
                     sessionId,
@@ -832,7 +752,7 @@ export class Review {
                   )
                   const parsed = prompt.parse(raw)
 
-                  if (!prompt.validate<PullRequestOutput>(parsed))
+                  if (!prompt.validate<ReviewOutput>(parsed))
                     throw new Error(`Invalid output for reviewer ${id}.`)
 
                   this.validateInlineCommentTargets(
@@ -1315,7 +1235,7 @@ export class Review {
 
   private validateInlineCommentTargets(
     status: string | undefined,
-    output: PullRequestOutput,
+    output: ReviewOutput,
     inlineCommentTargets: Map<string, Set<number>>,
   ) {
     const target = status === "rereview" ? "newFindings" : "findings"

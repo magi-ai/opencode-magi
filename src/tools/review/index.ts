@@ -4,6 +4,8 @@ import { tool } from "@opencode-ai/plugin"
 import { filterEmpty, parsePrs, split, Worker } from "@/utils"
 import { Review } from "./review"
 
+export type * from "./index.type"
+
 function overrideConfig(
   config: Config.Root,
   args: string[],
