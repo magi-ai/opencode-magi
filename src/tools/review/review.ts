@@ -698,15 +698,15 @@ export class Review {
               )
 
               let inlineCommentTargets = await this.getInlineCommentTargets(
-                this.state.pr.metadata.base.sha,
-                this.state.pr.metadata.head.sha,
+                ["base", this.state.pr.metadata.base.sha],
+                ["head", this.state.pr.metadata.head.sha],
               )
 
               if (status === "rereview") {
                 const rereviewInlineCommentTargets =
                   await this.getInlineCommentTargets(
-                    review!.commit_id!,
-                    this.state.pr.metadata.head.sha,
+                    ["head", review!.commit_id!],
+                    ["head", this.state.pr.metadata.head.sha],
                   )
 
                 if (this.state.pr.conflicts) {
@@ -950,9 +950,67 @@ export class Review {
     })
   }
 
-  private async getInlineCommentTargets(fromSha: string, toSha: string) {
+  private async getInlineCommentTargets(
+    from: [string, string],
+    to: [string, string],
+  ) {
+    if (!this.state.pr?.metadata)
+      throw new MagiError("blocked", "PR metadata not found.")
+
     if (!this.state.worktree)
       throw new MagiError("blocked", "PR worktree not found.")
+
+    const [fromSource, fromSha] = from
+    const [toSource, toSha] = to
+
+    const commits = [
+      { label: "from", sha: fromSha, source: fromSource },
+      { label: "to", sha: toSha, source: toSource },
+    ]
+    const missing = filterEmpty(
+      await Promise.all(
+        commits.map(async (commit) => {
+          if (!(await this.hasCommit(commit.sha))) return commit
+        }),
+      ),
+    )
+    const sources = new Set(missing.map(({ source }) => source))
+
+    for (const source of sources) {
+      const ref =
+        source === "base"
+          ? this.state.pr.metadata.base.ref
+          : this.state.pr.metadata.head.ref
+      const url =
+        source === "base"
+          ? this.state.pr.metadata.base.repo.clone_url
+          : this.state.pr.metadata.head.repo.clone_url
+
+      await this.exec(
+        command(
+          "git",
+          "fetch",
+          "--no-tags",
+          quote(url),
+          quote(`refs/heads/${ref}`),
+        ),
+        { cwd: this.state.worktree.path, signal: this.context.abort },
+      )
+    }
+
+    for (const commit of missing) {
+      if (await this.hasCommit(commit.sha)) continue
+
+      const ref =
+        commit.source === "base"
+          ? this.state.pr.metadata.base.ref
+          : this.state.pr.metadata.head.ref
+
+      throw new MagiError(
+        "blocked",
+        `${commit.label} commit ${commit.sha} is unavailable after fetching ${commit.source} ref ${ref}.`,
+      )
+    }
 
     const diff = await this.exec(
       command(
@@ -1011,6 +1069,25 @@ export class Review {
     }
 
     return inlineCommentTargets
+  }
+
+  private async hasCommit(sha: string) {
+    if (!this.state.worktree)
+      throw new MagiError("blocked", "PR worktree not found.")
+
+    try {
+      await this.exec(
+        command("git", "cat-file", "-e", quote(`${sha}^{commit}`)),
+        {
+          cwd: this.state.worktree.path,
+          signal: this.context.abort,
+        },
+      )
+
+      return true
+    } catch {
+      return false
+    }
   }
 
   private getMergeInlineCommentTargets(
