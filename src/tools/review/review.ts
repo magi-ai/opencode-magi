@@ -7,7 +7,7 @@ import type {
   Graphql,
   ReviewThreadsQuery,
 } from "@/graphql"
-import type { AgentState, Magi, ReviewerState, State } from "@/magi"
+import type { Magi, ReviewerState, State } from "@/magi"
 import type { PromptTag } from "@/prompts"
 import type { Dict, Exec } from "@/utils"
 import { join } from "node:path"
@@ -55,7 +55,7 @@ export interface PullRequestFinding {
   body: string
   line: number
   path: string
-  startLine: number
+  startLine?: number
 }
 
 export interface PullRequestFollowUp {
@@ -655,7 +655,7 @@ export class Review {
       text: `Reviewing ${this.getLink()}.`,
     })
 
-    const worker = new Worker<readonly [string, AgentState]>(
+    const worker = new Worker<readonly [string, ReviewerState]>(
       this.config.review.concurrency.reviewers,
     )
     const reviewers = Object.fromEntries(
@@ -670,8 +670,10 @@ export class Review {
               throw new MagiError("blocked", "PR checks not found.")
             if (!this.state.pr.threads)
               throw new MagiError("blocked", "PR threads not found.")
+            if (!this.state.reviewers)
+              throw new MagiError("blocked", "Reviewers not found.")
 
-            const { review, sessionId, status } = this.state.reviewers![id]!
+            const { review, sessionId, status } = this.state.reviewers[id]!
 
             if (status === "skip") {
               this.magi.notify(
@@ -694,6 +696,28 @@ export class Review {
                 this.state.sessionId,
                 `Running ${label} for ${this.getLink()} with reviewer ${id}.`,
               )
+
+              let inlineCommentTargets = await this.getInlineCommentTargets(
+                this.state.pr.metadata.base.sha,
+                this.state.pr.metadata.head.sha,
+              )
+
+              if (status === "rereview") {
+                const rereviewInlineCommentTargets =
+                  await this.getInlineCommentTargets(
+                    review!.commit_id!,
+                    this.state.pr.metadata.head.sha,
+                  )
+
+                if (this.state.pr.conflicts) {
+                  inlineCommentTargets = this.getMergeInlineCommentTargets(
+                    rereviewInlineCommentTargets,
+                    inlineCommentTargets,
+                  )
+                } else {
+                  inlineCommentTargets = rereviewInlineCommentTargets
+                }
+              }
 
               const failedChecks = this.state.pr.checks.failed.filter(
                 ({ scope }) => scope,
@@ -786,7 +810,7 @@ export class Review {
               )
               const repairMessage = await prompt.repair()
 
-              const output = await retry<Dict>(
+              const output = await retry<PullRequestOutput>(
                 async (count) => {
                   const raw = await this.magi.promptSession(
                     sessionId,
@@ -794,8 +818,14 @@ export class Review {
                   )
                   const parsed = prompt.parse(raw)
 
-                  if (!prompt.validate(parsed))
+                  if (!prompt.validate<PullRequestOutput>(parsed))
                     throw new Error(`Invalid output for reviewer ${id}.`)
+
+                  this.validateInlineCommentTargets(
+                    status,
+                    parsed,
+                    inlineCommentTargets,
+                  )
 
                   return parsed
                 },
@@ -811,7 +841,7 @@ export class Review {
 
               if (!output) throw new Error(`Invalid output for reviewer ${id}.`)
 
-              return [id, output]
+              return [id, { output }]
             }
           }),
         ),
@@ -918,6 +948,125 @@ export class Review {
       pull_number: this.number,
       repo: this.config.github.repo,
     })
+  }
+
+  private async getInlineCommentTargets(fromSha: string, toSha: string) {
+    if (!this.state.worktree)
+      throw new MagiError("blocked", "PR worktree not found.")
+
+    const diff = await this.exec(
+      command(
+        "git",
+        "diff",
+        "--no-ext-diff",
+        "--unified=3",
+        quote(`${fromSha}...${toSha}`),
+      ),
+      { cwd: this.state.worktree.path, signal: this.context.abort },
+    )
+
+    const inlineCommentTargets = new Map<string, Set<number>>()
+
+    let path: string | undefined
+    let line: number | undefined
+
+    for (const entry of diff.split("\n")) {
+      if (entry.startsWith("+++ ")) {
+        let value = entry.slice(4)
+
+        if (value === "/dev/null") continue
+
+        if (value.startsWith('"') && value.endsWith('"')) {
+          try {
+            value = JSON.parse(value)
+          } catch {
+            value = value.slice(1, -1)
+          }
+        }
+
+        path = value.startsWith("b/") ? value.slice(2) : value
+        line = undefined
+
+        continue
+      }
+
+      if (entry.startsWith("@@ ")) {
+        const match = entry.match(/\+(\d+)(?:,\d+)?/)
+
+        line = match ? Number(match[1]) : undefined
+
+        continue
+      }
+
+      if (!path || line == null) continue
+
+      if (entry.startsWith("+") || entry.startsWith(" ")) {
+        const lines = inlineCommentTargets.get(path) ?? new Set<number>()
+
+        lines.add(line)
+        inlineCommentTargets.set(path, lines)
+
+        line += 1
+      }
+    }
+
+    return inlineCommentTargets
+  }
+
+  private getMergeInlineCommentTargets(
+    left: Map<string, Set<number>>,
+    right: Map<string, Set<number>>,
+  ) {
+    const targets = new Map<string, Set<number>>()
+
+    for (const [path, lines] of [...left, ...right]) {
+      targets.set(path, new Set([...(targets.get(path) ?? []), ...lines]))
+    }
+
+    return targets
+  }
+
+  private validateInlineCommentTargets(
+    status: string | undefined,
+    output: PullRequestOutput,
+    inlineCommentTargets: Map<string, Set<number>>,
+  ) {
+    const target = status === "rereview" ? "newFindings" : "findings"
+    const findings = output[target] ?? []
+
+    for (const [index, finding] of findings.entries()) {
+      const name = `${target}[${index}]`
+
+      if (!Number.isInteger(finding.line) || finding.line < 1)
+        throw new Error(`${name}.line must be a positive integer.`)
+
+      if (finding.startLine != null) {
+        if (!Number.isInteger(finding.startLine) || finding.startLine < 1)
+          throw new Error(`${name}.startLine must be a positive integer.`)
+
+        if (finding.startLine > finding.line)
+          throw new Error(
+            `${name}.startLine must be before or equal to ${name}.line.`,
+          )
+      }
+
+      const lines = inlineCommentTargets.get(finding.path)
+
+      if (!lines) {
+        throw new Error(
+          `${name} targets ${finding.path}:${finding.line}, but path is not in the PR diff.`,
+        )
+      } else {
+        const startLine = finding.startLine ?? finding.line
+
+        for (let line = startLine; line <= finding.line; line++) {
+          if (!lines.has(line))
+            throw new Error(
+              `${name} targets ${finding.path}:${line}, but line is not in a right-side PR diff hunk.`,
+            )
+        }
+      }
+    }
   }
 
   private async getConflicts() {
