@@ -114,7 +114,7 @@ export class Prompt {
     return {}
   }
 
-  public validate(content: unknown) {
+  public validate<T>(content: unknown): content is T {
     if (!this.validateSchema) return true
 
     const validate = new Ajv({ allErrors: true }).compile(this.validateSchema)
