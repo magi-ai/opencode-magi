@@ -13,6 +13,7 @@ import type {
   PullRequestCommit,
   PullRequestConflicts,
   PullRequestMetadata,
+  PullRequestOutput,
   PullRequestReview,
   PullRequestReviewThread,
 } from "@/tools/review/review"
@@ -53,6 +54,11 @@ export type Status =
 export interface AgentState {
   account?: string
   sessionId?: string
+}
+
+export interface ReviewerState extends AgentState {
+  output?: PullRequestOutput
+  review?: PullRequestReview
   status?: string
 }
 
@@ -81,7 +87,7 @@ export interface State {
     url: string
   }
   repo: string
-  reviewers?: { [key: string]: AgentState }
+  reviewers?: { [key: string]: ReviewerState }
   sessionId: string
   status: Status
   text?: string

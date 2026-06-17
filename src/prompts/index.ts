@@ -6,6 +6,8 @@ import { readFile } from "fs/promises"
 import { join } from "path"
 import { isString } from "@/utils"
 
+export type PromptTag = [string, string] | string
+
 export class Prompt {
   constructor(
     private magi: Magi,
@@ -30,7 +32,7 @@ export class Prompt {
 
   public async create(
     taskPath: string | undefined,
-    tags: ([string, string] | string)[],
+    tags: PromptTag[],
     values: { [key: string]: string },
   ) {
     const [task, ...rest] = await Promise.all([

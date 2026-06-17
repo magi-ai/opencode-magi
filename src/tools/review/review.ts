@@ -7,7 +7,8 @@ import type {
   Graphql,
   ReviewThreadsQuery,
 } from "@/graphql"
-import type { AgentState, Magi, State } from "@/magi"
+import type { AgentState, Magi, ReviewerState, State } from "@/magi"
+import type { PromptTag } from "@/prompts"
 import type { Dict, Exec } from "@/utils"
 import { join } from "node:path"
 import picomatch from "picomatch"
@@ -24,6 +25,8 @@ import {
   toTitleCase,
   Worker,
 } from "@/utils"
+
+export type PullRequestVerdict = "CHANGES_REQUESTED" | "CLOSE" | "MERGE"
 
 export interface PullRequestCheck {
   bucket: string
@@ -46,6 +49,32 @@ export interface PullRequestChecks {
 
 export interface PullRequestClassifiedChecks {
   [key: string]: { reason: string; scope: boolean }
+}
+
+export interface PullRequestFinding {
+  body: string
+  line: number
+  path: string
+  startLine: number
+}
+
+export interface PullRequestFollowUp {
+  body: string
+  commentId: number
+}
+
+export interface PullRequestResolveThread {
+  commentId: number
+  threadId: string
+}
+
+export interface PullRequestOutput {
+  findings?: PullRequestFinding[]
+  followUps?: PullRequestFollowUp[]
+  newFindings?: PullRequestFinding[]
+  reason?: string
+  resolves?: PullRequestResolveThread[]
+  verdict: PullRequestVerdict
 }
 
 export type PullRequestMetadata = Awaited<
@@ -280,7 +309,7 @@ export class Review {
     const latestNonMergeCommit = commits
       .toReversed()
       .find(({ parents }) => parents.length < 2)
-    const reviewers: { [key: string]: AgentState } = Object.fromEntries(
+    const reviewers: { [key: string]: ReviewerState } = Object.fromEntries(
       this.config.review.reviewers.map(({ account, id }) => {
         const targetReviews = reviews.filter(
           ({ state, user }) => state !== "DISMISSED" && user!.login === account,
@@ -297,11 +326,12 @@ export class Review {
                 latestNonMergeCommit.commit.author.date,
               ) >= 0,
           )
+          const review = targetReviews.at(-1)
 
           if (latestReview.length) {
-            return [id, { account, status: "skip" }]
+            return [id, { account, review, status: "skip" }]
           } else {
-            return [id, { account, status: "rereview" }]
+            return [id, { account, review, status: "rereview" }]
           }
         }
       }),
@@ -343,6 +373,8 @@ export class Review {
   }
 
   public async createSessions() {
+    this.context.abort.throwIfAborted()
+
     if (!this.config.review.reviewers?.length)
       throw new MagiError("blocked", "No reviewers configured.")
 
@@ -387,6 +419,185 @@ export class Review {
     this.state = await this.magi.updateState(this.state.output, {
       text: `Finished creating worktree for ${this.getLink()}.`,
       worktree,
+    })
+  }
+
+  public async review() {
+    this.context.abort.throwIfAborted()
+
+    if (!this.config.review.reviewers?.length)
+      throw new MagiError("blocked", "No reviewers configured.")
+
+    this.state = await this.magi.updateState(this.state.output, {
+      text: `Reviewing ${this.getLink()}.`,
+    })
+
+    const worker = new Worker<readonly [string, AgentState]>(
+      this.config.review.concurrency.reviewers,
+    )
+    const reviewers = Object.fromEntries(
+      await Promise.all(
+        this.config.review.reviewers.map(({ account, id, persona }) =>
+          worker.run(async () => {
+            if (!this.state.pr?.metadata)
+              throw new MagiError("blocked", "PR metadata not found.")
+            if (!this.state.worktree)
+              throw new MagiError("blocked", "PR worktree not found.")
+            if (!this.state.pr.checks)
+              throw new MagiError("blocked", "PR checks not found.")
+            if (!this.state.pr.threads)
+              throw new MagiError("blocked", "PR threads not found.")
+
+            const { review, sessionId, status } = this.state.reviewers![id]!
+
+            if (status === "skip") {
+              this.magi.notify(
+                this.state.sessionId,
+                `Skipping review for ${this.getLink()} with reviewer ${id}.`,
+              )
+
+              return [id, {}]
+            } else {
+              if (!sessionId)
+                throw new Error(`No session ID found for reviewer ${id}.`)
+              if (status === "rereview" && !review?.commit_id)
+                throw new Error(
+                  `Missing previous review commit for reviewer ${id}.`,
+                )
+
+              const label = `${status === "rereview" ? "re" : ""}review`
+
+              await this.magi.notify(
+                this.state.sessionId,
+                `Running ${label} for ${this.getLink()} with reviewer ${id}.`,
+              )
+
+              const failedChecks = this.state.pr.checks.failed.filter(
+                ({ scope }) => scope,
+              )
+              const unresolvedThreads = this.state.pr.threads.filter(
+                ({ comments, isResolved }) =>
+                  !isResolved &&
+                  (!account ||
+                    comments.some(({ author }) => author?.login === account)),
+              )
+              const reviewContext = JSON.stringify(
+                omitNullish({
+                  checks: this.state.pr.checks,
+                  comments: this.state.pr.comments,
+                  files: this.state.pr.files,
+                  issues: this.state.pr.issues,
+                  metadata: this.state.pr.metadata,
+                  threads: this.state.pr.threads,
+                }),
+                null,
+                2,
+              )
+              const tags: PromptTag[] = [
+                "output_contract",
+                ["review", reviewContext],
+              ]
+
+              if (review) {
+                const previousReviewContext = JSON.stringify(
+                  omitNullish({
+                    body: review.body,
+                    commitId: review.commit_id,
+                    state: review.state,
+                    submittedAt: review.submitted_at,
+                  }),
+                  null,
+                  2,
+                )
+
+                tags.push(["previous_review", previousReviewContext])
+              }
+
+              if (unresolvedThreads.length) {
+                const unresolvedThreadsContext = JSON.stringify(
+                  unresolvedThreads,
+                  null,
+                  2,
+                )
+
+                tags.push(["unresolved_threads", unresolvedThreadsContext])
+              }
+
+              if (this.state.pr.conflicts) {
+                const mergeConflictContext = JSON.stringify(
+                  this.state.pr.conflicts,
+                  null,
+                  2,
+                )
+
+                tags.push(["merge_conflict", mergeConflictContext])
+              }
+
+              if (failedChecks.length) {
+                const ciFailureContext = JSON.stringify(failedChecks, null, 2)
+
+                tags.push(["ci_failure", ciFailureContext])
+              }
+
+              if (persona) tags.push(["persona", persona])
+
+              const prompt = await Prompt.init(
+                this.magi,
+                this.config,
+                `review/${status === "rereview" ? "rereview" : "review"}`,
+              )
+              const taskMessage = await prompt.create(
+                status === "rereview"
+                  ? this.config.review.prompts?.rereview
+                  : this.config.review.prompts?.review,
+                tags,
+                omitNullish({
+                  baseSha: this.state.pr.metadata.base.sha,
+                  headSha: this.state.pr.metadata.head.sha,
+                  owner: this.config.github.owner,
+                  pr: this.number.toString(),
+                  previousHeadSha: review?.commit_id,
+                  repo: this.config.github.repo,
+                  worktreePath: this.state.worktree.path,
+                }),
+              )
+              const repairMessage = await prompt.repair()
+
+              const output = await retry<Dict>(
+                async (count) => {
+                  const raw = await this.magi.promptSession(
+                    sessionId,
+                    count === 1 ? taskMessage : repairMessage,
+                  )
+                  const parsed = prompt.parse(raw)
+
+                  if (!prompt.validate(parsed))
+                    throw new Error(`Invalid output for reviewer ${id}.`)
+
+                  return parsed
+                },
+                {
+                  error: (_, count) =>
+                    this.magi.notify(
+                      this.state.sessionId,
+                      `Attempt ${count} failed to ${label} for ${this.getLink()} with reviewer ${id}. Retrying...`,
+                    ),
+                  retries: this.config.output.repairAttempts,
+                },
+              )
+
+              if (!output) throw new Error(`Invalid output for reviewer ${id}.`)
+
+              return [id, output]
+            }
+          }),
+        ),
+      ),
+    )
+
+    this.state = await this.magi.updateState(this.state.output, {
+      reviewers,
+      text: `Finished reviewing ${this.getLink()}.`,
     })
   }
 
@@ -642,7 +853,7 @@ export class Review {
             `Classifying CI checks for ${this.getLink()} with reviewer ${id}.`,
           )
 
-          const data = await retry(
+          const output = await retry(
             async (count) => {
               const raw = await this.magi.promptSession(
                 sessionId,
@@ -665,9 +876,9 @@ export class Review {
             },
           )
 
-          if (!data) throw new Error(`Invalid output for reviewer ${id}.`)
+          if (!output) throw new Error(`Invalid output for reviewer ${id}.`)
 
-          data.checks.forEach((data: Dict) => {
+          output.checks.forEach((data: Dict) => {
             classifiedChecks[data.id]![id] = {
               reason: data.reason,
               scope: data.classification === "SCOPE_IN",

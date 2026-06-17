@@ -8,14 +8,13 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["path", "line", "issue", "fix"],
+        "required": ["path", "line", "body"],
         "additionalProperties": false,
         "properties": {
           "path": { "type": "string", "minLength": 1 },
           "line": { "type": "integer" },
           "startLine": { "type": "integer" },
-          "issue": { "type": "string", "minLength": 1 },
-          "fix": { "type": "string", "minLength": 1 }
+          "body": { "type": "string", "minLength": 1 }
         }
       }
     }
