@@ -5,4 +5,7 @@ Each finding's `body` contains the proposed review comment text.
 Do not edit files or perform write operations.
 
 Findings to validate:
+
+```json
 {findings}
+```

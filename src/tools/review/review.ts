@@ -77,6 +77,15 @@ export interface PullRequestOutput {
   verdict: PullRequestVerdict
 }
 
+interface FindingValidationOutput {
+  votes: {
+    findingIndex: number
+    reason?: string
+    reviewer: string
+    vote: "AGREE" | "DISAGREE"
+  }[]
+}
+
 export type PullRequestMetadata = Awaited<
   ReturnType<Octokit["rest"]["pulls"]["get"]>
 >["data"]
@@ -488,7 +497,8 @@ export class Review {
             },
           )
 
-          if (!output) throw new Error(`Invalid output for reviewer ${id}.`)
+          if (!output)
+            throw new MagiError("blocked", `Invalid output for reviewer ${id}.`)
 
           output.checks.forEach((data: Dict) => {
             classifiedChecks[data.id]![id] = {
@@ -684,9 +694,13 @@ export class Review {
               return [id, {}]
             } else {
               if (!sessionId)
-                throw new Error(`No session ID found for reviewer ${id}.`)
+                throw new MagiError(
+                  "blocked",
+                  `No session ID found for reviewer ${id}.`,
+                )
               if (status === "rereview" && !review?.commit_id)
-                throw new Error(
+                throw new MagiError(
+                  "blocked",
                   `Missing previous review commit for reviewer ${id}.`,
                 )
 
@@ -839,7 +853,11 @@ export class Review {
                 },
               )
 
-              if (!output) throw new Error(`Invalid output for reviewer ${id}.`)
+              if (!output)
+                throw new MagiError(
+                  "blocked",
+                  `Invalid output for reviewer ${id}.`,
+                )
 
               return [id, { output }]
             }
@@ -851,6 +869,198 @@ export class Review {
     this.state = await this.magi.updateState(this.state.output, {
       reviewers,
       text: `Finished reviewing ${this.getLink()}.`,
+    })
+  }
+
+  public async validateFindings() {
+    this.context.abort.throwIfAborted()
+
+    if (!this.config.review.reviewers?.length)
+      throw new MagiError("blocked", "No reviewers configured.")
+    if (!this.state.reviewers)
+      throw new MagiError("blocked", "Reviewers not found.")
+
+    const targets = Object.entries(this.state.reviewers).flatMap(
+      ([reviewer, { output }]) => {
+        if (output?.verdict !== "CHANGES_REQUESTED") return []
+
+        return (output.findings ?? output.newFindings ?? []).map(
+          (finding, findingIndex) => ({
+            finding,
+            findingIndex,
+            reviewer,
+          }),
+        )
+      },
+    )
+
+    if (!targets.length) return
+
+    this.state = await this.magi.updateState(this.state.output, {
+      text: `Validating review findings for ${this.getLink()}.`,
+    })
+
+    const worker = new Worker<readonly [string, FindingValidationOutput]>(
+      this.config.review.concurrency.reviewers,
+    )
+    const prompt = await Prompt.init(
+      this.magi,
+      this.config,
+      "review/finding-validation",
+    )
+    const validations = Object.fromEntries(
+      await Promise.all(
+        this.config.review.reviewers.map(({ id }) =>
+          worker.run(async () => {
+            const { sessionId } = this.state.reviewers![id]!
+
+            if (!sessionId)
+              throw new MagiError(
+                "blocked",
+                `No session ID found for reviewer ${id}.`,
+              )
+
+            await this.magi.notify(
+              this.state.sessionId,
+              `Validating review findings for ${this.getLink()} with reviewer ${id}.`,
+            )
+
+            const reviewTargets = targets.filter(
+              (target) => target.reviewer !== id,
+            )
+            const taskMessage = await prompt.create(
+              this.config.review.prompts?.findingValidation,
+              ["output_contract"],
+              {
+                findings: JSON.stringify(reviewTargets, null, 2),
+                owner: this.config.github.owner,
+                pr: this.number.toString(),
+                repo: this.config.github.repo,
+              },
+            )
+            const repairMessage = await prompt.repair()
+
+            const output = await retry<FindingValidationOutput>(
+              async (count) => {
+                const raw = await this.magi.promptSession(
+                  sessionId,
+                  count === 1 ? taskMessage : repairMessage,
+                )
+                const parsed = prompt.parse(raw)
+
+                if (!prompt.validate<FindingValidationOutput>(parsed))
+                  throw new Error(
+                    `Invalid finding validation output for reviewer ${id}.`,
+                  )
+
+                const expected = targets.filter(
+                  ({ reviewer }) => reviewer !== id,
+                )
+                const expectedKeys = new Set(
+                  expected.map(
+                    ({ findingIndex, reviewer }) =>
+                      `${reviewer}:${findingIndex}`,
+                  ),
+                )
+                const seen = new Set<string>()
+
+                for (const vote of parsed.votes) {
+                  if (vote.reviewer === id)
+                    throw new Error(`${id} must not vote on its own findings.`)
+
+                  const key = `${vote.reviewer}:${vote.findingIndex}`
+
+                  if (!expectedKeys.has(key))
+                    throw new Error(`Unexpected finding vote: ${key}.`)
+                  if (seen.has(key))
+                    throw new Error(`Duplicate finding vote: ${key}.`)
+
+                  seen.add(key)
+                }
+
+                for (const target of expected) {
+                  const key = `${target.reviewer}:${target.findingIndex}`
+
+                  if (!seen.has(key))
+                    throw new Error(`Missing finding vote: ${key}.`)
+                }
+
+                return parsed
+              },
+              {
+                error: (_, count) =>
+                  this.magi.notify(
+                    this.state.sessionId,
+                    `Attempt ${count} failed to validate review findings for ${this.getLink()} with reviewer ${id}. Retrying...`,
+                  ),
+                retries: this.config.output.repairAttempts,
+              },
+            )
+
+            if (!output)
+              throw new MagiError(
+                "blocked",
+                `Invalid finding validation output for reviewer ${id}.`,
+              )
+
+            return [id, output]
+          }),
+        ),
+      ),
+    )
+    const threshold = Math.floor(this.config.review.reviewers.length / 2) + 1
+    const reviewers = Object.fromEntries(
+      Object.entries(this.state.reviewers ?? {}).map(([id, reviewer]) => {
+        const output = reviewer.output
+
+        if (output?.verdict !== "CHANGES_REQUESTED") return [id, { output }]
+
+        const keptIndexes = new Set<number>()
+        const findings = output.findings ?? output.newFindings ?? []
+
+        findings.forEach((_finding, findingIndex) => {
+          let agrees = 1
+
+          for (const [validator, validation] of Object.entries(validations)) {
+            if (validator === id) continue
+
+            const vote = validation.votes.find(
+              (vote) =>
+                vote.reviewer === id && vote.findingIndex === findingIndex,
+            )
+
+            if (vote?.vote === "AGREE") agrees += 1
+          }
+
+          if (agrees >= threshold) keptIndexes.add(findingIndex)
+        })
+
+        if (output.findings) {
+          const findings = output.findings.filter((_finding, index) =>
+            keptIndexes.has(index),
+          )
+          const newOutput = findings.length
+            ? { ...output, findings }
+            : { ...output, findings: [], verdict: "MERGE" }
+
+          return [id, { output: newOutput }]
+        } else {
+          const newFindings = output.newFindings?.filter((_finding, index) =>
+            keptIndexes.has(index),
+          )
+          const newOutput =
+            newFindings?.length || output.followUps?.length
+              ? { ...output, newFindings }
+              : { ...output, newFindings: [], verdict: "MERGE" }
+
+          return [id, { output: newOutput }]
+        }
+      }),
+    )
+
+    this.state = await this.magi.updateState(this.state.output, {
+      reviewers,
+      text: `Finished validating review findings for ${this.getLink()}.`,
     })
   }
 
@@ -904,7 +1114,7 @@ export class Review {
     })
   }
 
-  private async getClosingIssues(): Promise<PullRequestClosingIssue[]> {
+  private async getClosingIssues() {
     const data = await this.graphql.paginate(this.graphql.closingIssues, {
       owner: this.config.github.owner,
       pr: this.number,
