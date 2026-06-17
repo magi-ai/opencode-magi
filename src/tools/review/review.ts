@@ -348,8 +348,8 @@ export class Review {
   public async classifyChecks() {
     this.context.abort.throwIfAborted()
 
-    if (!this.state.pr?.checks?.failed.length)
-      throw new MagiError("blocked", "No failed checks to classify.")
+    if (!this.state.pr?.checks?.failed.length) return
+
     if (!this.state.pr.metadata)
       throw new MagiError("blocked", "PR metadata not found.")
     if (!this.state.worktree)
