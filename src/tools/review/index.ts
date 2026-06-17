@@ -98,6 +98,12 @@ export const review: Tool = function (magi) {
               await run.createSessions()
               await run.createWorktree()
               await run.checkCi()
+
+              if (run.state.pr?.checks?.failed.length) {
+                await run.classifyChecks()
+                await run.rerunChecks()
+              }
+
               await run.fetchReviewContext()
               await run.review()
               // validating review findings
