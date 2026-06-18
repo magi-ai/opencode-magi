@@ -16,6 +16,7 @@ import type {
   PullRequestMetadata,
   PullRequestReview,
   PullRequestReviewThread,
+  PullRequestVerdict,
   ReviewOutput,
 } from "@/tools/review"
 import type { DeepPartial, Dict, Exec, PluginInput } from "@/utils"
@@ -59,6 +60,7 @@ export interface AgentState {
 
 export interface ReviewerState extends AgentState {
   output?: ReviewOutput
+  posted?: string
   review?: PullRequestReview
   status?: string
 }
@@ -87,6 +89,7 @@ export interface State {
     reviews?: PullRequestReview[]
     threads?: PullRequestReviewThread[]
     url: string
+    verdict?: PullRequestVerdict
   }
   repo: string
   reviewers?: { [key: string]: ReviewerState }
@@ -129,8 +132,20 @@ export class Magi {
     this.exec = createExec(input.directory)
   }
 
-  public async createOctokit(config: Config.Root, signal?: AbortSignal) {
-    const token = await this.exec(command("gh", "auth", "token"))
+  public async createOctokit(
+    config: Config.Root,
+    signal?: AbortSignal,
+    account?: string,
+  ) {
+    const token = await this.exec(
+      command(
+        "gh",
+        "auth",
+        "token",
+        account && "--user",
+        account && quote(account),
+      ),
+    )
     const retries = config.github.retryApiAttempts
 
     return new Octokit({
