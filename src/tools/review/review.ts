@@ -303,7 +303,7 @@ export class Review {
                 account,
                 sessionId: await this.magi.createSession(
                   this.state.sessionId,
-                  `magi review #${this.number} ${id}`,
+                  `magi review #${this.number} reviewer ${id}`,
                   { model, permissions },
                 ),
               },
@@ -311,8 +311,29 @@ export class Review {
         ),
       ),
     )
+    const { id, model, permissions } = this.config.review.reporter
+      ? this.config.review.reviewers.find(
+          ({ id }) => id === this.config.review.reporter,
+        )!
+      : this.config.review.reviewers[
+          Math.abs(this.number) % this.config.review.reviewers.length
+        ]!
+    const reporter =
+      this.config.mode === "single"
+        ? {
+            account: this.config.account,
+            sessionId: await this.magi.createSession(
+              this.state.sessionId,
+              `magi review #${this.number} reporter ${id}`,
+              { model, permissions },
+            ),
+          }
+        : undefined
 
-    this.state = await this.magi.updateState(this.state.output, { reviewers })
+    this.state = await this.magi.updateState(this.state.output, {
+      reporter,
+      reviewers,
+    })
 
     return reviewers
   }

@@ -104,6 +104,7 @@ export interface Review {
     review?: string
     reviewGuidelines?: string
   }
+  reporter?: string
   reviewers?: Reviewer[]
   safety: {
     allowAuthors: string[]

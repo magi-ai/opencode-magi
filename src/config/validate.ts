@@ -118,9 +118,20 @@ function agentGroupErrors(
 }
 
 function groupErrors(config: Config.Root): string[] {
+  const reviewerIds = new Set(
+    (config.review.reviewers ?? []).map(({ id }) => id),
+  )
+  const voterIds = new Set((config.triage.voters ?? []).map(({ id }) => id))
+
   return [
     ...agentGroupErrors(config.review.reviewers, "review.reviewers"),
+    ...(config.review.reporter && !reviewerIds.has(config.review.reporter)
+      ? [`review.reporter must match a configured review reviewer id`]
+      : []),
     ...agentGroupErrors(config.triage.voters, "triage.voters"),
+    ...(config.triage.reporter && !voterIds.has(config.triage.reporter)
+      ? [`triage.reporter must match a configured triage voter id`]
+      : []),
   ]
 }
 

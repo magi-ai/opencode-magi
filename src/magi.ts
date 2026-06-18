@@ -92,6 +92,7 @@ export interface State {
     verdict?: PullRequestVerdict
   }
   repo: string
+  reporter?: AgentState
   reviewers?: { [key: string]: ReviewerState }
   sessionId: string
   status: Status
@@ -261,6 +262,7 @@ export class Magi {
     return filterEmpty([
       state.editor,
       state.creator,
+      state.reporter,
       ...Object.values(state.reviewers ?? {}),
       ...Object.values(state.voters ?? {}),
     ])
