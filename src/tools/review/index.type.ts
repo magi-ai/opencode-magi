@@ -66,7 +66,7 @@ export interface ReviewOutput {
 
 export interface FindingValidationOutput {
   votes: {
-    comment?: string
+    comment: string
     findingIndex: number
     reviewer: string
     vote: "AGREE" | "DISAGREE"

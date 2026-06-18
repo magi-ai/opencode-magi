@@ -918,6 +918,48 @@ export class Review {
       ),
     )
     const threshold = Math.floor(this.config.review.reviewers.length / 2) + 1
+
+    await Promise.all(
+      targets.map(async ({ finding, findingIndex, reviewer }) => {
+        const votes = Object.entries(validations).flatMap(
+          ([validator, validation]) => {
+            if (validator === reviewer) return []
+
+            const vote = validation.votes.find(
+              (vote) =>
+                vote.reviewer === reviewer &&
+                vote.findingIndex === findingIndex,
+            )
+
+            return vote ? [{ validator, vote }] : []
+          },
+        )
+        const agrees =
+          1 + votes.filter(({ vote }) => vote.vote === "AGREE").length
+        const accepted = agrees >= threshold
+        const acceptedComments = votes
+          .filter(({ vote }) => vote.vote === "AGREE")
+          .map(({ validator, vote }) => `- ${validator}: ${vote.comment}`)
+        const rejectedComments = votes
+          .filter(({ vote }) => vote.vote === "DISAGREE")
+          .map(({ validator, vote }) => `- ${validator}: ${vote.comment}`)
+
+        await this.magi.notify(
+          this.state.sessionId,
+          filterEmpty([
+            `Finding ${reviewer} #${findingIndex + 1} for ${this.getLink()} was ${accepted ? "accepted" : "rejected"} by majority vote.`,
+            `Finding: ${finding.path}:${finding.line}\n${finding.body}`,
+            acceptedComments.length
+              ? `Accepted by:\n${acceptedComments.join("\n")}`
+              : undefined,
+            rejectedComments.length
+              ? `Rejected by:\n${rejectedComments.join("\n")}`
+              : undefined,
+          ]).join("\n\n"),
+        )
+      }),
+    )
+
     const reviewers = Object.fromEntries(
       Object.entries(this.state.reviewers ?? {}).map(([id, reviewer]) => {
         const output = reviewer.output

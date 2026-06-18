@@ -7,7 +7,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["reviewer", "findingIndex", "vote"],
+        "required": ["reviewer", "findingIndex", "vote", "comment"],
         "additionalProperties": false,
         "properties": {
           "reviewer": { "type": "string", "minLength": 1 },

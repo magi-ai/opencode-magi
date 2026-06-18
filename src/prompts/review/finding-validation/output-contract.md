@@ -7,7 +7,7 @@ Return exactly one JSON object and nothing else. Do not wrap it in markdown.
       "reviewer": "reviewer-key-that-authored-the-finding",
       "findingIndex": 0,
       "vote": "AGREE" | "DISAGREE",
-      "comment": "Optional short rationale."
+      "comment": "Short rationale."
     }
   ]
 }
@@ -22,4 +22,4 @@ Rules:
 - `"vote"` must be `"AGREE"` or `"DISAGREE"`.
 - `"AGREE"` means the finding should remain posted.
 - `"DISAGREE"` means the finding should be discarded.
-- `"comment"` is an optional short rationale.
+- `"comment"` is a short rationale for the vote.
