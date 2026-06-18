@@ -106,3 +106,7 @@ export interface PullRequestReviewThread extends Omit<
 > {
   comments: ExpectNode<ExpectNode<ReviewThreadsQuery>["comments"]>[]
 }
+
+export interface PullRequestInlineCommentTargets {
+  [key: string]: { [key: string]: number[] }
+}

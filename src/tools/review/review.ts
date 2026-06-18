@@ -6,10 +6,11 @@ import type {
   PullRequestCheck,
   PullRequestChecks,
   PullRequestClassifiedChecks,
+  PullRequestInlineCommentTargets,
   ReviewOutput,
 } from "./index.type"
 import type { Config } from "@/config"
-import type { ExpectNode, Graphql, ReviewThreadsQuery } from "@/graphql"
+import type { Graphql } from "@/graphql"
 import type { Magi, ReviewerState, State } from "@/magi"
 import type { PromptTag } from "@/prompts"
 import type { Exec } from "@/utils"
@@ -20,6 +21,7 @@ import { Prompt } from "@/prompts"
 import {
   command,
   createExecWithGitHubApiRetry,
+  filterDuplicates,
   filterEmpty,
   isNumber,
   omitNullish,
@@ -28,17 +30,6 @@ import {
   toTitleCase,
   Worker,
 } from "@/utils"
-
-export interface PullRequestConflicts {
-  [path: string]: string
-}
-
-export interface PullRequestReviewThread extends Omit<
-  ExpectNode<ReviewThreadsQuery>,
-  "comments"
-> {
-  comments: ExpectNode<ExpectNode<ReviewThreadsQuery>["comments"]>[]
-}
 
 const ci = {
   isExcluded(exclude: string[], { name }: PullRequestCheck) {
@@ -288,9 +279,10 @@ export class Review {
       this.getClosingIssues(),
       this.getReviewThreads(),
     ])
+    const inlineCommentTargets = await this.getInlineCommentTargets(!!conflicts)
 
     this.state = await this.magi.updateState(this.state.output, {
-      pr: { comments, conflicts, issues, threads },
+      pr: { comments, conflicts, inlineCommentTargets, issues, threads },
       text: `Finished fetching review context for ${this.getLink()}.`,
     })
   }
@@ -631,28 +623,12 @@ export class Review {
                 `Running ${label} for ${this.getLink()} with reviewer ${id}.`,
               )
 
-              let inlineCommentTargets = await this.getInlineCommentTargets(
-                ["base", this.state.pr.metadata.base.sha],
-                ["head", this.state.pr.metadata.head.sha],
-              )
-
-              if (status === "rereview") {
-                const rereviewInlineCommentTargets =
-                  await this.getInlineCommentTargets(
-                    ["head", review!.commit_id!],
-                    ["head", this.state.pr.metadata.head.sha],
-                  )
-
-                if (this.state.pr.conflicts) {
-                  inlineCommentTargets = this.getMergeInlineCommentTargets(
-                    rereviewInlineCommentTargets,
-                    inlineCommentTargets,
-                  )
-                } else {
-                  inlineCommentTargets = rereviewInlineCommentTargets
-                }
-              }
-
+              const sha =
+                status === "initial"
+                  ? this.state.pr.metadata.base.sha
+                  : review!.commit_id!
+              const inlineCommentTargets =
+                this.state.pr.inlineCommentTargets?.[sha] ?? {}
               const failedChecks = this.state.pr.checks.failed.filter(
                 ({ scope }) => scope,
               )
@@ -984,6 +960,137 @@ export class Review {
     })
   }
 
+  public async reconsiderClose() {
+    this.context.abort.throwIfAborted()
+
+    if (this.config.review.merge.approvalPolicy !== "unanimous") return
+
+    if (!this.config.review.reviewers?.length)
+      throw new MagiError("blocked", "No reviewers configured.")
+    if (!this.state.reviewers)
+      throw new MagiError("blocked", "Reviewers not found.")
+
+    const threshold = Math.floor(this.config.review.reviewers.length / 2) + 1
+    const targetReviewers = Object.entries(this.state.reviewers).filter(
+      ([, { output }]) => output?.verdict === "CLOSE",
+    )
+    const count = targetReviewers.length
+
+    if (!count || count >= threshold) return
+
+    this.state = await this.magi.updateState(this.state.output, {
+      text: `Reconsidering close verdicts for ${this.getLink()}.`,
+    })
+
+    const worker = new Worker<readonly [string, ReviewerState]>(
+      this.config.review.concurrency.reviewers,
+    )
+    const prompt = await Prompt.init(
+      this.magi,
+      this.config,
+      "review/close-reconsideration",
+    )
+    const reviewers = Object.fromEntries(
+      await Promise.all(
+        targetReviewers.map(([id, { review, sessionId, status }]) =>
+          worker.run(async () => {
+            if (!this.state.pr?.metadata)
+              throw new MagiError("blocked", "PR metadata not found.")
+            if (!sessionId)
+              throw new MagiError(
+                "blocked",
+                `No session ID found for reviewer ${id}.`,
+              )
+            if (status === "rereview" && !review?.commit_id)
+              throw new MagiError(
+                "blocked",
+                `Missing previous review commit for reviewer ${id}.`,
+              )
+
+            const sha =
+              status === "initial"
+                ? this.state.pr.metadata.base.sha
+                : review!.commit_id!
+            const inlineCommentTargets =
+              this.state.pr.inlineCommentTargets?.[sha] ?? {}
+
+            const taskMessage = await prompt.create(
+              this.config.review.prompts?.closeReconsideration,
+              ["output_contract"],
+              {
+                owner: this.config.github.owner,
+                pr: this.number.toString(),
+                repo: this.config.github.repo,
+              },
+            )
+            const repairMessage = await prompt.repair()
+
+            await this.magi.notify(
+              this.state.sessionId,
+              `Reconsidering close verdict for ${this.getLink()} with reviewer ${id}.`,
+            )
+
+            const output = await retry<ReviewOutput>(
+              async (count) => {
+                const raw = await this.magi.promptSession(
+                  sessionId,
+                  count === 1 ? taskMessage : repairMessage,
+                )
+                const parsed = prompt.parse(raw)
+
+                if (!prompt.validate<ReviewOutput>(parsed))
+                  throw new Error(
+                    `Invalid close reconsideration output for reviewer ${id}.`,
+                  )
+
+                this.validateInlineCommentTargets(
+                  "initial",
+                  parsed,
+                  inlineCommentTargets,
+                )
+
+                return parsed
+              },
+              {
+                error: (_, count) =>
+                  this.magi.notify(
+                    this.state.sessionId,
+                    `Attempt ${count} failed to reconsider close verdict for ${this.getLink()} with reviewer ${id}. Retrying...`,
+                  ),
+                retries: this.config.output.repairAttempts,
+              },
+            )
+
+            if (!output)
+              throw new MagiError(
+                "blocked",
+                `Invalid close reconsideration output for reviewer ${id}.`,
+              )
+
+            return [
+              id,
+              {
+                output: {
+                  findings: output.findings,
+                  followUps: undefined,
+                  newFindings: undefined,
+                  reason: undefined,
+                  resolves: undefined,
+                  verdict: output.verdict,
+                },
+              },
+            ]
+          }),
+        ),
+      ),
+    )
+
+    this.state = await this.magi.updateState(this.state.output, {
+      reviewers,
+      text: `Finished reconsidering close verdicts for ${this.getLink()}.`,
+    })
+  }
+
   public async createReport(e?: unknown) {
     if (!e) {
       return this.magi.updateState(this.state.output, {
@@ -1080,122 +1187,154 @@ export class Review {
     })
   }
 
-  private async getInlineCommentTargets(
-    from: [string, string],
-    to: [string, string],
-  ) {
+  private async getInlineCommentTargets(conflict: boolean = false) {
+    if (!this.state.reviewers)
+      throw new MagiError("blocked", "Reviewers not found.")
     if (!this.state.pr?.metadata)
       throw new MagiError("blocked", "PR metadata not found.")
-
     if (!this.state.worktree)
       throw new MagiError("blocked", "PR worktree not found.")
 
-    const [fromSource, fromSha] = from
-    const [toSource, toSha] = to
+    const get = async (from: [string, string], to: [string, string]) => {
+      const inlineCommentTargets: { [key: string]: number[] } = {}
+      const [fromSource, fromSha] = from
+      const [toSource, toSha] = to
+      const commits = [
+        { label: "from", sha: fromSha, source: fromSource },
+        { label: "to", sha: toSha, source: toSource },
+      ]
+      const missing = filterEmpty(
+        await Promise.all(
+          commits.map(async (commit) => {
+            if (!(await this.hasCommit(commit.sha))) return commit
+          }),
+        ),
+      )
+      const sources = new Set(missing.map(({ source }) => source))
 
-    const commits = [
-      { label: "from", sha: fromSha, source: fromSource },
-      { label: "to", sha: toSha, source: toSource },
-    ]
-    const missing = filterEmpty(
-      await Promise.all(
-        commits.map(async (commit) => {
-          if (!(await this.hasCommit(commit.sha))) return commit
-        }),
-      ),
-    )
-    const sources = new Set(missing.map(({ source }) => source))
+      for (const source of sources) {
+        const ref =
+          source === "base"
+            ? this.state.pr!.metadata!.base.ref
+            : this.state.pr!.metadata!.head.ref
+        const url =
+          source === "base"
+            ? this.state.pr!.metadata!.base.repo.clone_url
+            : this.state.pr!.metadata!.head.repo.clone_url
 
-    for (const source of sources) {
-      const ref =
-        source === "base"
-          ? this.state.pr.metadata.base.ref
-          : this.state.pr.metadata.head.ref
-      const url =
-        source === "base"
-          ? this.state.pr.metadata.base.repo.clone_url
-          : this.state.pr.metadata.head.repo.clone_url
+        await this.exec(
+          command(
+            "git",
+            "fetch",
+            "--no-tags",
+            quote(url),
+            quote(`refs/heads/${ref}`),
+          ),
+          { cwd: this.state.worktree!.path, signal: this.context.abort },
+        )
+      }
 
-      await this.exec(
+      for (const commit of missing) {
+        if (await this.hasCommit(commit.sha)) continue
+
+        const ref =
+          commit.source === "base"
+            ? this.state.pr!.metadata!.base.ref
+            : this.state.pr!.metadata!.head.ref
+
+        throw new MagiError(
+          "blocked",
+          `${commit.label} commit ${commit.sha} is unavailable after fetching ${commit.source} ref ${ref}.`,
+        )
+      }
+
+      const diff = await this.exec(
         command(
           "git",
-          "fetch",
-          "--no-tags",
-          quote(url),
-          quote(`refs/heads/${ref}`),
+          "diff",
+          "--no-ext-diff",
+          "--unified=3",
+          quote(`${fromSha}...${toSha}`),
         ),
-        { cwd: this.state.worktree.path, signal: this.context.abort },
+        { cwd: this.state.worktree!.path, signal: this.context.abort },
       )
-    }
 
-    for (const commit of missing) {
-      if (await this.hasCommit(commit.sha)) continue
+      let path: string | undefined
+      let line: number | undefined
 
-      const ref =
-        commit.source === "base"
-          ? this.state.pr.metadata.base.ref
-          : this.state.pr.metadata.head.ref
+      for (const entry of diff.split("\n")) {
+        if (entry.startsWith("+++ ")) {
+          let value = entry.slice(4)
 
-      throw new MagiError(
-        "blocked",
-        `${commit.label} commit ${commit.sha} is unavailable after fetching ${commit.source} ref ${ref}.`,
-      )
-    }
+          if (value === "/dev/null") continue
 
-    const diff = await this.exec(
-      command(
-        "git",
-        "diff",
-        "--no-ext-diff",
-        "--unified=3",
-        quote(`${fromSha}...${toSha}`),
-      ),
-      { cwd: this.state.worktree.path, signal: this.context.abort },
-    )
-
-    const inlineCommentTargets = new Map<string, Set<number>>()
-
-    let path: string | undefined
-    let line: number | undefined
-
-    for (const entry of diff.split("\n")) {
-      if (entry.startsWith("+++ ")) {
-        let value = entry.slice(4)
-
-        if (value === "/dev/null") continue
-
-        if (value.startsWith('"') && value.endsWith('"')) {
-          try {
-            value = JSON.parse(value)
-          } catch {
-            value = value.slice(1, -1)
+          if (value.startsWith('"') && value.endsWith('"')) {
+            try {
+              value = JSON.parse(value)
+            } catch {
+              value = value.slice(1, -1)
+            }
           }
+
+          path = value.startsWith("b/") ? value.slice(2) : value
+          line = undefined
+
+          continue
         }
 
-        path = value.startsWith("b/") ? value.slice(2) : value
-        line = undefined
+        if (entry.startsWith("@@ ")) {
+          const match = entry.match(/\+(\d+)(?:,\d+)?/)
 
-        continue
+          line = match ? Number(match[1]) : undefined
+
+          continue
+        }
+
+        if (!path || line == null) continue
+
+        if (entry.startsWith("+") || entry.startsWith(" ")) {
+          const lines = inlineCommentTargets[path] ?? []
+
+          lines.push(line)
+          inlineCommentTargets[path] = lines
+
+          line += 1
+        }
       }
 
-      if (entry.startsWith("@@ ")) {
-        const match = entry.match(/\+(\d+)(?:,\d+)?/)
+      return inlineCommentTargets
+    }
 
-        line = match ? Number(match[1]) : undefined
+    const baseSha = this.state.pr.metadata.base.sha
+    const headSha = this.state.pr.metadata.head.sha
+    const inlineCommentTargets: PullRequestInlineCommentTargets = {
+      [baseSha]: await get(["base", baseSha], ["head", headSha]),
+    }
+    const reviewers = Object.entries(this.state.reviewers)
 
-        continue
+    for (const [id, { review, status }] of reviewers) {
+      if (status !== "rereview") continue
+      if (!review?.commit_id)
+        throw new MagiError(
+          "blocked",
+          `Missing previous review commit for reviewer ${id}.`,
+        )
+
+      const previousHeadSha = review.commit_id
+
+      if (!inlineCommentTargets[previousHeadSha]) {
+        inlineCommentTargets[previousHeadSha] = await get(
+          ["head", previousHeadSha],
+          ["head", headSha],
+        )
       }
 
-      if (!path || line == null) continue
+      if (!conflict) continue
 
-      if (entry.startsWith("+") || entry.startsWith(" ")) {
-        const lines = inlineCommentTargets.get(path) ?? new Set<number>()
-
-        lines.add(line)
-        inlineCommentTargets.set(path, lines)
-
-        line += 1
-      }
+      inlineCommentTargets[previousHeadSha] = this.getMergeInlineCommentTargets(
+        inlineCommentTargets[previousHeadSha],
+        inlineCommentTargets[baseSha]!,
+      )
     }
 
     return inlineCommentTargets
@@ -1221,22 +1360,28 @@ export class Review {
   }
 
   private getMergeInlineCommentTargets(
-    left: Map<string, Set<number>>,
-    right: Map<string, Set<number>>,
+    left: { [key: string]: number[] },
+    right: { [key: string]: number[] },
   ) {
-    const targets = new Map<string, Set<number>>()
+    const inlineCommentTargets: { [key: string]: number[] } = {}
 
-    for (const [path, lines] of [...left, ...right]) {
-      targets.set(path, new Set([...(targets.get(path) ?? []), ...lines]))
+    for (const [path, lines] of [
+      ...Object.entries(left),
+      ...Object.entries(right),
+    ]) {
+      inlineCommentTargets[path] = filterDuplicates([
+        ...(inlineCommentTargets[path] ?? []),
+        ...lines,
+      ])
     }
 
-    return targets
+    return inlineCommentTargets
   }
 
   private validateInlineCommentTargets(
     status: string | undefined,
     output: ReviewOutput,
-    inlineCommentTargets: Map<string, Set<number>>,
+    inlineCommentTargets: { [key: string]: number[] },
   ) {
     const target = status === "rereview" ? "newFindings" : "findings"
     const findings = output[target] ?? []
@@ -1257,7 +1402,7 @@ export class Review {
           )
       }
 
-      const lines = inlineCommentTargets.get(finding.path)
+      const lines = inlineCommentTargets[finding.path]
 
       if (!lines) {
         throw new Error(
@@ -1267,7 +1412,7 @@ export class Review {
         const startLine = finding.startLine ?? finding.line
 
         for (let line = startLine; line <= finding.line; line++) {
-          if (!lines.has(line))
+          if (!lines.includes(line))
             throw new Error(
               `${name} targets ${finding.path}:${line}, but line is not in a right-side PR diff hunk.`,
             )

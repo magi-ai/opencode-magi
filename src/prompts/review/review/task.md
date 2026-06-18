@@ -2,7 +2,6 @@ Review pull request #{pr} for {owner}/{repo}.
 The PR worktree is {worktreePath}.
 Review only the diff from {baseSha} to {headSha}.
 Use: git -C "{worktreePath}" diff {baseSha}...{headSha}
-Do not edit files or perform write operations.
 
 This PR may include closing issue references.
 For each closing issue, review whether the PR fully satisfies the issue body, acceptance criteria, required behavior, required tests, required documentation, and bounded issue comments.

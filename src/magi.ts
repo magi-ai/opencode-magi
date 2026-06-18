@@ -12,6 +12,7 @@ import type {
   PullRequestComment,
   PullRequestCommit,
   PullRequestConflicts,
+  PullRequestInlineCommentTargets,
   PullRequestMetadata,
   PullRequestReview,
   PullRequestReviewThread,
@@ -79,6 +80,7 @@ export interface State {
     commits?: PullRequestCommit[]
     conflicts?: PullRequestConflicts
     files?: string[]
+    inlineCommentTargets?: PullRequestInlineCommentTargets
     issues?: PullRequestClosingIssue[]
     metadata?: PullRequestMetadata
     number: number
