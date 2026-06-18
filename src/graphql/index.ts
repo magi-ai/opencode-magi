@@ -27,7 +27,13 @@ type BoundSdk = {
     : never
 }
 
-type PaginateParams<T extends BoundSdk[keyof BoundSdk]> = Omit<
+type PageableSdk = {
+  [K in keyof BoundSdk]: Parameters<BoundSdk[K]>[0] extends { cursor: unknown }
+    ? BoundSdk[K]
+    : never
+}[keyof BoundSdk]
+
+type PaginateParams<T extends PageableSdk> = Omit<
   Parameters<T>[0],
   "cursor"
 > & {
@@ -59,7 +65,7 @@ export function graphql<T>(requester: Requester<T>) {
     Object.entries(sdk).map(([key, req]) => [key, req.bind(sdk)]),
   ) as BoundSdk
 
-  async function paginate<T extends BoundSdk[keyof BoundSdk]>(
+  async function paginate<T extends PageableSdk>(
     req: T,
     params: PaginateParams<T>,
   ): Promise<Awaited<ReturnType<T>>> {

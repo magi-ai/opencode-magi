@@ -33,6 +33,13 @@ export type ClosingIssuesQuery = { repository: { pullRequest: { closingIssuesRef
                 | { login: string }
                | null } | null> | null } } | null> | null, pageInfo: { endCursor: string | null, hasNextPage: boolean } } | null } | null } | null };
 
+export type ResolveReviewThreadMutationVariables = Exact<{
+  threadId: string | number;
+}>;
+
+
+export type ResolveReviewThreadMutation = { resolveReviewThread: { thread: { id: string } | null } | null };
+
 export type ReviewThreadsQueryVariables = Exact<{
   cursor: string | null | undefined;
   owner: string;
@@ -85,6 +92,15 @@ export const ClosingIssuesDocument = gql`
   }
 }
     `;
+export const ResolveReviewThreadDocument = gql`
+    mutation resolveReviewThread($threadId: ID!) {
+  resolveReviewThread(input: {threadId: $threadId}) {
+    thread {
+      id
+    }
+  }
+}
+    `;
 export const ReviewThreadsDocument = gql`
     query reviewThreads($cursor: String, $owner: String!, $repo: String!, $pr: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -121,6 +137,9 @@ export function getSdk<C>(requester: Requester<C>) {
   return {
     closingIssues(variables: ClosingIssuesQueryVariables, options?: C): Promise<ClosingIssuesQuery> {
       return requester<ClosingIssuesQuery, ClosingIssuesQueryVariables>(ClosingIssuesDocument, variables, options) as Promise<ClosingIssuesQuery>;
+    },
+    resolveReviewThread(variables: ResolveReviewThreadMutationVariables, options?: C): Promise<ResolveReviewThreadMutation> {
+      return requester<ResolveReviewThreadMutation, ResolveReviewThreadMutationVariables>(ResolveReviewThreadDocument, variables, options) as Promise<ResolveReviewThreadMutation>;
     },
     reviewThreads(variables: ReviewThreadsQueryVariables, options?: C): Promise<ReviewThreadsQuery> {
       return requester<ReviewThreadsQuery, ReviewThreadsQueryVariables>(ReviewThreadsDocument, variables, options) as Promise<ReviewThreadsQuery>;
