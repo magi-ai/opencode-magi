@@ -71,9 +71,8 @@ function mergePermissions(
 }
 
 function mergeAgent<T extends Config.Agent>(base: Config.Root, agent: T): T {
-  if (base.agents.refs && agent.ref) {
+  if (base.agents.refs && agent.ref)
     agent = { ...base.agents.refs[agent.ref], ...agent }
-  }
 
   agent.permissions = mergePermissions(
     base.agents.permissions,
@@ -89,11 +88,10 @@ function resolveModel(
   models: string[],
   model: Config.Model | undefined,
 ): Config.ModelWithOptions | undefined {
-  if (isArray(model)) {
+  if (isArray(model))
     model = model.find((model) =>
       isString(model) ? models.includes(model) : models.includes(model.id),
     )
-  }
 
   if (!model) return undefined
 
