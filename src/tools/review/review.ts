@@ -6,7 +6,9 @@ import type {
   PullRequestCheck,
   PullRequestChecks,
   PullRequestClassifiedChecks,
+  PullRequestFinding,
   PullRequestInlineCommentTargets,
+  PullRequestReviewParams,
   ReviewOutput,
 } from "./index.type"
 import type { Config } from "@/config"
@@ -30,6 +32,12 @@ import {
   toTitleCase,
   Worker,
 } from "@/utils"
+
+const events = {
+  CHANGES_REQUESTED: "REQUEST_CHANGES",
+  CLOSE: "COMMENT",
+  MERGE: "APPROVE",
+} as const
 
 const ci = {
   isExcluded(exclude: string[], { name }: PullRequestCheck) {
@@ -225,9 +233,14 @@ export class Review {
       .find(({ parents }) => parents.length < 2)
     const reviewers: { [key: string]: ReviewerState } = Object.fromEntries(
       this.config.review.reviewers.map(({ account, id }) => {
-        const targetReviews = reviews.filter(
-          ({ state, user }) => state !== "DISMISSED" && user!.login === account,
-        )
+        const targetReviews = reviews.filter(({ state, user }) => {
+          if (user!.login === account) {
+            if (state === "APPROVED") return true
+            if (state === "CHANGES_REQUESTED") return true
+          }
+
+          return false
+        })
 
         if (!targetReviews.length) {
           return [id, { account, status: "initial" }]
@@ -303,7 +316,7 @@ export class Review {
                 account,
                 sessionId: await this.magi.createSession(
                   this.state.sessionId,
-                  `magi review #${this.number} reviewer ${id}`,
+                  `magi review #${this.number} ${id}`,
                   { model, permissions },
                 ),
               },
@@ -311,7 +324,7 @@ export class Review {
         ),
       ),
     )
-    const { id, model, permissions } = this.config.review.reporter
+    const { model, permissions } = this.config.review.reporter
       ? this.config.review.reviewers.find(
           ({ id }) => id === this.config.review.reporter,
         )!
@@ -324,7 +337,7 @@ export class Review {
             account: this.config.account,
             sessionId: await this.magi.createSession(
               this.state.sessionId,
-              `magi review #${this.number} reporter ${id}`,
+              `magi review #${this.number} reporter`,
               { model, permissions },
             ),
           }
@@ -380,7 +393,6 @@ export class Review {
       this.config,
       "review/ci-classification",
     )
-
     const taskMessage = await prompt.create(
       this.config.review.prompts?.ciClassification,
       ["output_contract"],
@@ -626,11 +638,7 @@ export class Review {
                 )
 
               const verdict =
-                review.state === "APPROVED"
-                  ? "MERGE"
-                  : review.state === "CHANGES_REQUESTED"
-                    ? "CHANGES_REQUESTED"
-                    : "CLOSE"
+                review.state === "APPROVED" ? "MERGE" : "CHANGES_REQUESTED"
 
               this.magi.notify(
                 this.state.sessionId,
@@ -753,7 +761,6 @@ export class Review {
                 }),
               )
               const repairMessage = await prompt.repair()
-
               const output = await retry<ReviewOutput>(
                 async (count) => {
                   const raw = await this.magi.promptSession(
@@ -869,7 +876,6 @@ export class Review {
               },
             )
             const repairMessage = await prompt.repair()
-
             const output = await retry<FindingValidationOutput>(
               async (count) => {
                 const raw = await this.magi.promptSession(
@@ -1249,55 +1255,113 @@ export class Review {
         ),
       )
 
-      let posted: string
+      const event = events[this.state.pr.verdict]
+      const params: PullRequestReviewParams = { ...args, event }
 
-      switch (this.state.pr.verdict) {
-        case "MERGE": {
-          const { data } = await octokit.rest.pulls.createReview({
-            ...args,
-            event: "APPROVE",
-          })
+      if (this.state.pr.verdict === "CHANGES_REQUESTED") {
+        const findings = Object.entries(this.state.reviewers!).flatMap(
+          ([id, { output }]) =>
+            (output?.findings ?? output?.newFindings ?? []).map((finding) => ({
+              ...finding,
+              id,
+            })),
+        )
 
-          posted = data.html_url
-
-          break
-        }
-        case "CLOSE": {
-          const { data } = await octokit.rest.pulls.createReview({
-            ...args,
-            body: "",
-            event: "COMMENT",
-          })
-
-          posted = data.html_url
-
-          break
-        }
-        case "CHANGES_REQUESTED": {
-          const comments = Object.entries(this.state.reviewers!).flatMap(
-            ([_id, { output }]) =>
-              (output?.findings ?? output?.newFindings ?? []).map(
-                ({ startLine, ...rest }) => ({
-                  ...rest,
-                  ...(startLine == null
-                    ? {}
-                    : { start_line: startLine, start_side: "RIGHT" }),
-                }),
-              ),
+        if (!findings.length) {
+          this.magi.notify(
+            this.state.sessionId,
+            `Finished posting reviews for ${this.getLink()}.`,
           )
 
-          const { data } = await octokit.rest.pulls.createReview({
-            ...args,
-            body: "",
-            comments,
-            event: "REQUEST_CHANGES",
-          })
-
-          posted = data.html_url
-
-          break
+          return
         }
+
+        params.comments = findings.map(({ id: _id, startLine, ...rest }) => ({
+          ...rest,
+          ...(startLine == null
+            ? {}
+            : { start_line: startLine, start_side: "RIGHT" }),
+        }))
       }
+
+      if (this.state.pr.verdict !== "MERGE") {
+        if (!this.state.reporter?.sessionId)
+          throw new MagiError("blocked", "Reporter session ID not found.")
+
+        await this.magi.notify(
+          this.state.sessionId,
+          `Generating comment for ${this.getLink()} by reporter.`,
+        )
+
+        const contents = JSON.stringify(
+          Object.values(this.state.reviewers!).flatMap<
+            PullRequestFinding | string
+          >(({ output }) => {
+            if (!output || output.verdict === "MERGE") return []
+
+            if (output.verdict === "CLOSE") {
+              return [output.comment!]
+            } else {
+              return output.findings ?? output.newFindings ?? []
+            }
+          }),
+          null,
+          2,
+        )
+        const prompt = await Prompt.init(
+          this.magi,
+          this.config,
+          "review/comment",
+        )
+        const taskMessage = await prompt.create(
+          undefined,
+          ["output_contract"],
+          {
+            contents,
+            owner: this.config.github.owner,
+            pr: this.number.toString(),
+            repo: this.config.github.repo,
+            verdict: this.state.pr.verdict,
+          },
+        )
+        const repairMessage = await prompt.repair()
+        const output = await retry(
+          async (count) => {
+            const raw = await this.magi.promptSession(
+              this.state.reporter!.sessionId!,
+              count === 1 ? taskMessage : repairMessage,
+            )
+            const parsed = prompt.parse(raw)
+
+            if (!prompt.validate<{ comment: string }>(parsed))
+              throw new Error("Invalid output for reporter.")
+
+            return parsed.comment
+          },
+          {
+            error: (_, count) =>
+              this.magi.notify(
+                this.state.sessionId,
+                `Attempt ${count} failed to post comment for ${this.getLink()} by reporter. Retrying...`,
+              ),
+            retries: this.config.output.repairAttempts,
+          },
+        )
+
+        if (!output)
+          throw new MagiError("blocked", "Invalid output for reporter.")
+
+        await this.magi.notify(
+          this.state.sessionId,
+          `Generated comment for ${this.getLink()} by reporter.`,
+        )
+
+        params.body = output
+      }
+
+      const { data } = await octokit.rest.pulls.createReview(params)
+
+      const posted = data.html_url
 
       this.state = await this.magi.updateState(this.state.output, {
         reviewers: Object.fromEntries(
@@ -1312,9 +1376,11 @@ export class Review {
       const reviewers = Object.fromEntries(
         await Promise.all(
           Object.entries(this.state.reviewers!).map(
-            ([id, { account, output }]) =>
+            ([id, { account, output, review, status }]) =>
               worker.run(async () => {
-                if (!output) return [id, {}]
+                if (status === "skip") return [id, { posted: review?.html_url }]
+                if (!output)
+                  throw new MagiError("blocked", "Reviewer output not found.")
 
                 const octokit = await this.magi.createOctokit(
                   this.config,
@@ -1338,45 +1404,27 @@ export class Review {
                   ),
                 )
 
-                switch (output.verdict) {
-                  case "MERGE": {
-                    const { data } = await octokit.rest.pulls.createReview({
-                      ...args,
-                      event: "APPROVE",
-                    })
+                const event = events[output.verdict]
+                const params: PullRequestReviewParams = { ...args, event }
 
-                    return [id, { posted: data.html_url }]
-                  }
-                  case "CLOSE": {
-                    const { data } = await octokit.rest.pulls.createReview({
-                      ...args,
-                      body: output.comment,
-                      event: "COMMENT",
-                    })
+                if (output.verdict !== "MERGE") params.body = output.comment
 
-                    return [id, { posted: data.html_url }]
-                  }
-                  case "CHANGES_REQUESTED": {
-                    const findings = output.findings ?? output.newFindings ?? []
+                if (output.verdict === "CHANGES_REQUESTED") {
+                  const findings = output.findings ?? output.newFindings ?? []
 
-                    if (!findings.length) return [id, {}]
+                  if (!findings.length) return [id, {}]
 
-                    const comments = findings.map(({ startLine, ...rest }) => ({
-                      ...rest,
-                      ...(startLine == null
-                        ? {}
-                        : { start_line: startLine, start_side: "RIGHT" }),
-                    }))
-                    const { data } = await octokit.rest.pulls.createReview({
-                      ...args,
-                      body: output.comment,
-                      comments,
-                      event: "REQUEST_CHANGES",
-                    })
-
-                    return [id, { posted: data.html_url }]
-                  }
+                  params.comments = findings.map(({ startLine, ...rest }) => ({
+                    ...rest,
+                    ...(startLine == null
+                      ? {}
+                      : { start_line: startLine, start_side: "RIGHT" }),
+                  }))
                 }
+
+                const { data } = await octokit.rest.pulls.createReview(params)
+
+                return [id, { posted: data.html_url }]
               }),
           ),
         ),

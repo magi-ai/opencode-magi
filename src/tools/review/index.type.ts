@@ -89,6 +89,10 @@ export type PullRequestComment = Awaited<
   ReturnType<Octokit["rest"]["issues"]["listComments"]>
 >["data"][number]
 
+export type PullRequestReviewParams = Parameters<
+  Octokit["rest"]["pulls"]["createReview"]
+>[0]
+
 export interface PullRequestClosingIssue extends Omit<
   ExpectNode<ClosingIssuesQuery>,
   "comments"
