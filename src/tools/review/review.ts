@@ -232,7 +232,7 @@ export class Review {
         if (!targetReviews.length) {
           return [id, { account, status: "initial" }]
         } else {
-          const latestReview = targetReviews.filter(
+          const latestReviews = targetReviews.filter(
             ({ submitted_at }) =>
               latestNonMergeCommit?.commit.author?.date &&
               submitted_at &&
@@ -242,7 +242,7 @@ export class Review {
           )
           const review = targetReviews.at(-1)
 
-          if (latestReview.length) {
+          if (latestReviews.length) {
             return [id, { account, review, status: "skip" }]
           } else {
             return [id, { account, review, status: "rereview" }]
@@ -577,7 +577,7 @@ export class Review {
       text: `Reviewing ${this.getLink()}.`,
     })
 
-    const worker = new Worker<readonly [string, ReviewerState]>(
+    const worker = new Worker<[string, ReviewerState]>(
       this.config.review.concurrency.reviewers,
     )
     const reviewers = Object.fromEntries(
@@ -598,12 +598,25 @@ export class Review {
             const { review, sessionId, status } = this.state.reviewers[id]!
 
             if (status === "skip") {
+              if (!review)
+                throw new MagiError(
+                  "blocked",
+                  `No review found for reviewer ${id}.`,
+                )
+
+              const verdict =
+                review.state === "APPROVED"
+                  ? "MERGE"
+                  : review.state === "CHANGES_REQUESTED"
+                    ? "CHANGES_REQUESTED"
+                    : "CLOSE"
+
               this.magi.notify(
                 this.state.sessionId,
                 `Skipping review for ${this.getLink()} with reviewer ${id}.`,
               )
 
-              return [id, {}]
+              return [id, { output: { verdict } }]
             } else {
               if (!sessionId)
                 throw new MagiError(
@@ -796,7 +809,7 @@ export class Review {
       text: `Validating review findings for ${this.getLink()}.`,
     })
 
-    const worker = new Worker<readonly [string, FindingValidationOutput]>(
+    const worker = new Worker<[string, FindingValidationOutput]>(
       this.config.review.concurrency.reviewers,
     )
     const prompt = await Prompt.init(
@@ -982,7 +995,7 @@ export class Review {
       text: `Reconsidering close verdicts for ${this.getLink()}.`,
     })
 
-    const worker = new Worker<readonly [string, ReviewerState]>(
+    const worker = new Worker<[string, ReviewerState]>(
       this.config.review.concurrency.reviewers,
     )
     const prompt = await Prompt.init(
@@ -1089,6 +1102,228 @@ export class Review {
       reviewers,
       text: `Finished reconsidering close verdicts for ${this.getLink()}.`,
     })
+  }
+
+  public async resolveVerdict() {
+    if (!this.config.review.reviewers?.length)
+      throw new MagiError("blocked", "No reviewers configured.")
+    if (!this.state.reviewers)
+      throw new MagiError("blocked", "Reviewers not found.")
+
+    const counts = { CHANGES_REQUESTED: 0, CLOSE: 0, MERGE: 0 }
+    const length = this.config.review.reviewers.length
+    const threshold = Math.floor(length / 2) + 1
+
+    for (const [id, { output }] of Object.entries(this.state.reviewers)) {
+      if (!output)
+        throw new MagiError("blocked", `No output found for reviewer ${id}.`)
+
+      counts[output.verdict] += 1
+    }
+
+    const majority = this.config.review.merge.approvalPolicy === "majority"
+    const verdict =
+      counts.CLOSE >= threshold
+        ? "CLOSE"
+        : (!majority && counts.MERGE === length) ||
+            (majority && counts.MERGE >= threshold)
+          ? "MERGE"
+          : "CHANGES_REQUESTED"
+
+    this.state = await this.magi.updateState(this.state.output, {
+      pr: { verdict },
+      text: `Final verdict for ${this.getLink()} is ${verdict}.`,
+    })
+  }
+
+  public async postReviews() {
+    this.context.abort.throwIfAborted()
+
+    if (this.state.dryRun) return
+
+    if (!this.config.review.reviewers?.length)
+      throw new MagiError("blocked", "No reviewers configured.")
+    if (!this.state.reviewers)
+      throw new MagiError("blocked", "Reviewers not found.")
+
+    const args = {
+      owner: this.config.github.owner,
+      pull_number: this.number,
+      repo: this.config.github.repo,
+    }
+
+    this.state = await this.magi.updateState(this.state.output, {
+      text: `Posting reviews for ${this.getLink()}.`,
+    })
+
+    if (this.config.mode === "single") {
+      if (!this.state.pr?.verdict)
+        throw new MagiError("blocked", "PR verdict not found.")
+
+      const octokit = await this.magi.createOctokit(
+        this.config,
+        this.context.abort,
+        this.config.account,
+      )
+      const graphql = this.magi.createGraphql(octokit)
+
+      await Promise.all(
+        Object.values(this.state.reviewers!).flatMap(({ output }) =>
+          (output?.resolves ?? []).map(({ threadId }) =>
+            graphql.resolveReviewThread({ threadId }),
+          ),
+        ),
+      )
+      await Promise.all(
+        Object.entries(this.state.reviewers!).flatMap(([_id, { output }]) =>
+          (output?.followUps ?? []).map(({ body, commentId }) =>
+            octokit.rest.pulls.createReplyForReviewComment({
+              ...args,
+              body,
+              comment_id: commentId,
+            }),
+          ),
+        ),
+      )
+
+      let posted: string
+
+      switch (this.state.pr.verdict) {
+        case "MERGE": {
+          const { data } = await octokit.rest.pulls.createReview({
+            ...args,
+            event: "APPROVE",
+          })
+
+          posted = data.html_url
+
+          break
+        }
+        case "CLOSE": {
+          const { data } = await octokit.rest.pulls.createReview({
+            ...args,
+            body: "",
+            event: "COMMENT",
+          })
+
+          posted = data.html_url
+
+          break
+        }
+        case "CHANGES_REQUESTED": {
+          const comments = Object.entries(this.state.reviewers!).flatMap(
+            ([_id, { output }]) =>
+              (output?.findings ?? output?.newFindings ?? []).map(
+                ({ startLine, ...rest }) => ({
+                  ...rest,
+                  ...(startLine == null
+                    ? {}
+                    : { start_line: startLine, start_side: "RIGHT" }),
+                }),
+              ),
+          )
+
+          const { data } = await octokit.rest.pulls.createReview({
+            ...args,
+            body: "",
+            comments,
+            event: "REQUEST_CHANGES",
+          })
+
+          posted = data.html_url
+
+          break
+        }
+      }
+
+      this.state = await this.magi.updateState(this.state.output, {
+        reviewers: Object.fromEntries(
+          Object.keys(this.state.reviewers!).map((id) => [id, { posted }]),
+        ),
+        text: `Finished posting reviews for ${this.getLink()}.`,
+      })
+    } else {
+      const worker = new Worker<[string, ReviewerState]>(
+        this.config.review.concurrency.reviewers,
+      )
+      const reviewers = Object.fromEntries(
+        await Promise.all(
+          Object.entries(this.state.reviewers!).map(
+            ([id, { account, output }]) =>
+              worker.run(async () => {
+                if (!output) return [id, {}]
+
+                const octokit = await this.magi.createOctokit(
+                  this.config,
+                  this.context.abort,
+                  account,
+                )
+                const graphql = this.magi.createGraphql(octokit)
+
+                await Promise.all(
+                  (output.resolves ?? []).map(({ threadId }) =>
+                    graphql.resolveReviewThread({ threadId }),
+                  ),
+                )
+                await Promise.all(
+                  (output.followUps ?? []).map(async ({ body, commentId }) =>
+                    octokit.rest.pulls.createReplyForReviewComment({
+                      ...args,
+                      body,
+                      comment_id: commentId,
+                    }),
+                  ),
+                )
+
+                switch (output.verdict) {
+                  case "MERGE": {
+                    const { data } = await octokit.rest.pulls.createReview({
+                      ...args,
+                      event: "APPROVE",
+                    })
+
+                    return [id, { posted: data.html_url }]
+                  }
+                  case "CLOSE": {
+                    const { data } = await octokit.rest.pulls.createReview({
+                      ...args,
+                      body: output.reason,
+                      event: "COMMENT",
+                    })
+
+                    return [id, { posted: data.html_url }]
+                  }
+                  case "CHANGES_REQUESTED": {
+                    const findings = output.findings ?? output.newFindings ?? []
+
+                    if (!findings.length) return [id, {}]
+
+                    const comments = findings.map(({ startLine, ...rest }) => ({
+                      ...rest,
+                      ...(startLine == null
+                        ? {}
+                        : { start_line: startLine, start_side: "RIGHT" }),
+                    }))
+                    const { data } = await octokit.rest.pulls.createReview({
+                      ...args,
+                      body: "",
+                      comments,
+                      event: "REQUEST_CHANGES",
+                    })
+
+                    return [id, { posted: data.html_url }]
+                  }
+                }
+              }),
+          ),
+        ),
+      )
+
+      this.state = await this.magi.updateState(this.state.output, {
+        reviewers,
+        text: `Finished posting reviews for ${this.getLink()}.`,
+      })
+    }
   }
 
   public async createReport(e?: unknown) {
