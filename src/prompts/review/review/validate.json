@@ -18,7 +18,7 @@
         }
       }
     },
-    "reason": { "type": "string", "minLength": 1 }
+    "comment": { "type": "string", "minLength": 1 }
   },
   "allOf": [
     {
@@ -27,12 +27,15 @@
     },
     {
       "if": { "properties": { "verdict": { "const": "CHANGES_REQUESTED" } } },
-      "then": { "properties": { "findings": { "minItems": 1 } } }
+      "then": {
+        "required": ["comment"],
+        "properties": { "findings": { "minItems": 1 } }
+      }
     },
     {
       "if": { "properties": { "verdict": { "const": "CLOSE" } } },
       "then": {
-        "required": ["reason"],
+        "required": ["comment"],
         "properties": { "findings": { "maxItems": 0 } }
       }
     }

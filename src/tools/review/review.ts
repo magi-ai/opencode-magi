@@ -414,7 +414,7 @@ export class Review {
 
           output.checks.forEach((data) => {
             classifiedChecks[data.id]![id] = {
-              reason: data.reason,
+              comment: data.comment,
               scope: data.classification === "SCOPE_IN",
             }
           })
@@ -437,10 +437,10 @@ export class Review {
         const reasons = {
           in: Object.entries(classifieds)
             .filter(([, { scope }]) => scope)
-            .map(([id, { reason }]) => `- ${id}: ${reason}`),
+            .map(([id, { comment }]) => `- ${id}: ${comment}`),
           out: Object.entries(classifieds)
             .filter(([, { scope }]) => !scope)
-            .map(([id, { reason }]) => `- ${id}: ${reason}`),
+            .map(([id, { comment }]) => `- ${id}: ${comment}`),
         }
 
         await this.magi.notify(
@@ -1084,10 +1084,10 @@ export class Review {
               id,
               {
                 output: {
+                  comment: output.comment,
                   findings: output.findings,
                   followUps: undefined,
                   newFindings: undefined,
-                  reason: undefined,
                   resolves: undefined,
                   verdict: output.verdict,
                 },
@@ -1287,7 +1287,7 @@ export class Review {
                   case "CLOSE": {
                     const { data } = await octokit.rest.pulls.createReview({
                       ...args,
-                      body: output.reason,
+                      body: output.comment,
                       event: "COMMENT",
                     })
 
@@ -1306,7 +1306,7 @@ export class Review {
                     }))
                     const { data } = await octokit.rest.pulls.createReview({
                       ...args,
-                      body: "",
+                      body: output.comment,
                       comments,
                       event: "REQUEST_CHANGES",
                     })

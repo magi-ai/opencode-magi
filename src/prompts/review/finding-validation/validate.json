@@ -13,7 +13,7 @@
           "reviewer": { "type": "string", "minLength": 1 },
           "findingIndex": { "type": "integer", "minimum": 0 },
           "vote": { "enum": ["AGREE", "DISAGREE"] },
-          "reason": { "type": "string", "minLength": 1 }
+          "comment": { "type": "string", "minLength": 1 }
         }
       }
     }

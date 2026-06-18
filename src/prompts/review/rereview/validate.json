@@ -42,7 +42,7 @@
         }
       }
     },
-    "reason": { "type": "string", "minLength": 1 }
+    "comment": { "type": "string", "minLength": 1 }
   },
   "allOf": [
     {
@@ -57,6 +57,7 @@
     {
       "if": { "properties": { "verdict": { "const": "CHANGES_REQUESTED" } } },
       "then": {
+        "required": ["comment"],
         "anyOf": [
           { "properties": { "followUps": { "minItems": 1 } } },
           { "properties": { "newFindings": { "minItems": 1 } } }
@@ -66,7 +67,7 @@
     {
       "if": { "properties": { "verdict": { "const": "CLOSE" } } },
       "then": {
-        "required": ["reason"],
+        "required": ["comment"],
         "properties": {
           "followUps": { "maxItems": 0 },
           "newFindings": { "maxItems": 0 }

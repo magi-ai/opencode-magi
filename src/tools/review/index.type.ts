@@ -27,7 +27,7 @@ export interface PullRequestChecks {
 }
 
 export interface PullRequestClassifiedChecks {
-  [key: string]: { reason: string; scope: boolean }
+  [key: string]: { comment: string; scope: boolean }
 }
 
 export interface PullRequestFinding {
@@ -50,24 +50,24 @@ export interface PullRequestResolveThread {
 export interface CiClassificationOutput {
   checks: {
     classification: "SCOPE_IN" | "SCOPE_OUT"
+    comment: string
     id: string
-    reason: string
   }[]
 }
 
 export interface ReviewOutput {
+  comment?: string
   findings?: PullRequestFinding[]
   followUps?: PullRequestFollowUp[]
   newFindings?: PullRequestFinding[]
-  reason?: string
   resolves?: PullRequestResolveThread[]
   verdict: PullRequestVerdict
 }
 
 export interface FindingValidationOutput {
   votes: {
+    comment?: string
     findingIndex: number
-    reason?: string
     reviewer: string
     vote: "AGREE" | "DISAGREE"
   }[]

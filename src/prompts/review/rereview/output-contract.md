@@ -6,7 +6,7 @@ Return exactly one JSON object and nothing else. Do not wrap it in markdown.
   "resolves": [{ "commentId": 123, "threadId": "..." }],
   "followUps": [{ "commentId": 123, "body": "..." }],
   "newFindings": [{ "path": "relative/path.ext", "line": 123, "startLine": 120, "body": "..." }],
-  "reason": "Required only for CLOSE."
+  "comment": "Required for CHANGES_REQUESTED and CLOSE."
 }
 ```
 
@@ -17,8 +17,9 @@ Rules:
 - Each `"resolves"` item must use the exact `"commentId"` and `"threadId"` from `<unresolved_threads>`.
 - Use an empty `"resolves"` array when no thread should be resolved.
 - `"MERGE"` requires empty `"followUps"` and `"newFindings"` arrays.
-- `"CHANGES_REQUESTED"` requires at least one `"followUp"` or `"newFinding"`.
-- `"CLOSE"` requires `"reason"` and empty `"followUps"` and `"newFindings"` arrays.
+- `"CHANGES_REQUESTED"` requires `"comment"` and at least one `"followUp"` or `"newFinding"`.
+- `"comment"` for `"CHANGES_REQUESTED"` must be a concise prose review summary, not a bullet list of findings.
+- `"CLOSE"` requires `"comment"` and empty `"followUps"` and `"newFindings"` arrays.
 - `"line"` is required and must target a valid right-side line inside the latest PR diff hunk.
 - `"startLine"` is optional and must also target a valid right-side line inside the same latest PR diff hunk range.
 - Omit `"startLine"` for single-line findings.
