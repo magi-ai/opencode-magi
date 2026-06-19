@@ -114,3 +114,9 @@ export interface PullRequestReviewThread extends Omit<
 export interface PullRequestInlineCommentTargets {
   [key: string]: { [key: string]: number[] }
 }
+
+export interface PullRequestReviewMarker {
+  command?: string
+  reviewer?: string
+  verdict?: PullRequestVerdict
+}

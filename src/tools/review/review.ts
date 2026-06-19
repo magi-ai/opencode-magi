@@ -8,6 +8,7 @@ import type {
   PullRequestClassifiedChecks,
   PullRequestFinding,
   PullRequestInlineCommentTargets,
+  PullRequestReviewMarker,
   PullRequestReviewParams,
   ReviewOutput,
 } from "./index.type"
@@ -26,6 +27,7 @@ import {
   filterDuplicates,
   filterEmpty,
   isNumber,
+  marker,
   omitNullish,
   quote,
   retry,
@@ -233,14 +235,41 @@ export class Review {
       .find(({ parents }) => parents.length < 2)
     const reviewers: { [key: string]: ReviewerState } = Object.fromEntries(
       this.config.review.reviewers.map(({ account, id }) => {
-        const targetReviews = reviews.filter(({ state, user }) => {
-          if (user!.login === account) {
-            if (state === "APPROVED") return true
-            if (state === "CHANGES_REQUESTED") return true
-          }
+        const targetReviews = filterEmpty(
+          reviews.map((review) => {
+            if (this.config.mode === "single") {
+              if (review.user!.login !== this.config.account) return
 
-          return false
-        })
+              const markers = marker.parse<PullRequestReviewMarker>(review.body)
+              const { reviewer, verdict } =
+                markers.find(({ reviewer }) => reviewer === id) ?? {}
+
+              if (reviewer !== id || !verdict) return
+
+              if (verdict === "MERGE") review.state = "APPROVED"
+              if (verdict === "CHANGES_REQUESTED")
+                review.state = "CHANGES_REQUESTED"
+              if (verdict === "CLOSE") review.state = "CLOSED"
+
+              return review
+            } else {
+              if (review.user!.login !== account) return
+
+              if (review.state === "APPROVED") return review
+              if (review.state === "CHANGES_REQUESTED") return review
+              if (review.state !== "COMMENTED") return
+
+              const markers = marker.parse<PullRequestReviewMarker>(review.body)
+              const { reviewer, verdict } = markers[0] ?? {}
+
+              if (reviewer !== id || verdict !== "CLOSE") return
+
+              review.state = "CLOSED"
+
+              return review
+            }
+          }),
+        )
 
         if (!targetReviews.length) {
           return [id, { account, status: "initial" }]
@@ -638,7 +667,11 @@ export class Review {
                 )
 
               const verdict =
-                review.state === "APPROVED" ? "MERGE" : "CHANGES_REQUESTED"
+                review.state === "APPROVED"
+                  ? "MERGE"
+                  : review.state === "CLOSED"
+                    ? "CLOSE"
+                    : "CHANGES_REQUESTED"
 
               this.magi.notify(
                 this.state.sessionId,
@@ -1359,6 +1392,22 @@ export class Review {
         params.body = output
       }
 
+      params.body = [
+        params.body ?? "",
+        marker.stringify(
+          ...filterEmpty(
+            Object.entries(this.state.reviewers!).map(
+              ([id, { output }]) =>
+                output && {
+                  command: "review",
+                  reviewer: id,
+                  verdict: output.verdict,
+                },
+            ),
+          ),
+        ),
+      ].join("\n\n")
+
       const { data } = await octokit.rest.pulls.createReview(params)
 
       const posted = data.html_url
@@ -1421,6 +1470,15 @@ export class Review {
                       : { start_line: startLine, start_side: "RIGHT" }),
                   }))
                 }
+
+                params.body = [
+                  params.body ?? "",
+                  marker.stringify({
+                    command: "review",
+                    reviewer: id,
+                    verdict: output.verdict,
+                  }),
+                ].join("\n\n")
 
                 const { data } = await octokit.rest.pulls.createReview(params)
 
