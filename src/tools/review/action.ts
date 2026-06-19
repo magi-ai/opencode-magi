@@ -3,7 +3,7 @@ import type { Review } from "./review"
 import type { ReviewerState } from "@/magi"
 import { MagiError } from "@/magi"
 import { Prompt } from "@/prompts"
-import { filterEmpty, marker, retry, Worker } from "@/utils"
+import { filterEmpty, marker, omitNullish, retry, Worker } from "@/utils"
 
 const events = {
   APPROVED: "APPROVE",
@@ -161,14 +161,20 @@ export async function postReviews(this: Review) {
       params.body ?? "",
       marker.stringify(
         ...filterEmpty(
-          Object.entries(this.state.reviewers!).map(
-            ([id, { output }]) =>
-              output && {
-                command: "review",
-                reviewer: id,
-                verdict: output.verdict,
-              },
-          ),
+          Object.entries(this.state.reviewers!).map(([id, { output }]) => {
+            if (!output) return
+
+            const body = output.comment
+              ? encodeURIComponent(output.comment)
+              : undefined
+
+            return omitNullish({
+              body,
+              command: "review",
+              reviewer: id,
+              verdict: output.verdict,
+            })
+          }),
         ),
       ),
     ].join("\n\n")

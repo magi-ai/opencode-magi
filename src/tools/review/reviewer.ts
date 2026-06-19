@@ -109,7 +109,7 @@ export async function review(this: Review) {
             if (review) {
               const previousReviewContext = JSON.stringify(
                 omitNullish({
-                  body: review.body,
+                  body: review.body || undefined,
                   commitId: review.commit_id,
                   state: review.state,
                   submittedAt: review.submitted_at,

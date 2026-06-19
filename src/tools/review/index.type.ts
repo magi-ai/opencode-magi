@@ -116,6 +116,7 @@ export interface PullRequestInlineCommentTargets {
 }
 
 export interface PullRequestReviewMarker {
+  body?: string
   command?: string
   reviewer?: string
   verdict?: PullRequestVerdict

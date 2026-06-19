@@ -37,12 +37,18 @@ export async function checkExistingReviews(this: Review) {
             if (review.user!.login !== this.config.account) return
 
             const markers = marker.parse<PullRequestReviewMarker>(review.body)
-            const { reviewer, verdict } =
+            const { body, reviewer, verdict } =
               markers.find(({ reviewer }) => reviewer === id) ?? {}
 
             if (reviewer !== id || !verdict) return
 
             review.state = verdict
+
+            try {
+              review.body = body ? decodeURIComponent(body) : ""
+            } catch {
+              review.body = ""
+            }
 
             return review
           } else {
