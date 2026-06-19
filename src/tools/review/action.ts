@@ -279,8 +279,6 @@ export async function postReviews(this: Review) {
 export async function automate(this: Review) {
   this.context.abort.throwIfAborted()
 
-  if (this.state.dryRun) return
-
   if (!this.state.pr?.verdict)
     throw new MagiError("blocked", "PR verdict not found.")
   if (!this.state.pr.checks)
@@ -292,15 +290,7 @@ export async function automate(this: Review) {
 
   if (!this.config.review.automation[action]) return
 
-  const account = this.state.operator?.account
-
-  if (!account) {
-    this.state = await this.magi.updateState(this.state.output, {
-      text: `Skipped ${action} automation for ${this.getLink()}: no automation account configured.`,
-    })
-
-    return
-  }
+  const account = this.state.operator!.account!
 
   if (action === "merge") {
     const failed = this.state.pr.checks.failed
@@ -313,6 +303,14 @@ export async function automate(this: Review) {
 
       return
     }
+  }
+
+  if (this.state.dryRun) {
+    this.state = await this.magi.updateState(this.state.output, {
+      text: `Skipped ${action} automation for ${this.getLink()} during dry run.`,
+    })
+
+    return
   }
 
   this.state = await this.magi.updateState(this.state.output, {
