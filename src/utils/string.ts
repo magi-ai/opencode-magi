@@ -24,21 +24,32 @@ export function command(
 }
 
 export const marker = {
-  parse<T extends Dict>(body: string): T {
-    const match = body.match(/<!--\s*opencode-magi\s+([^>]*)-->/)
+  parse<T extends Dict>(body: string): T[] {
+    const matchAll = body.matchAll(/<!--\s*opencode-magi\s+([^>]*)-->/g)
 
-    if (!match) return {} as T
+    return [...matchAll].map((match) =>
+      Object.fromEntries(
+        match[1]
+          ?.trim()
+          .split(/\s+/)
+          .flatMap((part) => {
+            const [key, ...rest] = part.split("=")
 
-    return Object.fromEntries(
-      match[1]
-        ?.trim()
-        .split(/\s+/)
-        .map((part) => part.split("=")) ?? [],
-    )
+            if (!key || !rest.length) return []
+
+            return [[key, rest.join("=")]]
+          }) ?? [],
+      ),
+    ) as T[]
   },
-  stringify(values: Dict) {
-    return `<!-- opencode-magi ${Object.entries(values)
-      .map(([key, value]) => `${key}=${value}`)
-      .join(" ")} -->`
+  stringify(...values: Dict[]) {
+    return values
+      .map(
+        (value) =>
+          `<!-- opencode-magi ${Object.entries(value)
+            .map(([key, value]) => `${key}=${value}`)
+            .join(" ")} -->`,
+      )
+      .join("\n")
   },
 }
