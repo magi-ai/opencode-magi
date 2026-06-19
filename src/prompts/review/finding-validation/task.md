@@ -3,8 +3,4 @@ Use the existing review session context.
 Vote on whether each listed finding is a valid reason to request changes.
 Each finding's `body` contains the proposed review comment text.
 
-Findings to validate:
-
-```json
-{findings}
-```
+Findings to validate are provided in `<findings>`.

@@ -1,5 +1,6 @@
 import type {
   FindingValidationOutput,
+  PullRequestFinding,
   PullRequestReviewMarker,
   PullRequestVerdict,
   ReviewOutput,
@@ -10,6 +11,12 @@ import type { PromptTag } from "@/prompts"
 import { MagiError } from "@/magi"
 import { Prompt } from "@/prompts"
 import { filterEmpty, marker, omitNullish, retry, Worker } from "@/utils"
+
+interface Finding {
+  finding: PullRequestFinding
+  index: number
+  reviewer: string
+}
 
 export async function review(this: Review) {
   this.context.abort.throwIfAborted()
@@ -239,7 +246,7 @@ export async function validateFindings(this: Review) {
   if (!this.state.reviewers)
     throw new MagiError("blocked", "Reviewers not found.")
 
-  const targets = Object.entries(this.state.reviewers).flatMap(
+  const findings = Object.entries(this.state.reviewers).flatMap(
     ([reviewer, { output }]) => {
       if (output?.verdict !== "CHANGES_REQUESTED") return []
 
@@ -249,207 +256,19 @@ export async function validateFindings(this: Review) {
     },
   )
 
-  if (!targets.length) return
+  if (!findings.length) return
 
   this.state = await this.magi.updateState(this.state.output, {
     text: `Validating review findings for ${this.getLink()}.`,
   })
 
-  const worker = new Worker<[string, FindingValidationOutput]>(
-    this.config.review.concurrency.reviewers,
-  )
-  const prompt = await Prompt.init(
-    this.magi,
-    this.config,
-    "review/finding-validation",
-  )
-  const validations = Object.fromEntries(
-    await Promise.all(
-      this.config.review.reviewers.map(({ id }) =>
-        worker.run(async () => {
-          const { sessionId } = this.state.reviewers![id]!
-
-          if (!sessionId)
-            throw new MagiError(
-              "blocked",
-              `No session ID found for reviewer ${id}.`,
-            )
-
-          await this.magi.notify(
-            this.state.sessionId,
-            `Validating review findings for ${this.getLink()} with reviewer ${id}.`,
-          )
-
-          const reviewTargets = targets.filter(
-            (target) => target.reviewer !== id,
-          )
-          const taskMessage = await prompt.create(
-            this.config.review.prompts?.findingValidation,
-            ["output_contract"],
-            {
-              findings: JSON.stringify(reviewTargets, null, 2),
-              owner: this.config.github.owner,
-              pr: this.number.toString(),
-              repo: this.config.github.repo,
-            },
-          )
-          const repairMessage = await prompt.repair()
-          const output = await retry<FindingValidationOutput>(
-            async (count) => {
-              const raw = await this.magi.promptSession(
-                sessionId,
-                count === 1 ? taskMessage : repairMessage,
-              )
-              const parsed = prompt.parse(raw)
-
-              if (!prompt.validate<FindingValidationOutput>(parsed))
-                throw new Error(
-                  `Invalid finding validation output for reviewer ${id}.`,
-                )
-
-              const expected = targets.filter(({ reviewer }) => reviewer !== id)
-              const expectedKeys = new Set(
-                expected.map(({ index, reviewer }) => `${reviewer}:${index}`),
-              )
-              const seen = new Set<string>()
-
-              for (const vote of parsed.votes) {
-                if (vote.reviewer === id)
-                  throw new Error(`${id} must not vote on its own findings.`)
-
-                const key = `${vote.reviewer}:${vote.index}`
-
-                if (!expectedKeys.has(key))
-                  throw new Error(`Unexpected finding vote: ${key}.`)
-                if (seen.has(key))
-                  throw new Error(`Duplicate finding vote: ${key}.`)
-
-                seen.add(key)
-              }
-
-              for (const target of expected) {
-                const key = `${target.reviewer}:${target.index}`
-
-                if (!seen.has(key))
-                  throw new Error(`Missing finding vote: ${key}.`)
-              }
-
-              return parsed
-            },
-            {
-              error: (_, count) =>
-                this.magi.notify(
-                  this.state.sessionId,
-                  `Attempt ${count} failed to validate review findings for ${this.getLink()} with reviewer ${id}. Retrying...`,
-                ),
-              retries: this.config.output.repairAttempts,
-            },
-          )
-
-          if (!output)
-            throw new MagiError(
-              "blocked",
-              `Invalid finding validation output for reviewer ${id}.`,
-            )
-
-          return [id, output]
-        }),
-      ),
-    ),
-  )
-  const threshold = Math.floor(this.config.review.reviewers.length / 2) + 1
-
-  await Promise.all(
-    targets.map(async ({ finding, index, reviewer }) => {
-      const votes = Object.entries(validations).flatMap(
-        ([validator, validation]) => {
-          if (validator === reviewer) return []
-
-          const vote = validation.votes.find(
-            (vote) => vote.reviewer === reviewer && vote.index === index,
-          )
-
-          return vote ? [{ validator, vote }] : []
-        },
-      )
-      const agrees =
-        1 + votes.filter(({ vote }) => vote.vote === "AGREE").length
-      const accepted = agrees >= threshold
-      const acceptedComments = votes
-        .filter(({ vote }) => vote.vote === "AGREE")
-        .map(({ validator, vote }) => `- ${validator}: ${vote.comment}`)
-      const rejectedComments = votes
-        .filter(({ vote }) => vote.vote === "DISAGREE")
-        .map(({ validator, vote }) => `- ${validator}: ${vote.comment}`)
-
-      await this.magi.notify(
-        this.state.sessionId,
-        filterEmpty([
-          `Finding ${reviewer} #${index + 1} for ${this.getLink()} was ${accepted ? "accepted" : "rejected"} by majority vote.`,
-          `Finding: ${finding.path}:${finding.line}\n${finding.body}`,
-          acceptedComments.length
-            ? `Accepted by:\n${acceptedComments.join("\n")}`
-            : undefined,
-          rejectedComments.length
-            ? `Rejected by:\n${rejectedComments.join("\n")}`
-            : undefined,
-        ]).join("\n\n"),
-      )
-    }),
-  )
+  const accepted = await collectAcceptedFindings.call(this, findings)
 
   const reviewers = Object.fromEntries(
-    Object.entries(this.state.reviewers ?? {}).map(([id, reviewer]) => {
-      const output = reviewer.output
-
-      if (output?.verdict !== "CHANGES_REQUESTED") return [id, { output }]
-
-      const indexes = new Set<number>()
-      const findings = output.findings ?? output.newFindings ?? []
-
-      findings.forEach((_, index) => {
-        let agrees = 1
-
-        for (const [validator, validation] of Object.entries(validations)) {
-          if (validator === id) continue
-
-          const vote = validation.votes.find(
-            (vote) => vote.reviewer === id && vote.index === index,
-          )
-
-          if (vote?.vote === "AGREE") agrees += 1
-        }
-
-        if (agrees >= threshold) indexes.add(index)
-      })
-
-      if (output.findings) {
-        const findings = output.findings.filter((_, index) =>
-          indexes.has(index),
-        )
-        const newOutput: ReviewOutput = findings.length
-          ? { ...output, findings }
-          : { ...output, findings: [], verdict: "APPROVED" }
-        const next: ReviewerState = { output: newOutput }
-
-        if (newOutput.verdict !== output.verdict) next.previousOutput = output
-
-        return [id, next]
-      } else {
-        const newFindings = output.newFindings?.filter((_, index) =>
-          indexes.has(index),
-        )
-        const newOutput: ReviewOutput =
-          newFindings?.length || output.followUps?.length
-            ? { ...output, newFindings }
-            : { ...output, newFindings: [], verdict: "APPROVED" }
-        const next: ReviewerState = { output: newOutput }
-
-        if (newOutput.verdict !== output.verdict) next.previousOutput = output
-
-        return [id, next]
-      }
-    }),
+    Object.entries(this.state.reviewers ?? {}).map(([id, reviewer]) => [
+      id,
+      transformState(reviewer, id, accepted),
+    ]),
   )
 
   this.state = await this.magi.updateState(this.state.output, {
@@ -491,7 +310,7 @@ export async function reconsiderClose(this: Review) {
   const reviewers = Object.fromEntries(
     await Promise.all(
       targetReviewers.map(
-        ([id, { output: previousOutput, review, sessionId, status }]) =>
+        ([id, { history, output: oldOutput, review, sessionId, status }]) =>
           worker.run(async () => {
             if (!this.state.pr?.metadata)
               throw new MagiError("blocked", "PR metadata not found.")
@@ -568,6 +387,7 @@ export async function reconsiderClose(this: Review) {
             return [
               id,
               {
+                history: [...(history ?? []), oldOutput!],
                 output: {
                   comment: output.comment,
                   findings: output.findings,
@@ -576,7 +396,6 @@ export async function reconsiderClose(this: Review) {
                   resolves: undefined,
                   verdict: output.verdict,
                 },
-                previousOutput,
               },
             ]
           }),
@@ -584,10 +403,217 @@ export async function reconsiderClose(this: Review) {
     ),
   )
 
+  const findings = Object.entries(reviewers).flatMap(
+    ([reviewer, { output }]) => {
+      if (output?.verdict !== "CHANGES_REQUESTED") return []
+
+      return (output.findings ?? []).map((finding, index) => ({
+        finding,
+        index,
+        reviewer,
+      }))
+    },
+  )
+  const accepted = await collectAcceptedFindings.call(this, findings)
+  const validatedReviewers = Object.fromEntries(
+    Object.entries(reviewers).map(([id, reviewer]) => [
+      id,
+      transformState(reviewer, id, accepted),
+    ]),
+  )
+
   this.state = await this.magi.updateState(this.state.output, {
-    reviewers,
+    reviewers: validatedReviewers,
     text: `Finished reconsidering close verdicts for ${this.getLink()}.`,
   })
+}
+
+async function collectAcceptedFindings(this: Review, findings: Finding[]) {
+  const accepted = new Set<string>()
+
+  if (!findings.length) return accepted
+
+  if (!this.config.review.reviewers?.length)
+    throw new MagiError("blocked", "No reviewers configured.")
+  if (!this.state.reviewers)
+    throw new MagiError("blocked", "Reviewers not found.")
+
+  const worker = new Worker<[string, FindingValidationOutput]>(
+    this.config.review.concurrency.reviewers,
+  )
+  const prompt = await Prompt.init(
+    this.magi,
+    this.config,
+    "review/finding-validation",
+  )
+  const validations = Object.fromEntries(
+    await Promise.all(
+      this.config.review.reviewers.map(({ id }) =>
+        worker.run(async () => {
+          const { sessionId } = this.state.reviewers![id]!
+
+          if (!sessionId)
+            throw new MagiError(
+              "blocked",
+              `No session ID found for reviewer ${id}.`,
+            )
+
+          await this.magi.notify(
+            this.state.sessionId,
+            `Validating review findings for ${this.getLink()} with reviewer ${id}.`,
+          )
+
+          const targetFindings = findings.filter(
+            (target) => target.reviewer !== id,
+          )
+          const expectedKeys = new Set(
+            targetFindings.map(({ index, reviewer }) => `${reviewer}:${index}`),
+          )
+          const taskMessage = await prompt.create(
+            this.config.review.prompts?.findingValidation,
+            [
+              "output_contract",
+              ["findings", JSON.stringify(targetFindings, null, 2)],
+            ],
+            {
+              owner: this.config.github.owner,
+              pr: this.number.toString(),
+              repo: this.config.github.repo,
+            },
+          )
+          const repairMessage = await prompt.repair()
+          const output = await retry<FindingValidationOutput>(
+            async (count) => {
+              const raw = await this.magi.promptSession(
+                sessionId,
+                count === 1 ? taskMessage : repairMessage,
+              )
+              const parsed = prompt.parse(raw)
+
+              if (!prompt.validate<FindingValidationOutput>(parsed))
+                throw new Error(
+                  `Invalid finding validation output for reviewer ${id}.`,
+                )
+
+              const seen = new Set<string>()
+
+              for (const vote of parsed.votes) {
+                if (vote.reviewer === id)
+                  throw new Error(`${id} must not vote on its own findings.`)
+
+                const key = `${vote.reviewer}:${vote.index}`
+
+                if (!expectedKeys.has(key))
+                  throw new Error(`Unexpected finding vote: ${key}.`)
+                if (seen.has(key))
+                  throw new Error(`Duplicate finding vote: ${key}.`)
+
+                seen.add(key)
+              }
+
+              for (const key of expectedKeys) {
+                if (!seen.has(key))
+                  throw new Error(`Missing finding vote: ${key}.`)
+              }
+
+              return parsed
+            },
+            {
+              error: (_, count) =>
+                this.magi.notify(
+                  this.state.sessionId,
+                  `Attempt ${count} failed to validate review findings for ${this.getLink()} with reviewer ${id}. Retrying...`,
+                ),
+              retries: this.config.output.repairAttempts,
+            },
+          )
+
+          if (!output)
+            throw new MagiError(
+              "blocked",
+              `Invalid finding validation output for reviewer ${id}.`,
+            )
+
+          return [id, output]
+        }),
+      ),
+    ),
+  )
+  const threshold = Math.floor(this.config.review.reviewers.length / 2) + 1
+
+  await Promise.all(
+    findings.map(async ({ finding, index, reviewer }) => {
+      const votes = Object.entries(validations).flatMap(
+        ([validator, validation]) => {
+          if (validator === reviewer) return []
+
+          const vote = validation.votes.find(
+            (vote) => vote.reviewer === reviewer && vote.index === index,
+          )
+
+          return vote ? [{ validator, vote }] : []
+        },
+      )
+      const agrees =
+        1 + votes.filter(({ vote }) => vote.vote === "AGREE").length
+      const key = `${reviewer}:${index}`
+      const acceptedComments = votes
+        .filter(({ vote }) => vote.vote === "AGREE")
+        .map(({ validator, vote }) => `- ${validator}: ${vote.comment}`)
+      const rejectedComments = votes
+        .filter(({ vote }) => vote.vote === "DISAGREE")
+        .map(({ validator, vote }) => `- ${validator}: ${vote.comment}`)
+
+      if (agrees >= threshold) accepted.add(key)
+
+      await this.magi.notify(
+        this.state.sessionId,
+        filterEmpty([
+          `Finding ${reviewer} #${index + 1} for ${this.getLink()} was ${agrees >= threshold ? "accepted" : "rejected"} by majority vote.`,
+          `Finding: ${finding.path}:${finding.line}\n${finding.body}`,
+          acceptedComments.length
+            ? `Accepted by:\n${acceptedComments.join("\n")}`
+            : undefined,
+          rejectedComments.length
+            ? `Rejected by:\n${rejectedComments.join("\n")}`
+            : undefined,
+        ]).join("\n\n"),
+      )
+    }),
+  )
+
+  return accepted
+}
+
+function transformState(
+  reviewer: ReviewerState,
+  id: string,
+  accepted: Set<string>,
+): ReviewerState {
+  const output = reviewer.output
+
+  if (output?.verdict !== "CHANGES_REQUESTED") return reviewer
+
+  const hasFindings = output.findings != null
+  const findings = (output.findings ?? output.newFindings ?? []).filter(
+    (_, index) => accepted.has(`${id}:${index}`),
+  )
+  const newOutput: ReviewOutput = hasFindings
+    ? findings.length
+      ? { ...output, findings }
+      : { ...output, findings: [], verdict: "APPROVED" }
+    : findings.length || output.followUps?.length
+      ? { ...output, newFindings: findings }
+      : { ...output, newFindings: [], verdict: "APPROVED" }
+
+  return {
+    ...reviewer,
+    history:
+      newOutput.verdict === output.verdict
+        ? reviewer.history
+        : [...(reviewer.history ?? []), output],
+    output: newOutput,
+  }
 }
 
 function validateInlineCommentTargets(
