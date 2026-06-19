@@ -7,7 +7,7 @@ import type { Exec } from "@/utils"
 import { join } from "node:path"
 import { MagiError } from "@/magi"
 import { createExecWithGitHubApiRetry, quote } from "@/utils"
-import { postReviews } from "./action"
+import { automate, postReviews } from "./action"
 import { checkCi, checkPr, classifyChecks, rerunChecks } from "./check"
 import { checkExistingReviews, fetchReviewContext } from "./context"
 import { createReport } from "./report"
@@ -85,6 +85,7 @@ export class Review {
   public validateFindings = validateFindings
   public reconsiderClose = reconsiderClose
   public postReviews = postReviews
+  public automate = automate
   public createReport = createReport
 
   public getLink() {
@@ -115,27 +116,24 @@ export class Review {
         ),
       ),
     )
-    const { model, permissions } = this.config.review.reporter
+    const { account, model, permissions } = this.config.review.operator
       ? this.config.review.reviewers.find(
-          ({ id }) => id === this.config.review.reporter,
+          ({ id }) => id === this.config.review.operator,
         )!
       : this.config.review.reviewers[
           Math.abs(this.number) % this.config.review.reviewers.length
         ]!
-    const reporter =
-      this.config.mode === "single"
-        ? {
-            account: this.config.account,
-            sessionId: await this.magi.createSession(
-              this.state.sessionId,
-              `magi review #${this.number} reporter`,
-              { model, permissions },
-            ),
-          }
-        : undefined
+    const operator = {
+      account,
+      sessionId: await this.magi.createSession(
+        this.state.sessionId,
+        `magi review #${this.number} operator`,
+        { model, permissions },
+      ),
+    }
 
     this.state = await this.magi.updateState(this.state.output, {
-      reporter,
+      operator,
       reviewers,
     })
 

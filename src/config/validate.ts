@@ -125,12 +125,12 @@ function groupErrors(config: Config.Root): string[] {
 
   return [
     ...agentGroupErrors(config.review.reviewers, "review.reviewers"),
-    ...(config.review.reporter && !reviewerIds.has(config.review.reporter)
-      ? [`review.reporter must match a configured review reviewer id`]
+    ...(config.review.operator && !reviewerIds.has(config.review.operator)
+      ? [`review.operator must match a configured review reviewer id`]
       : []),
     ...agentGroupErrors(config.triage.voters, "triage.voters"),
-    ...(config.triage.reporter && !voterIds.has(config.triage.reporter)
-      ? [`triage.reporter must match a configured triage voter id`]
+    ...(config.triage.operator && !voterIds.has(config.triage.operator)
+      ? [`triage.operator must match a configured triage voter id`]
       : []),
   ]
 }

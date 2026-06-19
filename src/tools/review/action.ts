@@ -3,7 +3,14 @@ import type { Review } from "./review"
 import type { ReviewerState } from "@/magi"
 import { MagiError } from "@/magi"
 import { Prompt } from "@/prompts"
-import { filterEmpty, marker, omitNullish, retry, Worker } from "@/utils"
+import {
+  command,
+  filterEmpty,
+  marker,
+  omitNullish,
+  retry,
+  Worker,
+} from "@/utils"
 
 const events = {
   APPROVED: "APPROVE",
@@ -95,12 +102,12 @@ export async function postReviews(this: Review) {
     }
 
     if (this.state.pr.verdict !== "APPROVED") {
-      if (!this.state.reporter?.sessionId)
+      if (!this.state.operator?.sessionId)
         throw new MagiError("blocked", "Reporter session ID not found.")
 
       await this.magi.notify(
         this.state.sessionId,
-        `Generating comment for ${this.getLink()} by reporter.`,
+        `Generating comment for ${this.getLink()} by operator.`,
       )
 
       const contents = JSON.stringify(
@@ -130,13 +137,13 @@ export async function postReviews(this: Review) {
       const output = await retry(
         async (count) => {
           const raw = await this.magi.promptSession(
-            this.state.reporter!.sessionId!,
+            this.state.operator!.sessionId!,
             count === 1 ? taskMessage : repairMessage,
           )
           const parsed = prompt.parse(raw)
 
           if (!prompt.validate<{ comment: string }>(parsed))
-            throw new Error("Invalid output for reporter.")
+            throw new Error("Invalid output for operator.")
 
           return parsed.comment
         },
@@ -144,18 +151,18 @@ export async function postReviews(this: Review) {
           error: (_, count) =>
             this.magi.notify(
               this.state.sessionId,
-              `Attempt ${count} failed to post comment for ${this.getLink()} by reporter. Retrying...`,
+              `Attempt ${count} failed to post comment for ${this.getLink()} by operator. Retrying...`,
             ),
           retries: this.config.output.repairAttempts,
         },
       )
 
       if (!output)
-        throw new MagiError("blocked", "Invalid output for reporter.")
+        throw new MagiError("blocked", "Invalid output for operator.")
 
       await this.magi.notify(
         this.state.sessionId,
-        `Generated comment for ${this.getLink()} by reporter.`,
+        `Generated comment for ${this.getLink()} by operator.`,
       )
 
       params.body = output
@@ -267,4 +274,79 @@ export async function postReviews(this: Review) {
       text: `Finished posting reviews for ${this.getLink()}.`,
     })
   }
+}
+
+export async function automate(this: Review) {
+  this.context.abort.throwIfAborted()
+
+  if (this.state.dryRun) return
+
+  if (!this.state.pr?.verdict)
+    throw new MagiError("blocked", "PR verdict not found.")
+  if (!this.state.pr.checks)
+    throw new MagiError("blocked", "PR checks not found.")
+
+  if (!["APPROVED", "CLOSED"].includes(this.state.pr.verdict)) return
+
+  const action = this.state.pr.verdict === "APPROVED" ? "merge" : "close"
+
+  if (!this.config.review.automation[action]) return
+
+  const account = this.state.operator?.account
+
+  if (!account) {
+    this.state = await this.magi.updateState(this.state.output, {
+      text: `Skipped ${action} automation for ${this.getLink()}: no automation account configured.`,
+    })
+
+    return
+  }
+
+  if (action === "merge") {
+    const failed = this.state.pr.checks.failed
+    const pending = this.state.pr.checks.pending
+
+    if (failed.length || pending.length) {
+      this.state = await this.magi.updateState(this.state.output, {
+        text: `Skipped merge automation for ${this.getLink()}: unresolved CI checks remain.`,
+      })
+
+      return
+    }
+  }
+
+  this.state = await this.magi.updateState(this.state.output, {
+    text: `${action === "merge" ? "Merging" : "Closing"} ${this.getLink()}.`,
+  })
+
+  const token = (await this.magi.getGhToken(account)).trim()
+  const args = ["gh", "pr"]
+
+  if (action === "merge") {
+    args.push("merge", this.number.toString(), "--repo", this.state.repo)
+
+    if (this.config.review.merge.queue) {
+      args.push("--queue")
+    } else {
+      if (this.config.review.merge.method === "merge") args.push("--merge")
+      if (this.config.review.merge.method === "rebase") args.push("--rebase")
+      if (this.config.review.merge.method === "squash") args.push("--squash")
+      if (this.config.review.merge.auto) args.push("--auto")
+      if (this.config.review.merge.deleteBranch) args.push("--delete-branch")
+    }
+  } else {
+    args.push("close", this.number.toString(), "--repo", this.state.repo)
+  }
+
+  const output = await this.exec(command(...args), {
+    env: { GH_TOKEN: token },
+    signal: this.context.abort,
+  })
+
+  this.state = await this.magi.updateState(this.state.output, {
+    text: filterEmpty([
+      `Finished ${action} automation for ${this.getLink()}.`,
+      output.trim() || undefined,
+    ]).join("\n"),
+  })
 }

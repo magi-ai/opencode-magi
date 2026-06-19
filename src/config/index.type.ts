@@ -95,6 +95,7 @@ export interface Review {
     method: "merge" | "rebase" | "squash"
     queue: boolean
   }
+  operator?: string
   output: string
   prompts?: {
     ciClassification?: string
@@ -104,7 +105,6 @@ export interface Review {
     review?: string
     reviewGuidelines?: string
   }
-  reporter?: string
   reviewers?: Reviewer[]
   safety: {
     allowAuthors: string[]
@@ -176,6 +176,7 @@ export interface Triage {
     runs: number
   }
   creator: Creator
+  operator?: string
   output: string
   prompts?: {
     acceptance?: string
@@ -187,7 +188,6 @@ export interface Triage {
     existingPr?: string
     reconsider?: string
   }
-  reporter?: string
   safety: {
     allowAuthors: string[]
     allowMentionActors: string[]

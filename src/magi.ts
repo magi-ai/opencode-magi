@@ -75,6 +75,7 @@ export interface State {
   error?: string
   id: string
   issue?: { number: number; url: string }
+  operator?: AgentState
   output: string
   pr?: {
     checks?: PullRequestChecks
@@ -92,7 +93,6 @@ export interface State {
     verdict?: PullRequestVerdict
   }
   repo: string
-  reporter?: AgentState
   reviewers?: { [key: string]: ReviewerState }
   sessionId: string
   status: Status
@@ -267,7 +267,7 @@ export class Magi {
     return filterEmpty([
       state.editor,
       state.creator,
-      state.reporter,
+      state.operator,
       ...Object.values(state.reviewers ?? {}),
       ...Object.values(state.voters ?? {}),
     ])

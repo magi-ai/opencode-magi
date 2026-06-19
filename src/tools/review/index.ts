@@ -108,8 +108,7 @@ export const review: Tool = function (magi) {
               await run.reconsiderClose()
               await run.resolveVerdict()
               await run.postReviews()
-              // merging
-              // closing
+              await run.automate()
 
               return run.createReport()
             } catch (e) {

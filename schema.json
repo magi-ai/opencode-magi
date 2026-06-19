@@ -379,7 +379,7 @@
         "automation": { "$ref": "#/$defs/automation" },
         "concurrency": { "$ref": "#/$defs/concurrency" },
         "merge": { "$ref": "#/$defs/reviewMerge" },
-        "reporter": { "type": "string", "minLength": 1 },
+        "operator": { "type": "string", "minLength": 1 },
         "output": { "type": "string" },
         "worktree": { "type": "string" }
       }
@@ -422,7 +422,7 @@
         "safety": { "$ref": "#/$defs/triageSafety" },
         "concurrency": { "$ref": "#/$defs/triageConcurrency" },
         "prompts": { "$ref": "#/$defs/triagePrompts" },
-        "reporter": { "type": "string", "minLength": 1 },
+        "operator": { "type": "string", "minLength": 1 },
         "output": { "type": "string" },
         "worktree": { "type": "string" }
       }
