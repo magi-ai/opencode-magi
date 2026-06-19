@@ -61,6 +61,7 @@ export interface AgentState {
 export interface ReviewerState extends AgentState {
   output?: ReviewOutput
   posted?: string
+  previousOutput?: ReviewOutput
   review?: PullRequestReview
   status?: string
 }

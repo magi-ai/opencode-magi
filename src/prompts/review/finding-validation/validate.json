@@ -7,11 +7,11 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["reviewer", "findingIndex", "vote", "comment"],
+        "required": ["reviewer", "index", "vote", "comment"],
         "additionalProperties": false,
         "properties": {
           "reviewer": { "type": "string", "minLength": 1 },
-          "findingIndex": { "type": "integer", "minimum": 0 },
+          "index": { "type": "integer", "minimum": 0 },
           "vote": { "enum": ["AGREE", "DISAGREE"] },
           "comment": { "type": "string", "minLength": 1 }
         }

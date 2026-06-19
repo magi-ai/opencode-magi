@@ -99,43 +99,66 @@ function createContent(
     rows.push(
       [
         "- **Reviewer**:",
-        ...reviewers.flatMap(([id, { output, posted, review }]) => {
-          if (!output) return []
+        ...reviewers.flatMap(
+          ([id, { output, posted, previousOutput, review }]) => {
+            if (!output) return []
 
-          const url = posted ?? review?.html_url
-          const status = toTitleCase(output.verdict)
-          const lines = [
-            `  - **${id}**: ${url ? `[${status}](${url})` : status}`,
-          ]
+            const url = posted ?? review?.html_url
+            const status = toTitleCase(output.verdict)
+            const previousStatus = previousOutput?.verdict
+              ? toTitleCase(previousOutput.verdict)
+              : undefined
+            const lines = [
+              `  - **${id}**: ${previousStatus ? `${previousStatus} -> ` : ""}${url ? `[${status}](${url})` : status}`,
+            ]
 
-          if (output.verdict === "CLOSED")
-            lines.push(`    - ${output.comment ?? review?.body}`)
+            if (output.verdict === "CLOSED")
+              lines.push(`    - ${output.comment ?? review?.body}`)
 
-          if (output.verdict === "CHANGES_REQUESTED") {
-            const findings = output.findings ?? output.newFindings ?? []
-            const followUps = output.followUps ?? []
-
-            for (const { body, line, path, startLine } of findings) {
-              const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
-
-              lines.push(`    - \`${prefix}\`: ${body}`)
+            if (previousOutput?.verdict === "CLOSED") {
+              lines.push(`    - ~~${previousOutput.comment ?? review?.body}~~`)
             }
 
-            for (const { body, commentId } of followUps) {
-              const thread = this.state.pr?.threads?.find(({ comments }) =>
-                comments.some(({ databaseId }) => databaseId === commentId),
-              )
+            if (
+              previousOutput?.verdict === "CHANGES_REQUESTED" &&
+              output.verdict === "APPROVED"
+            ) {
+              const findings =
+                previousOutput.findings ?? previousOutput.newFindings ?? []
 
-              if (!thread) continue
+              for (const { body, line, path, startLine } of findings) {
+                const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
 
-              const prefix = `${thread.path}:${thread.line ?? "N/A"}`
-
-              lines.push(`    - \`${prefix}\`: ${body}`)
+                lines.push(`    - ~~\`${prefix}\`: ${body}~~`)
+              }
             }
-          }
 
-          return lines
-        }),
+            if (output.verdict === "CHANGES_REQUESTED") {
+              const findings = output.findings ?? output.newFindings ?? []
+              const followUps = output.followUps ?? []
+
+              for (const { body, line, path, startLine } of findings) {
+                const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
+
+                lines.push(`    - \`${prefix}\`: ${body}`)
+              }
+
+              for (const { body, commentId } of followUps) {
+                const thread = this.state.pr?.threads?.find(({ comments }) =>
+                  comments.some(({ databaseId }) => databaseId === commentId),
+                )
+
+                if (!thread) continue
+
+                const prefix = `${thread.path}:${thread.line ?? "N/A"}`
+
+                lines.push(`    - \`${prefix}\`: ${body}`)
+              }
+            }
+
+            return lines
+          },
+        ),
       ].join("\n"),
     )
   }
