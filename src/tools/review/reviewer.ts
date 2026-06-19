@@ -1,5 +1,6 @@
 import type {
   FindingValidationOutput,
+  PullRequestReviewMarker,
   PullRequestVerdict,
   ReviewOutput,
 } from "./index.type"
@@ -8,7 +9,7 @@ import type { ReviewerState } from "@/magi"
 import type { PromptTag } from "@/prompts"
 import { MagiError } from "@/magi"
 import { Prompt } from "@/prompts"
-import { filterEmpty, omitNullish, retry, Worker } from "@/utils"
+import { filterEmpty, marker, omitNullish, retry, Worker } from "@/utils"
 
 export async function review(this: Review) {
   this.context.abort.throwIfAborted()
@@ -84,10 +85,22 @@ export async function review(this: Review) {
               ({ scope }) => scope,
             )
             const unresolvedThreads = this.state.pr.threads.filter(
-              ({ comments, isResolved }) =>
-                !isResolved &&
-                (!account ||
-                  comments.some(({ author }) => author?.login === account)),
+              ({ comments, isResolved }) => {
+                if (isResolved) return false
+
+                if (this.config.mode === "single") {
+                  return comments.some(({ body }) => {
+                    const markers = marker.parse<PullRequestReviewMarker>(body)
+                    const { reviewer } = markers[0] ?? {}
+
+                    return reviewer === id
+                  })
+                } else {
+                  return comments.some(
+                    ({ author }) => author?.login === account,
+                  )
+                }
+              },
             )
             const reviewContext = JSON.stringify(
               omitNullish({

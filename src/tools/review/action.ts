@@ -82,8 +82,12 @@ export async function postReviews(this: Review) {
         return
       }
 
-      params.comments = findings.map(({ id: _id, startLine, ...rest }) => ({
+      params.comments = findings.map(({ body, id, startLine, ...rest }) => ({
         ...rest,
+        body: [
+          body,
+          marker.stringify({ command: "review", reviewer: id }),
+        ].join("\n\n"),
         ...(startLine == null
           ? {}
           : { start_line: startLine, start_side: "RIGHT" }),
