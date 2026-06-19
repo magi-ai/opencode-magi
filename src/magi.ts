@@ -133,12 +133,8 @@ export class Magi {
     this.exec = createExec(input.directory)
   }
 
-  public async createOctokit(
-    config: Config.Root,
-    signal?: AbortSignal,
-    account?: string,
-  ) {
-    const token = await this.exec(
+  public getGhToken(account?: string, signal?: AbortSignal) {
+    return this.exec(
       command(
         "gh",
         "auth",
@@ -146,7 +142,16 @@ export class Magi {
         account && "--user",
         account && quote(account),
       ),
+      { signal },
     )
+  }
+
+  public async createOctokit(
+    config: Config.Root,
+    signal?: AbortSignal,
+    account?: string,
+  ) {
+    const token = await this.getGhToken(account)
     const retries = config.github.retryApiAttempts
 
     return new Octokit({
