@@ -2,19 +2,19 @@ Return exactly one JSON object and nothing else. Do not wrap it in markdown.
 
 ```json
 {
-  "verdict": "MERGE" | "CHANGES_REQUESTED" | "CLOSE",
+  "verdict": "APPROVED" | "CHANGES_REQUESTED" | "CLOSED",
   "findings": [{ "path": "relative/path.ext", "line": 123, "startLine": 120, "body": "..." }],
-  "comment": "Required for CHANGES_REQUESTED and CLOSE."
+  "comment": "Required for CHANGES_REQUESTED and CLOSED."
 }
 ```
 
 Rules:
 
-- `"verdict"` must be `"MERGE"`, `"CHANGES_REQUESTED"`, or `"CLOSE"`.
-- `"MERGE"` requires an empty `"findings"` array.
+- `"verdict"` must be `"APPROVED"`, `"CHANGES_REQUESTED"`, or `"CLOSED"`.
+- `"APPROVED"` requires an empty `"findings"` array.
 - `"CHANGES_REQUESTED"` requires `"comment"` and at least one `"finding"`.
 - `"comment"` for `"CHANGES_REQUESTED"` must be a concise prose review summary, not a bullet list of findings.
-- `"CLOSE"` requires `"comment"` and an empty `"findings"` array.
+- `"CLOSED"` requires `"comment"` and an empty `"findings"` array.
 - `"path"` must be repository-relative.
 - `"line"` is required and must target a valid right-side line inside the PR diff hunk.
 - `"startLine"` is optional and must also target a valid right-side line inside the same PR diff hunk range.

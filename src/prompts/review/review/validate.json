@@ -3,7 +3,7 @@
   "required": ["verdict", "findings"],
   "additionalProperties": false,
   "properties": {
-    "verdict": { "enum": ["MERGE", "CHANGES_REQUESTED", "CLOSE"] },
+    "verdict": { "enum": ["APPROVED", "CHANGES_REQUESTED", "CLOSED"] },
     "findings": {
       "type": "array",
       "items": {
@@ -22,7 +22,7 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "verdict": { "const": "MERGE" } } },
+      "if": { "properties": { "verdict": { "const": "APPROVED" } } },
       "then": { "properties": { "findings": { "maxItems": 0 } } }
     },
     {
@@ -33,7 +33,7 @@
       }
     },
     {
-      "if": { "properties": { "verdict": { "const": "CLOSE" } } },
+      "if": { "properties": { "verdict": { "const": "CLOSED" } } },
       "then": {
         "required": ["comment"],
         "properties": { "findings": { "maxItems": 0 } }

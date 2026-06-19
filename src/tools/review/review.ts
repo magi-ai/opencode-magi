@@ -10,6 +10,7 @@ import type {
   PullRequestInlineCommentTargets,
   PullRequestReviewMarker,
   PullRequestReviewParams,
+  PullRequestVerdict,
   ReviewOutput,
 } from "./index.type"
 import type { Config } from "@/config"
@@ -36,9 +37,9 @@ import {
 } from "@/utils"
 
 const events = {
+  APPROVED: "APPROVE",
   CHANGES_REQUESTED: "REQUEST_CHANGES",
-  CLOSE: "COMMENT",
-  MERGE: "APPROVE",
+  CLOSED: "COMMENT",
 } as const
 
 const ci = {
@@ -246,10 +247,7 @@ export class Review {
 
               if (reviewer !== id || !verdict) return
 
-              if (verdict === "MERGE") review.state = "APPROVED"
-              if (verdict === "CHANGES_REQUESTED")
-                review.state = "CHANGES_REQUESTED"
-              if (verdict === "CLOSE") review.state = "CLOSED"
+              review.state = verdict
 
               return review
             } else {
@@ -262,7 +260,7 @@ export class Review {
               const markers = marker.parse<PullRequestReviewMarker>(review.body)
               const { reviewer, verdict } = markers[0] ?? {}
 
-              if (reviewer !== id || verdict !== "CLOSE") return
+              if (reviewer !== id || verdict !== "CLOSED") return
 
               review.state = "CLOSED"
 
@@ -666,12 +664,7 @@ export class Review {
                   `No review found for reviewer ${id}.`,
                 )
 
-              const verdict =
-                review.state === "APPROVED"
-                  ? "MERGE"
-                  : review.state === "CLOSED"
-                    ? "CLOSE"
-                    : "CHANGES_REQUESTED"
+              const verdict = review.state as PullRequestVerdict
 
               this.magi.notify(
                 this.state.sessionId,
@@ -1052,7 +1045,7 @@ export class Review {
           )
           const newOutput = findings.length
             ? { ...output, findings }
-            : { ...output, findings: [], verdict: "MERGE" }
+            : { ...output, findings: [], verdict: "APPROVED" }
 
           return [id, { output: newOutput }]
         } else {
@@ -1062,7 +1055,7 @@ export class Review {
           const newOutput =
             newFindings?.length || output.followUps?.length
               ? { ...output, newFindings }
-              : { ...output, newFindings: [], verdict: "MERGE" }
+              : { ...output, newFindings: [], verdict: "APPROVED" }
 
           return [id, { output: newOutput }]
         }
@@ -1087,7 +1080,7 @@ export class Review {
 
     const threshold = Math.floor(this.config.review.reviewers.length / 2) + 1
     const targetReviewers = Object.entries(this.state.reviewers).filter(
-      ([, { output }]) => output?.verdict === "CLOSE",
+      ([, { output }]) => output?.verdict === "CLOSED",
     )
     const count = targetReviewers.length
 
@@ -1212,7 +1205,7 @@ export class Review {
     if (!this.state.reviewers)
       throw new MagiError("blocked", "Reviewers not found.")
 
-    const counts = { CHANGES_REQUESTED: 0, CLOSE: 0, MERGE: 0 }
+    const counts = { APPROVED: 0, CHANGES_REQUESTED: 0, CLOSED: 0 }
     const length = this.config.review.reviewers.length
     const threshold = Math.floor(length / 2) + 1
 
@@ -1225,11 +1218,11 @@ export class Review {
 
     const majority = this.config.review.merge.approvalPolicy === "majority"
     const verdict =
-      counts.CLOSE >= threshold
-        ? "CLOSE"
-        : (!majority && counts.MERGE === length) ||
-            (majority && counts.MERGE >= threshold)
-          ? "MERGE"
+      counts.CLOSED >= threshold
+        ? "CLOSED"
+        : (!majority && counts.APPROVED === length) ||
+            (majority && counts.APPROVED >= threshold)
+          ? "APPROVED"
           : "CHANGES_REQUESTED"
 
     this.state = await this.magi.updateState(this.state.output, {
@@ -1317,7 +1310,7 @@ export class Review {
         }))
       }
 
-      if (this.state.pr.verdict !== "MERGE") {
+      if (this.state.pr.verdict !== "APPROVED") {
         if (!this.state.reporter?.sessionId)
           throw new MagiError("blocked", "Reporter session ID not found.")
 
@@ -1330,9 +1323,9 @@ export class Review {
           Object.values(this.state.reviewers!).flatMap<
             PullRequestFinding | string
           >(({ output }) => {
-            if (!output || output.verdict === "MERGE") return []
+            if (!output || output.verdict === "APPROVED") return []
 
-            if (output.verdict === "CLOSE") {
+            if (output.verdict === "CLOSED") {
               return [output.comment!]
             } else {
               return output.findings ?? output.newFindings ?? []
@@ -1456,7 +1449,7 @@ export class Review {
                 const event = events[output.verdict]
                 const params: PullRequestReviewParams = { ...args, event }
 
-                if (output.verdict !== "MERGE") params.body = output.comment
+                if (output.verdict !== "APPROVED") params.body = output.comment
 
                 if (output.verdict === "CHANGES_REQUESTED") {
                   const findings = output.findings ?? output.newFindings ?? []

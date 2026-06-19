@@ -5,7 +5,7 @@ import type {
   ReviewThreadsQuery,
 } from "@/graphql"
 
-export type PullRequestVerdict = "CHANGES_REQUESTED" | "CLOSE" | "MERGE"
+export type PullRequestVerdict = "APPROVED" | "CHANGES_REQUESTED" | "CLOSED"
 
 export interface PullRequestCheck {
   bucket: string
