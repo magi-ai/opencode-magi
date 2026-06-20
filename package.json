@@ -40,7 +40,7 @@
     "quality": "pnpm format:check && pnpm lint:check && pnpm typecheck && pnpm test",
     "test": "vitest run",
     "test:dev": "vitest --watch --ui",
-    "typecheck": "node -e \"process.exit(1)\"",
+    "typecheck": "tsgo --noEmit",
     "release": "changeset publish",
     "release:dev": "changeset version --snapshot dev && changeset publish --tag dev"
   },
