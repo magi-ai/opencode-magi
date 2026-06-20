@@ -440,7 +440,7 @@ export class Magi {
     }
   }
 
-  private async deleteWorktree(value: string) {
+  public async deleteWorktree(value: string) {
     try {
       const path = this.getPath(value)
 
