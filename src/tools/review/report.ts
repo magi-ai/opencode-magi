@@ -99,32 +99,28 @@ function createContent(
     rows.push(
       [
         "- **Reviewer**:",
-        ...reviewers.flatMap(
-          ([id, { output, posted, previousOutput, review }]) => {
-            if (!output) return []
+        ...reviewers.flatMap(([id, { history, output, posted, review }]) => {
+          if (!output) return []
 
-            const url = posted ?? review?.html_url
-            const status = toTitleCase(output.verdict)
-            const previousStatus = previousOutput?.verdict
-              ? toTitleCase(previousOutput.verdict)
-              : undefined
-            const lines = [
-              `  - **${id}**: ${previousStatus ? `${previousStatus} -> ` : ""}${url ? `[${status}](${url})` : status}`,
-            ]
+          const url = posted ?? review?.html_url
+          const status = toTitleCase(output.verdict)
+          const prevStatuses = (history ?? []).map(({ verdict }) =>
+            toTitleCase(verdict),
+          )
+          const lines = [
+            `  - **${id}**: ${[...prevStatuses, url ? `[${status}](${url})` : status].join(" -> ")}`,
+          ]
 
-            if (output.verdict === "CLOSED")
-              lines.push(`    - ${output.comment ?? review?.body}`)
+          if (output.verdict === "CLOSED")
+            lines.push(`    - ${output.comment ?? review?.body}`)
 
-            if (previousOutput?.verdict === "CLOSED") {
-              lines.push(`    - ~~${previousOutput.comment ?? review?.body}~~`)
+          for (const output of history ?? []) {
+            if (output.verdict === "CLOSED") {
+              lines.push(`    - ~~${output.comment ?? review?.body}~~`)
             }
 
-            if (
-              previousOutput?.verdict === "CHANGES_REQUESTED" &&
-              output.verdict === "APPROVED"
-            ) {
-              const findings =
-                previousOutput.findings ?? previousOutput.newFindings ?? []
+            if (output.verdict === "CHANGES_REQUESTED") {
+              const findings = output.findings ?? output.newFindings ?? []
 
               for (const { body, line, path, startLine } of findings) {
                 const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
@@ -132,33 +128,33 @@ function createContent(
                 lines.push(`    - ~~\`${prefix}\`: ${body}~~`)
               }
             }
+          }
 
-            if (output.verdict === "CHANGES_REQUESTED") {
-              const findings = output.findings ?? output.newFindings ?? []
-              const followUps = output.followUps ?? []
+          if (output.verdict === "CHANGES_REQUESTED") {
+            const findings = output.findings ?? output.newFindings ?? []
+            const followUps = output.followUps ?? []
 
-              for (const { body, line, path, startLine } of findings) {
-                const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
+            for (const { body, line, path, startLine } of findings) {
+              const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
 
-                lines.push(`    - \`${prefix}\`: ${body}`)
-              }
-
-              for (const { body, commentId } of followUps) {
-                const thread = this.state.pr?.threads?.find(({ comments }) =>
-                  comments.some(({ databaseId }) => databaseId === commentId),
-                )
-
-                if (!thread) continue
-
-                const prefix = `${thread.path}:${thread.line ?? "N/A"}`
-
-                lines.push(`    - \`${prefix}\`: ${body}`)
-              }
+              lines.push(`    - \`${prefix}\`: ${body}`)
             }
 
-            return lines
-          },
-        ),
+            for (const { body, commentId } of followUps) {
+              const thread = this.state.pr?.threads?.find(({ comments }) =>
+                comments.some(({ databaseId }) => databaseId === commentId),
+              )
+
+              if (!thread) continue
+
+              const prefix = `${thread.path}:${thread.line ?? "N/A"}`
+
+              lines.push(`    - \`${prefix}\`: ${body}`)
+            }
+          }
+
+          return lines
+        }),
       ].join("\n"),
     )
   }

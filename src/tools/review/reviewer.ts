@@ -262,13 +262,20 @@ export async function validateFindings(this: Review) {
     text: `Validating review findings for ${this.getLink()}.`,
   })
 
-  const accepted = await collectAcceptedFindings.call(this, findings)
+  const accepted = await validateFindingsByMajority.call(this, findings)
 
   const reviewers = Object.fromEntries(
     Object.entries(this.state.reviewers ?? {}).map(([id, reviewer]) => [
       id,
       transformState(reviewer, id, accepted),
     ]),
+  )
+
+  await notifyVerdictChanges.call(
+    this,
+    this.state.reviewers ?? {},
+    reviewers,
+    "after majority finding validation",
   )
 
   this.state = await this.magi.updateState(this.state.output, {
@@ -414,12 +421,26 @@ export async function reconsiderClose(this: Review) {
       }))
     },
   )
-  const accepted = await collectAcceptedFindings.call(this, findings)
+  await notifyVerdictChanges.call(
+    this,
+    this.state.reviewers ?? {},
+    reviewers,
+    "after close reconsideration",
+  )
+
+  const accepted = await validateFindingsByMajority.call(this, findings)
   const validatedReviewers = Object.fromEntries(
     Object.entries(reviewers).map(([id, reviewer]) => [
       id,
       transformState(reviewer, id, accepted),
     ]),
+  )
+
+  await notifyVerdictChanges.call(
+    this,
+    reviewers,
+    validatedReviewers,
+    "after majority finding validation",
   )
 
   this.state = await this.magi.updateState(this.state.output, {
@@ -428,7 +449,7 @@ export async function reconsiderClose(this: Review) {
   })
 }
 
-async function collectAcceptedFindings(this: Review, findings: Finding[]) {
+async function validateFindingsByMajority(this: Review, findings: Finding[]) {
   const accepted = new Set<string>()
 
   if (!findings.length) return accepted
@@ -614,6 +635,27 @@ function transformState(
         : [...(reviewer.history ?? []), output],
     output: newOutput,
   }
+}
+
+async function notifyVerdictChanges(
+  this: Review,
+  prev: { [key: string]: ReviewerState },
+  next: { [key: string]: ReviewerState },
+  reason: string,
+) {
+  await Promise.all(
+    Object.entries(next).map(async ([id, reviewer]) => {
+      const prevVerdict = prev[id]?.output?.verdict
+      const nextVerdict = reviewer.output?.verdict
+
+      if (!prevVerdict || !nextVerdict || prevVerdict === nextVerdict) return
+
+      await this.magi.notify(
+        this.state.sessionId,
+        `Reviewer ${id} verdict changed from ${prevVerdict} to ${nextVerdict} for ${this.getLink()} ${reason}.`,
+      )
+    }),
+  )
 }
 
 function validateInlineCommentTargets(
