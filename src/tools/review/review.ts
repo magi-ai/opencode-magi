@@ -88,6 +88,12 @@ export class Review {
   public automate = automate
   public createReport = createReport
 
+  public async cleanup() {
+    if (!this.state.worktree?.path) return
+
+    await this.magi.deleteWorktree(this.state.worktree.path)
+  }
+
   public getLink() {
     return `[#${this.state.pr!.number}](${this.state.pr!.url})`
   }

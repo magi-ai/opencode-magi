@@ -110,15 +110,17 @@ export const review: Tool = function (magi) {
               await run.postReviews()
               await run.automate()
 
-              return run.createReport()
+              return await run.createReport()
             } catch (e) {
-              return run.createReport(e)
+              return await run.createReport(e)
+            } finally {
+              await run.cleanup()
             }
           })
 
           tasks.push(task)
 
-          if (!sync) void task.catch(() => undefined)
+          if (!sync) void task
         }
 
         if (sync) {
