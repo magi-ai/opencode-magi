@@ -132,7 +132,14 @@ function createContent(
 
           if (output.verdict === "CHANGES_REQUESTED") {
             const findings = output.findings ?? output.newFindings ?? []
+            const discardedFindings = output.discardedFindings ?? []
             const followUps = output.followUps ?? []
+
+            for (const { body, line, path, startLine } of discardedFindings) {
+              const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
+
+              lines.push(`    - ~~\`${prefix}\`: ${body}~~`)
+            }
 
             for (const { body, line, path, startLine } of findings) {
               const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`

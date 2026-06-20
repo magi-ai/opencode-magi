@@ -57,6 +57,7 @@ export interface CiClassificationOutput {
 
 export interface ReviewOutput {
   comment?: string
+  discardedFindings?: PullRequestFinding[]
   findings?: PullRequestFinding[]
   followUps?: PullRequestFollowUp[]
   newFindings?: PullRequestFinding[]

@@ -317,7 +317,7 @@ export async function reconsiderClose(this: Review) {
   const reviewers = Object.fromEntries(
     await Promise.all(
       targetReviewers.map(
-        ([id, { history, output: oldOutput, review, sessionId, status }]) =>
+        ([id, { history, output: prevOutput, review, sessionId, status }]) =>
           worker.run(async () => {
             if (!this.state.pr?.metadata)
               throw new MagiError("blocked", "PR metadata not found.")
@@ -394,7 +394,7 @@ export async function reconsiderClose(this: Review) {
             return [
               id,
               {
-                history: [...(history ?? []), oldOutput!],
+                history: [...(history ?? []), prevOutput!],
                 output: {
                   comment: output.comment,
                   findings: output.findings,
@@ -611,30 +611,55 @@ function transformState(
   id: string,
   accepted: Set<string>,
 ): ReviewerState {
-  const output = reviewer.output
+  if (reviewer.output?.verdict !== "CHANGES_REQUESTED") return reviewer
 
-  if (output?.verdict !== "CHANGES_REQUESTED") return reviewer
+  const findings = reviewer.output.findings ?? reviewer.output.newFindings ?? []
+  const { acceptedFindings, discardedFindings } = findings.reduce<{
+    acceptedFindings: PullRequestFinding[]
+    discardedFindings: PullRequestFinding[]
+  }>(
+    (prev, finding, index) => {
+      if (accepted.has(`${id}:${index}`)) {
+        prev.acceptedFindings.push(finding)
+      } else {
+        prev.discardedFindings.push(finding)
+      }
 
-  const hasFindings = output.findings != null
-  const findings = (output.findings ?? output.newFindings ?? []).filter(
-    (_, index) => accepted.has(`${id}:${index}`),
+      return prev
+    },
+    { acceptedFindings: [], discardedFindings: [] },
   )
-  const newOutput: ReviewOutput = hasFindings
-    ? findings.length
-      ? { ...output, findings }
-      : { ...output, findings: [], verdict: "APPROVED" }
-    : findings.length || output.followUps?.length
-      ? { ...output, newFindings: findings }
-      : { ...output, newFindings: [], verdict: "APPROVED" }
 
-  return {
-    ...reviewer,
-    history:
-      newOutput.verdict === output.verdict
-        ? reviewer.history
-        : [...(reviewer.history ?? []), output],
-    output: newOutput,
+  const output: ReviewOutput = { ...reviewer.output }
+
+  if (reviewer.output.findings) {
+    if (acceptedFindings.length) {
+      output.findings = acceptedFindings
+    } else {
+      output.verdict = "APPROVED"
+      output.findings = []
+
+      reviewer.history = [...(reviewer.history ?? []), reviewer.output]
+    }
+  } else {
+    if (acceptedFindings.length || reviewer.output.followUps?.length) {
+      output.newFindings = acceptedFindings
+    } else {
+      output.verdict = "APPROVED"
+      output.newFindings = []
+
+      reviewer.history = [...(reviewer.history ?? []), reviewer.output]
+    }
   }
+
+  if (discardedFindings.length) {
+    output.discardedFindings = [
+      ...(output.discardedFindings ?? []),
+      ...discardedFindings,
+    ]
+  }
+
+  return { ...reviewer, output }
 }
 
 async function notifyVerdictChanges(
