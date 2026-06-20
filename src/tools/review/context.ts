@@ -415,23 +415,35 @@ async function getConflicts(this: Review) {
   const lines = output.split("\n")
   const conflicts = Object.fromEntries(
     lines
-      .reduce<{ entries: [string, string[]][]; previous: string }>(
+      .reduce<{ entries: [string, string[]][]; header: string }>(
         (acc, line) => {
+          if (line.trim() && !line.startsWith(" ")) {
+            acc.header = line.trim()
+
+            return acc
+          }
+
+          if (
+            !/^(?:added|changed) in both$/.test(acc.header) &&
+            !/^removed in (?:local|remote)$/.test(acc.header)
+          ) {
+            return acc
+          }
+
           const file = line.match(
             /^  (?:base|our|their)\s+\d+\s+[0-9a-f]+\s+(.+)$/,
           )?.[1]
           const entry = acc.entries.at(-1)
 
           if (file && entry?.[0] !== file) {
-            acc.entries.push([file, acc.previous.trim() ? [acc.previous] : []])
+            acc.entries.push([file, [acc.header]])
           }
 
           acc.entries.at(-1)?.[1].push(line)
-          acc.previous = line
 
           return acc
         },
-        { entries: [], previous: "" },
+        { entries: [], header: "" },
       )
       .entries.map(([file, lines]) => [file, lines.join("\n").trim()]),
   )
