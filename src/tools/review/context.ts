@@ -19,12 +19,13 @@ export async function checkExistingReviews(this: Review) {
   if (!this.config.review.reviewers?.length)
     throw new MagiError("blocked", "No reviewers configured.")
 
-  const [reviews, commits] = await Promise.all([
+  const [reviews, commits, threads] = await Promise.all([
     getReviews.call(this),
     getCommits.call(this),
+    getReviewThreads.call(this),
   ])
   this.state = await this.magi.updateState(this.state.output, {
-    pr: { commits, reviews },
+    pr: { commits, reviews, threads },
   })
   const latestNonMergeCommit = commits
     .toReversed()
@@ -89,6 +90,38 @@ export async function checkExistingReviews(this: Review) {
       }
     }),
   )
+
+  for (const [id, reviewer] of Object.entries(reviewers)) {
+    if (reviewer.status !== "skip" || !reviewer.review) continue
+
+    const single = this.config.mode === "single"
+    const author = single ? this.config.account : reviewer.account
+    const hasUserReply = threads.some(({ comments, isResolved }) => {
+      if (isResolved) return false
+
+      const belongsToReviewer = single
+        ? comments.some(({ body }) =>
+            marker
+              .parse<PullRequestReviewMarker>(body)
+              .some(({ reviewer }) => reviewer === id),
+          )
+        : comments.some(({ author }) => author?.login === reviewer.account)
+
+      if (!belongsToReviewer) return false
+
+      const last = comments.at(-1)
+
+      return (
+        !!last &&
+        last.author?.login !== author &&
+        (!reviewer.review?.submitted_at ||
+          last.createdAt.localeCompare(reviewer.review.submitted_at) > 0)
+      )
+    })
+
+    if (hasUserReply) reviewer.status = "rereview"
+  }
+
   const skip = Object.values(reviewers).every(({ status }) => status === "skip")
 
   this.state = await this.magi.updateState(this.state.output, {
