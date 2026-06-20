@@ -125,7 +125,9 @@ export const review: Tool = function (magi) {
 
         if (sync) {
           const results = await Promise.all(tasks)
-          const output = filterEmpty(results.map(({ text }) => text)).join("\n")
+          const output = filterEmpty(results.map(({ text }) => text)).join(
+            "\n\n",
+          )
 
           if (
             results.some(
