@@ -34,7 +34,7 @@
     "clean": "rimraf node_modules dist coverage",
     "format:check": "oxfmt --check .",
     "format:write": "oxfmt --write .",
-    "lint:check": "node -e \"process.exit(1)\"",
+    "lint:check": "oxlint . --max-warnings=0",
     "lint:fix": "oxlint . --max-warnings=0 --fix",
     "prepare": "git rev-parse --is-inside-work-tree >/dev/null 2>&1 && lefthook install || true",
     "quality": "pnpm format:check && pnpm lint:check && pnpm typecheck && pnpm test",
