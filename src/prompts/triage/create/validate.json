@@ -38,7 +38,7 @@
       "if": { "properties": { "mode": { "const": "EDITED" } } },
       "then": {
         "required": ["commitSha", "commitMessage", "pullRequest"],
-        "properties": { "filesTouched": { "minItems": 1 } }
+        "properties": { "filesTouched": { "type": "array", "minItems": 1 } }
       }
     },
     {
@@ -52,8 +52,9 @@
           ]
         },
         "properties": {
-          "filesTouched": { "maxItems": 0 },
+          "filesTouched": { "type": "array", "maxItems": 0 },
           "responses": {
+            "type": "array",
             "minItems": 1,
             "items": {
               "properties": { "action": { "enum": ["DISAGREE", "ASK"] } }

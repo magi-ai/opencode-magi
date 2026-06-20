@@ -49,8 +49,8 @@
       "if": { "properties": { "verdict": { "const": "APPROVED" } } },
       "then": {
         "properties": {
-          "followUps": { "maxItems": 0 },
-          "newFindings": { "maxItems": 0 }
+          "followUps": { "type": "array", "maxItems": 0 },
+          "newFindings": { "type": "array", "maxItems": 0 }
         }
       }
     },
@@ -59,8 +59,10 @@
       "then": {
         "required": ["comment"],
         "anyOf": [
-          { "properties": { "followUps": { "minItems": 1 } } },
-          { "properties": { "newFindings": { "minItems": 1 } } }
+          { "properties": { "followUps": { "type": "array", "minItems": 1 } } },
+          {
+            "properties": { "newFindings": { "type": "array", "minItems": 1 } }
+          }
         ]
       }
     },
@@ -69,8 +71,8 @@
       "then": {
         "required": ["comment"],
         "properties": {
-          "followUps": { "maxItems": 0 },
-          "newFindings": { "maxItems": 0 }
+          "followUps": { "type": "array", "maxItems": 0 },
+          "newFindings": { "type": "array", "maxItems": 0 }
         }
       }
     }

@@ -23,20 +23,22 @@
   "allOf": [
     {
       "if": { "properties": { "verdict": { "const": "APPROVED" } } },
-      "then": { "properties": { "findings": { "maxItems": 0 } } }
+      "then": {
+        "properties": { "findings": { "type": "array", "maxItems": 0 } }
+      }
     },
     {
       "if": { "properties": { "verdict": { "const": "CHANGES_REQUESTED" } } },
       "then": {
         "required": ["comment"],
-        "properties": { "findings": { "minItems": 1 } }
+        "properties": { "findings": { "type": "array", "minItems": 1 } }
       }
     },
     {
       "if": { "properties": { "verdict": { "const": "CLOSED" } } },
       "then": {
         "required": ["comment"],
-        "properties": { "findings": { "maxItems": 0 } }
+        "properties": { "findings": { "type": "array", "maxItems": 0 } }
       }
     }
   ]
