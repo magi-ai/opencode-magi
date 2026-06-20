@@ -16,8 +16,14 @@ export function parseIssues(value: string): number[] {
 }
 
 export function parsePrs(value: string): number[] {
+  let options = false
   const numbers = filterEmpty(
-    value.split(/[\s,]+/).map((item) => item.match(/(?:pull\/|#)?(\d+)$/)?.[1]),
+    value.split(/[\s,]+/).map((item) => {
+      if (item.startsWith("--")) options = true
+      if (options) return
+
+      return item.match(/(?:pull\/|#)?(\d+)$/)?.[1]
+    }),
   ).map(Number)
 
   if (!numbers.length)
