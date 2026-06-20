@@ -1,0 +1,4 @@
+This file is a harmless scenario fixture for exercising magi:review.
+
+It intentionally avoids source code changes so the review should have no
+blocking findings.
