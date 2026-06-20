@@ -42,15 +42,15 @@ export async function checkExistingReviews(this: Review) {
 
             if (reviewer !== id || !verdict) return
 
-            review.state = verdict
-
             try {
-              review.body = body ? decodeURIComponent(body) : ""
+              return {
+                ...review,
+                body: body ? decodeURIComponent(body) : "",
+                state: verdict,
+              }
             } catch {
-              review.body = ""
+              return { ...review, body: "", state: verdict }
             }
-
-            return review
           } else {
             if (review.user!.login !== account) return
 
@@ -63,9 +63,7 @@ export async function checkExistingReviews(this: Review) {
 
             if (reviewer !== id || verdict !== "CLOSED") return
 
-            review.state = "CLOSED"
-
-            return review
+            return { ...review, state: "CLOSED" }
           }
         }),
       )
