@@ -2,3 +2,5 @@ This file is a harmless scenario fixture for exercising magi:review when the
 base branch has an unrelated CI failure.
 
 The pull request itself should not introduce the failing check.
+
+This extra line retriggers CI while main has an unrelated lint failure.
