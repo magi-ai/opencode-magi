@@ -40,7 +40,8 @@
           "description": "Number of retry attempts for GitHub CLI API calls that fail with rate limit errors."
         },
         "owner": { "type": "string", "minLength": 1 },
-        "repo": { "type": "string", "minLength": 1 }
+        "repo": { "type": "string", "minLength": 1 },
+        "url": { "type": "string" }
       }
     },
     "language": { "type": "string" },
