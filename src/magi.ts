@@ -68,13 +68,17 @@ export interface ReviewerState extends AgentState {
   status?: string
 }
 
+export interface EditorState extends AgentState {
+  author?: Config.Author
+}
+
 export interface State {
   command: Command
   completedAt?: string
   createdAt: string
   creator?: AgentState
   dryRun: boolean
-  editor?: AgentState
+  editor?: EditorState
   error?: string
   id: string
   issue?: { number: number; url: string }

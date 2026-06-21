@@ -121,9 +121,17 @@ export const merge: Tool = function (magi) {
                 await run.reconsiderClose()
               }
 
-              await run.resolveVerdict()
+              const verdict = await run.resolveVerdict()
 
               if (!skip) await run.postReviews()
+
+              if (verdict === "CHANGES_REQUESTED") {
+                await run.createSession()
+
+                if (!run.state.worktree) await run.createWorktree()
+              }
+
+              await run.automate(run.config.merge.automation)
 
               return await run.createReport()
             } catch (e) {
