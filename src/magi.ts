@@ -55,6 +55,8 @@ export type Status =
 
 export interface AgentState {
   account?: string
+  model?: Config.Model
+  permissions?: Config.Permissions
   sessionId?: string
 }
 

@@ -47,13 +47,28 @@ export class Review {
     const url = `${config.github.url}/pull/${number}`
     const octokit = await magi.createOctokit(config, context.abort)
     const graphql = magi.createGraphql(octokit)
+    const reviewers = Object.fromEntries(
+      config.review.reviewers!.map(
+        ({ account, id, model, permissions }) =>
+          [id, { account, model, permissions }] as const,
+      ),
+    )
+    const operator = config.review.operator
+      ? config.review.reviewers!.find(
+          ({ id }) => id === config.review.operator,
+        )!
+      : config.review.reviewers![
+          Math.abs(number) % config.review.reviewers!.length
+        ]!
     const state = await magi.createState(
       join(config.review.output, number.toString()),
       {
         command: "review",
         dryRun: options.dryRun,
+        operator,
         pr: { number, url },
         repo: quote(`${config.github.owner}/${config.github.repo}`),
+        reviewers,
         sessionId: context.sessionID,
         text: `Started reviewing [#${number}](${url}).`,
       },
@@ -101,17 +116,18 @@ export class Review {
   public async createSessions() {
     this.context.abort.throwIfAborted()
 
-    if (!this.config.review.reviewers?.length)
-      throw new MagiError("blocked", "No reviewers configured.")
+    if (!this.state.reviewers)
+      throw new MagiError("blocked", "Reviewers not found.")
+    if (!this.state.operator)
+      throw new MagiError("blocked", "Operator not found.")
 
     const reviewers = Object.fromEntries(
       await Promise.all(
-        this.config.review.reviewers.map(
-          async ({ account, id, model, permissions }) =>
+        Object.entries(this.state.reviewers).map(
+          async ([id, { model, permissions }]) =>
             [
               id,
               {
-                account,
                 sessionId: await this.magi.createSession(
                   this.state.sessionId,
                   `magi review #${this.number} ${id}`,
@@ -122,19 +138,14 @@ export class Review {
         ),
       ),
     )
-    const { account, model, permissions } = this.config.review.operator
-      ? this.config.review.reviewers.find(
-          ({ id }) => id === this.config.review.operator,
-        )!
-      : this.config.review.reviewers[
-          Math.abs(this.number) % this.config.review.reviewers.length
-        ]!
     const operator = {
-      account,
       sessionId: await this.magi.createSession(
         this.state.sessionId,
         `magi review #${this.number} operator`,
-        { model, permissions },
+        {
+          model: this.state.operator.model,
+          permissions: this.state.operator.permissions,
+        },
       ),
     }
 
