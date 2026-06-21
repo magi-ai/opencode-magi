@@ -4,6 +4,7 @@ import type { Magi } from "@/magi"
 import { join } from "node:path"
 import { Review } from "@/tools/review/review"
 import { createExecWithGitHubApiRetry, quote } from "@/utils"
+import { createReport } from "./report"
 
 interface MergeOptions {
   dryRun: boolean
@@ -47,4 +48,6 @@ export class Merge extends Review {
       state,
     )
   }
+
+  public createReport = createReport
 }
