@@ -1,6 +1,7 @@
 import type {
   PullRequestInlineCommentTargets,
   PullRequestReviewMarker,
+  PullRequestVerdict,
 } from "./index.type"
 import type { Review } from "./review"
 import type { ReviewerState } from "@/magi"
@@ -92,7 +93,10 @@ export async function checkExistingReviews(this: Review) {
   )
 
   for (const [id, reviewer] of Object.entries(reviewers)) {
-    if (reviewer.status !== "skip" || !reviewer.review) continue
+    if (reviewer.status !== "skip") continue
+
+    if (!reviewer.review)
+      throw new MagiError("blocked", `No review found for reviewer ${id}.`)
 
     const single = this.config.mode === "single"
     const author = single ? this.config.account : reviewer.account
@@ -119,7 +123,13 @@ export async function checkExistingReviews(this: Review) {
       )
     })
 
-    if (hasUserReply) reviewer.status = "rereview"
+    if (hasUserReply) {
+      reviewer.status = "rereview"
+    } else {
+      const verdict = reviewer.review.state as PullRequestVerdict
+
+      reviewer.output = { verdict }
+    }
   }
 
   const skip = Object.values(reviewers).every(({ status }) => status === "skip")
@@ -129,11 +139,7 @@ export async function checkExistingReviews(this: Review) {
     text: `Finished fetching existing reviews for ${this.getLink()}.`,
   })
 
-  if (skip)
-    throw new MagiError(
-      "blocked",
-      "PR has already been reviewed by all configured accounts.",
-    )
+  return skip
 }
 
 export async function fetchReviewContext(this: Review) {

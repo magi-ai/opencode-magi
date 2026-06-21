@@ -2,7 +2,6 @@ import type {
   FindingValidationOutput,
   PullRequestFinding,
   PullRequestReviewMarker,
-  PullRequestVerdict,
   ReviewOutput,
 } from "./index.type"
 import type { Review } from "./review"
@@ -49,20 +48,12 @@ export async function review(this: Review) {
           const { review, sessionId, status } = this.state.reviewers[id]!
 
           if (status === "skip") {
-            if (!review)
-              throw new MagiError(
-                "blocked",
-                `No review found for reviewer ${id}.`,
-              )
-
-            const verdict = review.state as PullRequestVerdict
-
             this.magi.notify(
               this.state.sessionId,
               `Skipping review for ${this.getLink()} with reviewer ${id}.`,
             )
 
-            return [id, { output: { verdict } }]
+            return [id, {}]
           } else {
             if (!sessionId)
               throw new MagiError(
