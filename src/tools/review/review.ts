@@ -207,5 +207,7 @@ export class Review {
       pr: { verdict },
       text: `Final verdict for ${this.getLink()} is ${verdict}.`,
     })
+
+    return verdict
   }
 }
