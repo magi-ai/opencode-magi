@@ -4,7 +4,7 @@ import { MagiError } from "@/magi"
 import { Prompt } from "@/prompts"
 import { command, filterEmpty, quote, retry } from "@/utils"
 
-interface EditOutput {
+export interface EditOutput {
   commitMessage?: string
   commitSha?: string
   filesTouched: string[]
@@ -32,6 +32,10 @@ export async function edit(this: Merge) {
     text: `Editing ${this.getLink()}.`,
   })
 
+  const signal = this.context.abort
+  const cwd = this.state.worktree!.path
+  const options = { cwd, signal }
+
   await this.exec(
     command(
       "git",
@@ -39,10 +43,7 @@ export async function edit(this: Merge) {
       "user.name",
       quote(this.state.editor!.author.name),
     ),
-    {
-      cwd: this.state.worktree!.path,
-      signal: this.context.abort,
-    },
+    options,
   )
   await this.exec(
     command(
@@ -51,10 +52,7 @@ export async function edit(this: Merge) {
       "user.email",
       quote(this.state.editor!.author.email),
     ),
-    {
-      cwd: this.state.worktree!.path,
-      signal: this.context.abort,
-    },
+    options,
   )
 
   const unresolvedThreads = await getUnresolvedThreads.call(this)
@@ -93,10 +91,7 @@ export async function edit(this: Merge) {
 
       if (parsed.mode === "EDITED") {
         const head = (
-          await this.exec(command("git", "rev-parse", "HEAD"), {
-            cwd: this.state.worktree!.path,
-            signal: this.context.abort,
-          })
+          await this.exec(command("git", "rev-parse", "HEAD"), options)
         ).trim()
 
         if (head !== parsed.commitSha)
@@ -123,7 +118,46 @@ export async function edit(this: Merge) {
     text: `Finished editing ${this.getLink()}.`,
   })
 
-  return output
+  if (output.mode === "EDITED") {
+    if (!this.state.editor?.account)
+      throw new MagiError("blocked", "Editor account not found.")
+    if (!this.state.pr?.metadata)
+      throw new MagiError("blocked", "PR metadata not found.")
+    if (!this.state.worktree)
+      throw new MagiError("blocked", "PR worktree not found.")
+
+    if (this.state.dryRun) {
+      this.state = await this.magi.updateState(this.state.output, {
+        text: `Skipped pushing editor changes for ${this.getLink()} during dry run.`,
+      })
+    } else {
+      this.state = await this.magi.updateState(this.state.output, {
+        text: `Pushing editor changes for ${this.getLink()}.`,
+      })
+
+      const token = await this.magi.getGhToken(this.state.editor!.account)
+      const url = `https://${this.config.github.host}/${this.state.pr!.metadata.head.repo.owner.login}/${this.state.pr!.metadata.head.repo.name}.git`
+      const ref = `HEAD:refs/heads/${this.state.pr!.metadata.head.ref}`
+
+      await this.exec(command("git", "push", quote(url), quote(ref)), {
+        ...options,
+        env: {
+          GIT_CONFIG_COUNT: "2",
+          GIT_CONFIG_KEY_0: "credential.helper",
+          GIT_CONFIG_KEY_1: "credential.helper",
+          GIT_CONFIG_VALUE_0: "",
+          GIT_CONFIG_VALUE_1:
+            "!f() { echo username=x-access-token; echo password=$GIT_PASSWORD; }; f",
+          GIT_PASSWORD: token,
+          GIT_TERMINAL_PROMPT: "0",
+        },
+      })
+
+      this.state = await this.magi.updateState(this.state.output, {
+        text: `Finished pushing editor changes for ${this.getLink()}.`,
+      })
+    }
+  }
 }
 
 async function getUnresolvedThreads(this: Merge) {
