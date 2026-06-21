@@ -279,7 +279,8 @@ export async function postReviews(this: Review) {
 
 export async function automate(
   this: Review,
-  automation: Config.Merge["automation"] | Config.Review["automation"],
+  automation: Config.Merge["automation"] | Config.Review["automation"] = this
+    .config.review.automation,
 ) {
   this.context.abort.throwIfAborted()
 
