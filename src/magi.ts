@@ -5,6 +5,7 @@ import type {
   ToolDefinition,
 } from "@opencode-ai/plugin"
 import type { DocumentNode } from "graphql"
+import type { EditOutput } from "./tools/merge"
 import type { Config, ConfigValidationOptions } from "@/config"
 import type {
   PullRequestChecks,
@@ -70,6 +71,7 @@ export interface ReviewerState extends AgentState {
 
 export interface EditorState extends AgentState {
   author?: Config.Author
+  output?: EditOutput
 }
 
 export interface State {

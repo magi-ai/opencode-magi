@@ -1,20 +1,9 @@
+import type { EditOutput } from "./index.type"
 import type { Merge } from "./merge"
 import type { PullRequestReviewThread } from "@/tools/review"
 import { MagiError } from "@/magi"
 import { Prompt } from "@/prompts"
 import { command, filterEmpty, quote, retry } from "@/utils"
-
-export interface EditOutput {
-  commitMessage?: string
-  commitSha?: string
-  filesTouched: string[]
-  mode: "EDITED" | "REPLIED"
-  responses: {
-    action: "ASK" | "DISAGREE" | "FIXED"
-    body: string
-    commentId: number
-  }[]
-}
 
 export async function edit(this: Merge) {
   this.context.abort.throwIfAborted()
@@ -115,6 +104,7 @@ export async function edit(this: Merge) {
   if (!output) throw new MagiError("blocked", "Invalid output for editor.")
 
   this.state = await this.magi.updateState(this.state.output, {
+    editor: { output },
     text: `Finished editing ${this.getLink()}.`,
   })
 
