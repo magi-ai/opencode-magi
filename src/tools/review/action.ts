@@ -323,7 +323,7 @@ export async function automate(
     text: `${action === "merge" ? "Merging" : "Closing"} ${this.getLink()}.`,
   })
 
-  const token = (await this.magi.getGhToken(account)).trim()
+  const token = await this.magi.getGhToken(account)
   const args = ["gh", "pr"]
 
   if (action === "merge") {

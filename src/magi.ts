@@ -140,8 +140,8 @@ export class Magi {
     this.exec = createExec(input.directory)
   }
 
-  public getGhToken(account?: string, signal?: AbortSignal) {
-    return this.exec(
+  public async getGhToken(account?: string, signal?: AbortSignal) {
+    const result = await this.exec(
       command(
         "gh",
         "auth",
@@ -151,6 +151,8 @@ export class Magi {
       ),
       { signal },
     )
+
+    return result.trim()
   }
 
   public async createOctokit(
