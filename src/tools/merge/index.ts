@@ -129,6 +129,13 @@ export const merge: Tool = function (magi) {
                 await run.createSession()
 
                 if (!run.state.worktree) await run.createWorktree()
+
+                // await run.fetchEditContext()
+                // await run.edit()
+                await run.checkCi()
+                // await run.rereview()
+
+                const _verdict = await run.resolveVerdict()
               }
 
               await run.automate(run.config.merge.automation)
