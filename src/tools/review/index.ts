@@ -96,18 +96,26 @@ export const review: Tool = function (magi) {
           const task = worker.run(async () => {
             try {
               await run.checkPr()
-              await run.checkExistingReviews()
-              await run.createSessions()
-              await run.createWorktree()
+
+              const skip = await run.checkExistingReviews()
+
               await run.checkCi()
-              await run.classifyChecks()
-              await run.rerunChecks()
-              await run.fetchReviewContext()
-              await run.review()
-              await run.validateFindings()
-              await run.reconsiderClose()
+
+              if (!skip) {
+                await run.createSessions()
+                await run.createWorktree()
+                await run.classifyChecks()
+                await run.rerunChecks()
+                await run.fetchReviewContext()
+                await run.review()
+                await run.validateFindings()
+                await run.reconsiderClose()
+              }
+
               await run.resolveVerdict()
-              await run.postReviews()
+
+              if (!skip) await run.postReviews()
+
               await run.automate()
 
               return await run.createReport()
