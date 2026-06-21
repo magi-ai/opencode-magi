@@ -1,4 +1,4 @@
-import type { Merge } from "./merge"
+import type { Review } from "@/tools/review/review"
 import { writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { MagiError } from "@/magi"
@@ -9,7 +9,7 @@ import {
 } from "@/tools/review/report"
 import { filterEmpty, toTitleCase } from "@/utils"
 
-export async function createReport(this: Merge, e?: unknown) {
+export async function createReport(this: Review, e?: unknown) {
   if (!e) {
     const status = "completed"
     const text = createContent.call(this, { status })
@@ -43,7 +43,7 @@ export async function createReport(this: Merge, e?: unknown) {
 }
 
 function createContent(
-  this: Merge,
+  this: Review,
   input: { error?: string; status: string },
 ): string {
   return filterEmpty([
