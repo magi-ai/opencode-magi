@@ -41,9 +41,17 @@ function createContent(
   this: Review,
   input: { error?: string; status: string },
 ) {
-  const checks = this.state.pr?.checks
-  const reviewers = Object.entries(this.state.reviewers ?? {})
+  return filterEmpty([
+    ...createMetaContent.call(this, input),
+    ...createCheckContent.call(this),
+    ...createReviewerContent.call(this),
+  ]).join("\n")
+}
 
+export function createMetaContent(
+  this: Review,
+  input: { error?: string; status: string },
+) {
   const rows: (null | string | undefined)[] = [
     `- **Pull Request:** ${this.getLink()}`,
     `- **Mode**: ${toTitleCase(this.config.mode)}`,
@@ -58,113 +66,121 @@ function createContent(
   if (this.state.text) rows.push(`- **Last action**: ${this.state.text}`)
   if (input.error) rows.push(`- **Error**: ${input.error}`)
 
-  if (checks) {
-    const failures = [
-      ...checks.failed.map((check) => ({
-        comments: Object.entries(check.classifieds ?? {}).map(
-          ([reviewer, { comment, scope }]) => ({ comment, reviewer, scope }),
+  return rows
+}
+
+export function createCheckContent(this: Review) {
+  const checks = this.state.pr?.checks
+
+  if (!checks) return []
+
+  const failures = [
+    ...checks.failed.map((check) => ({
+      comments: Object.entries(check.classifieds ?? {}).map(
+        ([reviewer, { comment, scope }]) => ({ comment, reviewer, scope }),
+      ),
+      detail:
+        check.scope == null
+          ? "Failed"
+          : check.scope
+            ? "In-scope failure"
+            : "Out-of-scope failure",
+      name: check.name,
+    })),
+    ...checks.pending.map((check) => ({
+      comments: [],
+      detail: "Pending",
+      name: check.name,
+    })),
+  ]
+
+  if (failures.length) {
+    return [
+      "- **Check**: Failure",
+      ...failures.flatMap(({ comments, detail, name }) => [
+        `  - **${name}**: ${detail}`,
+        ...comments.map(
+          ({ comment, reviewer, scope }) =>
+            `    - **${reviewer}**: ${scope ? "In scope" : "Out of scope"}. ${comment}`,
         ),
-        detail:
-          check.scope == null
-            ? "Failed"
-            : check.scope
-              ? "In-scope failure"
-              : "Out-of-scope failure",
-        name: check.name,
-      })),
-      ...checks.pending.map((check) => ({
-        comments: [],
-        detail: "Pending",
-        name: check.name,
-      })),
+      ]),
     ]
-
-    if (failures.length) {
-      rows.push(
-        "- **Check**: Failure",
-        ...failures.flatMap(({ comments, detail, name }) => [
-          `  - **${name}**: ${detail}`,
-          ...comments.map(
-            ({ comment, reviewer, scope }) =>
-              `    - **${reviewer}**: ${scope ? "In scope" : "Out of scope"}. ${comment}`,
-          ),
-        ]),
-      )
-    } else {
-      rows.push("- **Check**: Pass")
-    }
+  } else {
+    return ["- **Check**: Pass"]
   }
+}
 
-  if (reviewers.length) {
-    rows.push(
-      [
-        "- **Reviewer**:",
-        ...reviewers.flatMap(([id, { history, output, posted, review }]) => {
-          if (!output) return []
+export function createReviewerContent(this: Review) {
+  const reviewers = Object.entries(this.state.reviewers ?? {})
 
-          const url = posted ?? review?.html_url
-          const status = toTitleCase(output.verdict)
-          const prevStatuses = (history ?? []).map(({ verdict }) =>
-            toTitleCase(verdict),
-          )
-          const lines = [
-            `  - **${id}**: ${[...prevStatuses, url ? `[${status}](${url})` : status].join(" -> ")}`,
-          ]
+  if (!reviewers.length) return []
 
-          if (output.verdict === "CLOSED")
-            lines.push(`    - ${output.comment ?? review?.body}`)
+  return [
+    [
+      "- **Reviewer**:",
+      ...reviewers.flatMap(([id, { history, output, posted, review }]) => {
+        if (!output) return []
 
-          for (const output of history ?? []) {
-            if (output.verdict === "CLOSED") {
-              lines.push(`    - ~~${output.comment ?? review?.body}~~`)
-            }
+        const url = posted ?? review?.html_url
+        const status = toTitleCase(output.verdict)
+        const prevStatuses = (history ?? []).map(({ verdict }) =>
+          toTitleCase(verdict),
+        )
+        const lines = [
+          `  - **${id}**: ${[...prevStatuses, url ? `[${status}](${url})` : status].join(" -> ")}`,
+        ]
 
-            if (output.verdict === "CHANGES_REQUESTED") {
-              const findings = output.findings ?? output.newFindings ?? []
+        if (output.verdict === "CLOSED")
+          lines.push(`    - ${output.comment ?? review?.body}`)
 
-              for (const { body, line, path, startLine } of findings) {
-                const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
-
-                lines.push(`    - ~~\`${prefix}\`: ${body}~~`)
-              }
-            }
+        for (const output of history ?? []) {
+          if (output.verdict === "CLOSED") {
+            lines.push(`    - ~~${output.comment ?? review?.body}~~`)
           }
 
           if (output.verdict === "CHANGES_REQUESTED") {
             const findings = output.findings ?? output.newFindings ?? []
-            const discardedFindings = output.discardedFindings ?? []
-            const followUps = output.followUps ?? []
-
-            for (const { body, line, path, startLine } of discardedFindings) {
-              const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
-
-              lines.push(`    - ~~\`${prefix}\`: ${body}~~`)
-            }
 
             for (const { body, line, path, startLine } of findings) {
               const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
 
-              lines.push(`    - \`${prefix}\`: ${body}`)
-            }
-
-            for (const { body, commentId } of followUps) {
-              const thread = this.state.pr?.threads?.find(({ comments }) =>
-                comments.some(({ databaseId }) => databaseId === commentId),
-              )
-
-              if (!thread) continue
-
-              const prefix = `${thread.path}:${thread.line ?? "N/A"}`
-
-              lines.push(`    - \`${prefix}\`: ${body}`)
+              lines.push(`    - ~~\`${prefix}\`: ${body}~~`)
             }
           }
+        }
 
-          return lines
-        }),
-      ].join("\n"),
-    )
-  }
+        if (output.verdict === "CHANGES_REQUESTED") {
+          const findings = output.findings ?? output.newFindings ?? []
+          const discardedFindings = output.discardedFindings ?? []
+          const followUps = output.followUps ?? []
 
-  return filterEmpty(rows).join("\n")
+          for (const { body, line, path, startLine } of discardedFindings) {
+            const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
+
+            lines.push(`    - ~~\`${prefix}\`: ${body}~~`)
+          }
+
+          for (const { body, line, path, startLine } of findings) {
+            const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
+
+            lines.push(`    - \`${prefix}\`: ${body}`)
+          }
+
+          for (const { body, commentId } of followUps) {
+            const thread = this.state.pr?.threads?.find(({ comments }) =>
+              comments.some(({ databaseId }) => databaseId === commentId),
+            )
+
+            if (!thread) continue
+
+            const prefix = `${thread.path}:${thread.line ?? "N/A"}`
+
+            lines.push(`    - \`${prefix}\`: ${body}`)
+          }
+        }
+
+        return lines
+      }),
+    ].join("\n"),
+  ]
 }
