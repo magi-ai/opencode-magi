@@ -132,7 +132,7 @@ export const merge: Tool = function (magi) {
 
                 // await run.fetchEditContext()
                 // await run.edit()
-                await run.checkCi()
+                await run.checkCi(run.config.merge.checks.wait)
                 // await run.rereview()
 
                 const _verdict = await run.resolveVerdict()

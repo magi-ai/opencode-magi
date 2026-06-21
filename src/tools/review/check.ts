@@ -102,14 +102,17 @@ export async function checkPr(this: Review) {
   })
 }
 
-export async function checkCi(this: Review) {
+export async function checkCi(
+  this: Review,
+  wait = this.config.review.checks.wait,
+) {
   this.context.abort.throwIfAborted()
 
   this.state = await this.magi.updateState(this.state.output, {
     text: `Checking CI for ${this.getLink()}.`,
   })
 
-  if (this.config.review.checks.wait) await watchChecks.call(this)
+  if (wait) await watchChecks.call(this)
 
   const checks = await getChecks.call(this)
 
