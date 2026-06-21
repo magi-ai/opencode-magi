@@ -1,5 +1,6 @@
 import type { PullRequestFinding, PullRequestReviewParams } from "./index.type"
 import type { Review } from "./review"
+import type { Config } from "@/config"
 import type { ReviewerState } from "@/magi"
 import { MagiError } from "@/magi"
 import { Prompt } from "@/prompts"
@@ -276,7 +277,10 @@ export async function postReviews(this: Review) {
   }
 }
 
-export async function automate(this: Review) {
+export async function automate(
+  this: Review,
+  automation: Config.Merge["automation"] | Config.Review["automation"],
+) {
   this.context.abort.throwIfAborted()
 
   if (!this.state.pr?.verdict)
@@ -286,7 +290,7 @@ export async function automate(this: Review) {
 
   const action = this.state.pr.verdict === "APPROVED" ? "merge" : "close"
 
-  if (!this.config.review.automation[action]) return
+  if (!automation[action]) return
 
   const account = this.state.operator!.account!
 

@@ -116,7 +116,7 @@ export const review: Tool = function (magi) {
 
               if (!skip) await run.postReviews()
 
-              await run.automate()
+              await run.automate(run.config.review.automation)
 
               return await run.createReport()
             } catch (e) {
