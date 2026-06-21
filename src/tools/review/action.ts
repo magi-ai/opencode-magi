@@ -57,7 +57,7 @@ export async function postReviews(this: Review) {
       ),
     )
     await Promise.all(
-      Object.entries(this.state.reviewers!).flatMap(([_id, { output }]) =>
+      Object.entries(this.state.reviewers!).flatMap(([_, { output }]) =>
         (output?.followUps ?? []).map(({ body, commentId }) =>
           octokit.rest.pulls.createReplyForReviewComment({
             ...args,
@@ -281,8 +281,6 @@ export async function automate(this: Review) {
 
   if (!this.state.pr?.verdict)
     throw new MagiError("blocked", "PR verdict not found.")
-  if (!this.state.pr.checks)
-    throw new MagiError("blocked", "PR checks not found.")
 
   if (!["APPROVED", "CLOSED"].includes(this.state.pr.verdict)) return
 
@@ -293,6 +291,9 @@ export async function automate(this: Review) {
   const account = this.state.operator!.account!
 
   if (action === "merge") {
+    if (!this.state.pr.checks)
+      throw new MagiError("blocked", "PR checks not found.")
+
     const failed = this.state.pr.checks.failed
     const pending = this.state.pr.checks.pending
 
