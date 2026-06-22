@@ -351,7 +351,7 @@ export async function rerunChecks(this: Review) {
   })
 }
 
-async function getMetadata(this: Review) {
+export async function getMetadata(this: Review) {
   const [{ data }, files] = await Promise.all([
     this.octokit.rest.pulls.get({
       owner: this.config.github.owner,
