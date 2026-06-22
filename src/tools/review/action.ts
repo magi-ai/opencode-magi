@@ -22,22 +22,22 @@ const events = {
 export async function postReviews(this: Review) {
   this.context.abort.throwIfAborted()
 
-  if (this.state.dryRun) return
+  this.state = await this.magi.updateState(this.state.output, {
+    text: `Posting reviews for ${this.getLink()}.`,
+  })
 
   if (!this.config.review.reviewers?.length)
     throw new MagiError("blocked", "No reviewers configured.")
   if (!this.state.reviewers)
     throw new MagiError("blocked", "Reviewers not found.")
 
+  if (this.state.dryRun) return
+
   const args = {
     owner: this.config.github.owner,
     pull_number: this.number,
     repo: this.config.github.repo,
   }
-
-  this.state = await this.magi.updateState(this.state.output, {
-    text: `Posting reviews for ${this.getLink()}.`,
-  })
 
   if (this.config.mode === "single") {
     if (!this.state.pr?.verdict)
@@ -51,14 +51,14 @@ export async function postReviews(this: Review) {
     const graphql = this.magi.createGraphql(octokit)
 
     await Promise.all(
-      Object.values(this.state.reviewers!).flatMap(({ output }) =>
+      Object.values(this.state.reviewers).flatMap(({ output }) =>
         (output?.resolves ?? []).map(({ threadId }) =>
           graphql.resolveReviewThread({ threadId }),
         ),
       ),
     )
     await Promise.all(
-      Object.entries(this.state.reviewers!).flatMap(([_, { output }]) =>
+      Object.entries(this.state.reviewers).flatMap(([_, { output }]) =>
         (output?.followUps ?? []).map(({ body, commentId }) =>
           octokit.rest.pulls.createReplyForReviewComment({
             ...args,
@@ -73,7 +73,7 @@ export async function postReviews(this: Review) {
     const params: PullRequestReviewParams = { ...args, event }
 
     if (this.state.pr.verdict === "CHANGES_REQUESTED") {
-      const findings = Object.entries(this.state.reviewers!).flatMap(
+      const findings = Object.entries(this.state.reviewers).flatMap(
         ([id, { output }]) =>
           (output?.findings ?? output?.newFindings ?? []).map((finding) => ({
             ...finding,
@@ -112,7 +112,7 @@ export async function postReviews(this: Review) {
       )
 
       const contents = JSON.stringify(
-        Object.values(this.state.reviewers!).flatMap<
+        Object.values(this.state.reviewers).flatMap<
           PullRequestFinding | string
         >(({ output }) => {
           if (!output || output.verdict === "APPROVED") return []
@@ -173,7 +173,7 @@ export async function postReviews(this: Review) {
       params.body ?? "",
       marker.stringify(
         ...filterEmpty(
-          Object.entries(this.state.reviewers!).map(([id, { output }]) => {
+          Object.entries(this.state.reviewers).map(([id, { output }]) => {
             if (!output) return
 
             const body = output.comment
@@ -196,7 +196,7 @@ export async function postReviews(this: Review) {
 
     this.state = await this.magi.updateState(this.state.output, {
       reviewers: Object.fromEntries(
-        Object.keys(this.state.reviewers!).map((id) => [id, { posted }]),
+        Object.keys(this.state.reviewers).map((id) => [id, { posted }]),
       ),
       text: `Finished posting reviews for ${this.getLink()}.`,
     })
@@ -206,7 +206,7 @@ export async function postReviews(this: Review) {
     )
     const reviewers = Object.fromEntries(
       await Promise.all(
-        Object.entries(this.state.reviewers!).map(
+        Object.entries(this.state.reviewers).map(
           ([id, { account, output, review, status }]) =>
             worker.run(async () => {
               if (status === "skip") return [id, { posted: review?.html_url }]

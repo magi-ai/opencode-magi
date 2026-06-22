@@ -20,12 +20,12 @@ interface Finding {
 export async function review(this: Review) {
   this.context.abort.throwIfAborted()
 
-  if (!this.config.review.reviewers?.length)
-    throw new MagiError("blocked", "No reviewers configured.")
-
   this.state = await this.magi.updateState(this.state.output, {
     text: `Reviewing ${this.getLink()}.`,
   })
+
+  if (!this.config.review.reviewers?.length)
+    throw new MagiError("blocked", "No reviewers configured.")
 
   const worker = new Worker<[string, ReviewerState]>(
     this.config.review.concurrency.reviewers,

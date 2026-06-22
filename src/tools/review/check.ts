@@ -127,14 +127,14 @@ export async function classifyChecks(this: Review) {
 
   if (!this.state.pr?.checks?.failed.length) return
 
+  await this.magi.updateState(this.state.output, {
+    text: `Classifying CI checks for ${this.getLink()}.`,
+  })
+
   if (!this.state.pr.metadata)
     throw new MagiError("blocked", "PR metadata not found.")
   if (!this.state.worktree)
     throw new MagiError("blocked", "PR worktree not found.")
-
-  await this.magi.updateState(this.state.output, {
-    text: `Classifying CI checks for ${this.getLink()}.`,
-  })
 
   const worker = new Worker(this.config.review.concurrency.reviewers)
   const classifiedChecks: { [key: string]: PullRequestClassifiedChecks } =
