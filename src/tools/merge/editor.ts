@@ -148,6 +148,8 @@ export async function edit(this: Merge) {
       })
     }
   }
+
+  return output.mode === "EDITED"
 }
 
 async function getUnresolvedThreads(this: Merge) {
