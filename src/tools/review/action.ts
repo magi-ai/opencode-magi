@@ -22,6 +22,8 @@ const events = {
 export async function postReviews(this: Review) {
   this.context.abort.throwIfAborted()
 
+  if (this.state.dryRun) return
+
   this.state = await this.magi.updateState(this.state.output, {
     text: `Posting reviews for ${this.getLink()}.`,
   })
@@ -30,8 +32,6 @@ export async function postReviews(this: Review) {
     throw new MagiError("blocked", "No reviewers configured.")
   if (!this.state.reviewers)
     throw new MagiError("blocked", "Reviewers not found.")
-
-  if (this.state.dryRun) return
 
   const args = {
     owner: this.config.github.owner,

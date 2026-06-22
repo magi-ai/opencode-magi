@@ -4,6 +4,8 @@ import { MagiError } from "@/magi"
 export async function postReplies(this: Merge) {
   this.context.abort.throwIfAborted()
 
+  if (this.state.dryRun) return
+
   if (!this.state.editor?.output)
     throw new MagiError("blocked", "Editor output not found.")
 
@@ -15,8 +17,6 @@ export async function postReplies(this: Merge) {
 
   if (!this.state.editor?.account)
     throw new MagiError("blocked", "Editor account not found.")
-
-  if (this.state.dryRun) return
 
   const octokit = await this.magi.createOctokit(
     this.config,
