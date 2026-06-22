@@ -345,7 +345,7 @@ export async function rerunChecks(this: Review) {
 
   if (message) await this.magi.notify(this.state.sessionId, message)
 
-  await this.magi.updateState(this.state.output, {
+  this.state = await this.magi.updateState(this.state.output, {
     pr: { checks },
     text: `Finished rerunning checks for ${this.getLink()}.`,
   })
