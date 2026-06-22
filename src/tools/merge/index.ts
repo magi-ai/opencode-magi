@@ -132,15 +132,21 @@ export const merge: Tool = function (magi) {
 
                 if (!run.state.worktree) await run.createWorktree()
 
-                await run.edit()
-                await run.postReplies()
-                await run.checkCi(run.config.merge.checks.wait)
-                // await run.rereview()
+                const prevHeadSha = run.state.pr?.metadata?.head.sha
+                const edited = await run.edit()
 
-                const _verdict = await run.resolveVerdict()
+                await run.postReplies()
+
+                if (edited) await run.checkCi(run.config.merge.checks.wait)
+                if (skip) await run.createSessions()
+
+                if (edited) {
+                  await run.classifyChecks(prevHeadSha)
+                  await run.rerunChecks()
+                }
               }
 
-              await run.automate(run.config.merge.automation)
+              await run.automate()
 
               return await run.createReport()
             } catch (e) {

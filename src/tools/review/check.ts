@@ -122,7 +122,7 @@ export async function checkCi(
   })
 }
 
-export async function classifyChecks(this: Review) {
+export async function classifyChecks(this: Review, baseSha?: string) {
   this.context.abort.throwIfAborted()
 
   if (!this.state.pr?.checks?.failed.length) return
@@ -139,16 +139,17 @@ export async function classifyChecks(this: Review) {
   const worker = new Worker(this.config.review.concurrency.reviewers)
   const classifiedChecks: { [key: string]: PullRequestClassifiedChecks } =
     Object.fromEntries(this.state.pr.checks.failed.map(({ id }) => [id, {}]))
+  const command = this.state.command === "merge" ? "merge" : "review"
   const prompt = await Prompt.init(
     this.magi,
     this.config,
-    "review/ci-classification",
+    `${command}/ci-classification`,
   )
   const taskMessage = await prompt.create(
-    this.config.review.prompts?.ciClassification,
+    this.config[command].prompts?.ciClassification,
     ["output_contract"],
     {
-      baseSha: this.state.pr.metadata.base.sha,
+      baseSha: baseSha ?? this.state.pr.metadata.base.sha,
       failedChecks: JSON.stringify(this.state.pr.checks.failed, null, 2),
       headSha: this.state.pr.metadata.head.sha,
       owner: this.config.github.owner,
