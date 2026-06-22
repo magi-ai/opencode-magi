@@ -166,7 +166,7 @@ export async function fetchReviewContext(this: Review) {
   })
 }
 
-async function getComments(this: Review) {
+export async function getComments(this: Review) {
   return await this.octokit.paginate(this.octokit.rest.issues.listComments, {
     issue_number: this.number,
     owner: this.config.github.owner,
@@ -190,7 +190,7 @@ async function getCommits(this: Review) {
   })
 }
 
-async function getClosingIssues(this: Review) {
+export async function getClosingIssues(this: Review) {
   const data = await this.graphql.paginate(this.graphql.closingIssues, {
     owner: this.config.github.owner,
     pr: this.number,
@@ -205,7 +205,7 @@ async function getClosingIssues(this: Review) {
   )
 }
 
-async function getReviewThreads(this: Review) {
+export async function getReviewThreads(this: Review) {
   const data = await this.graphql.paginate(this.graphql.reviewThreads, {
     owner: this.config.github.owner,
     pr: this.number,
@@ -220,7 +220,7 @@ async function getReviewThreads(this: Review) {
   )
 }
 
-async function getInlineCommentTargets(
+export async function getInlineCommentTargets(
   this: Review,
   conflict: boolean = false,
 ) {
@@ -414,7 +414,7 @@ function getMergeInlineCommentTargets(
   return inlineCommentTargets
 }
 
-async function getConflicts(this: Review) {
+export async function getConflicts(this: Review) {
   if (!this.state.pr?.metadata)
     throw new MagiError("blocked", "PR metadata not found.")
   if (!this.state.worktree)

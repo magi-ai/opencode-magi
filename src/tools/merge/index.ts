@@ -144,6 +144,8 @@ export const merge: Tool = function (magi) {
                   await run.classifyChecks(prevHeadSha)
                   await run.rerunChecks()
                 }
+
+                await run.fetchMergeContext()
               }
 
               await run.automate()
