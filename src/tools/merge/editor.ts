@@ -3,7 +3,8 @@ import type { Merge } from "./merge"
 import type { PullRequestReviewThread } from "@/tools/review"
 import { MagiError } from "@/magi"
 import { Prompt } from "@/prompts"
-import { command, filterEmpty, quote, retry } from "@/utils"
+import { getMetadata } from "@/tools/review/check"
+import { command, filterDuplicates, filterEmpty, quote, retry } from "@/utils"
 
 export async function edit(this: Merge) {
   this.context.abort.throwIfAborted()
@@ -118,6 +119,13 @@ export async function edit(this: Merge) {
 
     if (this.state.dryRun) {
       this.state = await this.magi.updateState(this.state.output, {
+        pr: {
+          files: filterDuplicates([
+            ...(this.state.pr.files ?? []),
+            ...output.filesTouched,
+          ]),
+          metadata: { head: { sha: output.commitSha! } },
+        },
         text: `Skipped pushing editor changes for ${this.getLink()} during dry run.`,
       })
     } else {
@@ -143,13 +151,16 @@ export async function edit(this: Merge) {
         },
       })
 
+      const { files, metadata } = await getMetadata.call(this)
+
       this.state = await this.magi.updateState(this.state.output, {
+        pr: { files, metadata },
         text: `Finished pushing editor changes for ${this.getLink()}.`,
       })
     }
   }
 
-  return output.mode === "EDITED"
+  return output.mode === "EDITED" && !this.state.dryRun
 }
 
 async function getUnresolvedThreads(this: Merge) {
