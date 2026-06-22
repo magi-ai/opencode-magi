@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { MagiError } from "@/magi"
 import { Review } from "@/tools/review/review"
 import { createExecWithGitHubApiRetry, quote } from "@/utils"
+import { postReplies } from "./action"
 import { edit } from "./editor"
 import { createReport } from "./report"
 
@@ -75,6 +76,7 @@ export class Merge extends Review {
 
   public createReport = createReport
   public edit = edit
+  public postReplies = postReplies
 
   public async createSession() {
     this.context.abort.throwIfAborted()

@@ -133,6 +133,7 @@ export const merge: Tool = function (magi) {
                 if (!run.state.worktree) await run.createWorktree()
 
                 await run.edit()
+                await run.postReplies()
                 await run.checkCi(run.config.merge.checks.wait)
                 // await run.rereview()
 
