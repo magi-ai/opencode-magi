@@ -143,35 +143,44 @@ export const merge: Tool = function (magi) {
 
               if (!skip) await run.postReviews()
 
-              if (verdict === "CHANGES_REQUESTED") {
-                await run.createSession()
+              if (verdict === "CHANGES_REQUESTED")
+                await run.editCycles(async () => {
+                  if (!run.state.editor?.sessionId) await run.createSession()
 
-                if (!run.state.worktree) await run.createWorktree()
+                  if (!run.state.worktree) await run.createWorktree()
 
-                const prevHeadSha = run.state.pr?.metadata?.head.sha
-                const edited = await run.edit()
+                  const prevHeadSha = run.state.pr?.metadata?.head.sha
+                  const reviewers = Object.entries(run.state.reviewers ?? {})
+                  const hasSessions =
+                    reviewers.length &&
+                    reviewers.every(([_, { sessionId }]) => sessionId)
+                  const edited = await run.edit()
 
-                await run.postReplies()
+                  await run.postReplies()
 
-                if (edited) await run.checkCi(run.config.merge.checks.wait)
-                if (skip) await run.createSessions()
+                  if (edited) await run.checkCi(run.config.merge.checks.wait)
+                  if (skip && hasSessions) await run.createSessions()
 
-                if (edited) {
-                  await run.classifyChecks(prevHeadSha)
-                  await run.rerunChecks()
-                  await run.checkExistingReviews()
-                }
+                  if (edited) {
+                    await run.classifyChecks(prevHeadSha)
+                    await run.rerunChecks()
+                    await run.checkExistingReviews()
+                  }
 
-                await run.fetchMergeContext()
+                  await run.fetchMergeContext()
 
-                if (!edited) await run.markRepliedReviewers()
+                  if (!edited) await run.markRepliedReviewers()
 
-                await run.review()
-                await run.validateFindings()
-                await run.reconsiderClose()
-                await run.resolveVerdict()
-                await run.postReviews()
-              }
+                  await run.review()
+                  await run.validateFindings()
+                  await run.reconsiderClose()
+
+                  const verdict = await run.resolveVerdict()
+
+                  await run.postReviews()
+
+                  return verdict
+                })
 
               await run.automate()
 

@@ -1,5 +1,42 @@
 import type { Merge } from "./merge"
+import type { PullRequestVerdict } from "@/tools/review"
 import { MagiError } from "@/magi"
+import { retry } from "@/utils"
+
+export async function editCycles(
+  this: Merge,
+  callback: (cycle: number) => Promise<PullRequestVerdict>,
+): Promise<void> {
+  this.context.abort.throwIfAborted()
+
+  const error = new Error("Continue edit cycle.")
+  const verdict = await retry<PullRequestVerdict>(
+    async (cycle) => {
+      const verdict = await callback(cycle)
+
+      if (verdict === "CHANGES_REQUESTED") throw error
+
+      return verdict
+    },
+    {
+      error: (e, count) => {
+        if (e !== error) throw e
+
+        this.magi.notify(
+          this.state.sessionId,
+          `Attempt ${count} failed to edit cycles for ${this.getLink()}. Retrying...`,
+        )
+      },
+      retries: this.config.merge.maxThreadResolutionCycles,
+    },
+  )
+
+  if (!verdict || verdict === "CHANGES_REQUESTED")
+    throw new MagiError(
+      "blocked",
+      `Reached maximum edit cycles for ${this.getLink()}.`,
+    )
+}
 
 export async function postReplies(this: Merge): Promise<void> {
   this.context.abort.throwIfAborted()
