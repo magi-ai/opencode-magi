@@ -54,6 +54,10 @@ export async function fetchMergeContext(this: Merge): Promise<void> {
 export async function markRepliedReviewers(this: Merge): Promise<void> {
   this.context.abort.throwIfAborted()
 
+  this.state = await this.magi.updateState(this.state.output, {
+    text: `Marking replied reviewers for ${this.getLink()}.`,
+  })
+
   if (!this.state.editor?.output)
     throw new MagiError("blocked", "Editor output not found.")
   if (!this.state.pr?.threads)
@@ -61,8 +65,8 @@ export async function markRepliedReviewers(this: Merge): Promise<void> {
   if (!this.state.reviewers)
     throw new MagiError("blocked", "Reviewers not found.")
 
-  const replied = new Set(
-    this.state.editor.output.responses.flatMap(({ commentId }) => {
+  const replied = this.state.editor.output.responses.flatMap(
+    ({ commentId }) => {
       const thread = this.state.pr!.threads!.find(({ comments }) =>
         comments.some(({ databaseId }) => databaseId === commentId),
       )
@@ -79,19 +83,22 @@ export async function markRepliedReviewers(this: Merge): Promise<void> {
           thread.comments.some(({ author }) => account === author?.login),
         )
         .map(([id]) => id)
-    }),
+    },
   )
 
-  if (!replied.size)
+  if (!replied.length)
     throw new MagiError("blocked", "No replied reviewers found.")
 
+  const reviewers = Object.fromEntries(
+    Object.keys(this.state.reviewers).map((id) => [
+      id,
+      { status: replied.includes(id) ? "reply" : "skip" },
+    ]),
+  )
+
   this.state = await this.magi.updateState(this.state.output, {
-    reviewers: Object.fromEntries(
-      Object.keys(this.state.reviewers).map((id) => [
-        id,
-        { status: replied.has(id) ? "reply" : "skip" },
-      ]),
-    ),
+    reviewers,
+    text: `Finished marking replied reviewers for ${this.getLink()}.`,
   })
 }
 
