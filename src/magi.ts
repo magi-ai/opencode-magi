@@ -72,6 +72,7 @@ export interface ReviewerState extends AgentState {
 
 export interface EditorState extends AgentState {
   author?: Config.Author
+  history?: EditOutput[]
   output?: EditOutput
 }
 

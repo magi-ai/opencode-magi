@@ -104,8 +104,16 @@ export async function edit(this: Merge): Promise<boolean> {
 
   if (!output) throw new MagiError("blocked", "Invalid output for editor.")
 
+  const prevOutput = this.state.editor?.output
+
   this.state = await this.magi.updateState(this.state.output, {
-    editor: { output },
+    editor: {
+      history: [
+        ...(this.state.editor?.history ?? []),
+        ...(prevOutput ? [prevOutput] : []),
+      ],
+      output,
+    },
     text: `Finished editing ${this.getLink()}.`,
   })
 
