@@ -51,5 +51,47 @@ function createContent(
     ...createMetaContent.call(this, input),
     ...createCheckContent.call(this),
     ...createReviewerContent.call(this),
+    ...createEditorContent.call(this),
   ]).join("\n")
+}
+
+function createEditorContent(this: Review): string[] {
+  if (!this.state.editor?.output) return []
+
+  const outputs = [
+    ...(this.state.editor.history ?? []),
+    this.state.editor.output,
+  ]
+  const lines = ["- **Editor**:"]
+
+  for (const [index, output] of outputs.entries()) {
+    const { commitMessage, commitSha, filesTouched, mode, responses } = output
+    const lines = [`  - **Cycle ${index + 1}**: ${toTitleCase(mode)}`]
+
+    if (commitSha)
+      lines.push(`    - **Commit**: \`${commitSha}\`: ${commitMessage}`)
+
+    if (filesTouched.length) {
+      lines.push("    - **Files touched**:")
+
+      for (const file of filesTouched) lines.push(`      - \`${file}\``)
+    }
+
+    if (responses.length) {
+      lines.push("    - **Responses**:")
+
+      for (const { action, body, commentId } of responses) {
+        const thread = this.state.pr?.threads?.find(({ comments }) =>
+          comments.some(({ databaseId }) => databaseId === commentId),
+        )
+        const prefix = thread
+          ? `${thread.path}:${thread.line ?? "N/A"}`
+          : commentId
+
+        lines.push(`      - **${toTitleCase(action)}** \`${prefix}\`: ${body}`)
+      }
+    }
+  }
+
+  return lines
 }
