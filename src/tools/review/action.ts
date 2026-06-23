@@ -48,16 +48,19 @@ export async function postReviews(this: Review) {
       this.config.account,
     )
     const graphql = this.magi.createGraphql(octokit)
+    const reviewers = Object.entries(this.state.reviewers).filter(
+      ([, { status }]) => status !== "skip",
+    )
 
     await Promise.all(
-      Object.values(this.state.reviewers).flatMap(({ output }) =>
+      reviewers.flatMap(([, { output }]) =>
         (output?.resolves ?? []).map(({ threadId }) =>
           graphql.resolveReviewThread({ threadId }),
         ),
       ),
     )
     await Promise.all(
-      Object.entries(this.state.reviewers).flatMap(([_, { output }]) =>
+      reviewers.flatMap(([, { output }]) =>
         (output?.followUps ?? []).map(({ body, commentId }) =>
           octokit.rest.pulls.createReplyForReviewComment({
             ...args,
@@ -72,12 +75,11 @@ export async function postReviews(this: Review) {
     const params: PullRequestReviewParams = { ...args, event }
 
     if (this.state.pr.verdict === "CHANGES_REQUESTED") {
-      const findings = Object.entries(this.state.reviewers).flatMap(
-        ([id, { output }]) =>
-          (output?.findings ?? output?.newFindings ?? []).map((finding) => ({
-            ...finding,
-            id,
-          })),
+      const findings = reviewers.flatMap(([id, { output }]) =>
+        (output?.findings ?? output?.newFindings ?? []).map((finding) => ({
+          ...finding,
+          id,
+        })),
       )
 
       if (!findings.length) {
@@ -111,9 +113,7 @@ export async function postReviews(this: Review) {
       )
 
       const contents = JSON.stringify(
-        Object.values(this.state.reviewers).flatMap<
-          PullRequestFinding | string
-        >(({ output }) => {
+        reviewers.flatMap<PullRequestFinding | string>(([, { output }]) => {
           if (!output || output.verdict === "APPROVED") return []
 
           if (output.verdict === "CLOSED") {
@@ -172,7 +172,7 @@ export async function postReviews(this: Review) {
       params.body ?? "",
       marker.stringify(
         ...filterEmpty(
-          Object.entries(this.state.reviewers).map(([id, { output }]) => {
+          reviewers.map(([id, { output }]) => {
             if (!output) return
 
             const body = output.comment

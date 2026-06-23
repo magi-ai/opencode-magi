@@ -6,7 +6,7 @@ import { MagiError } from "@/magi"
 import { Review } from "@/tools/review/review"
 import { createExecWithGitHubApiRetry, quote } from "@/utils"
 import { postReplies } from "./action"
-import { fetchMergeContext } from "./context"
+import { fetchMergeContext, markRepliedReviewers } from "./context"
 import { edit } from "./editor"
 import { createReport } from "./report"
 
@@ -78,6 +78,7 @@ export class Merge extends Review {
   public createReport = createReport
   public edit = edit
   public fetchMergeContext = fetchMergeContext
+  public markRepliedReviewers = markRepliedReviewers
   public postReplies = postReplies
 
   public async createSession() {

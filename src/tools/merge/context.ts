@@ -1,5 +1,8 @@
 import type { Merge } from "./merge"
-import type { PullRequestReviewThread } from "@/tools/review"
+import type {
+  PullRequestReviewMarker,
+  PullRequestReviewThread,
+} from "@/tools/review"
 import { MagiError } from "@/magi"
 import {
   getClosingIssues,
@@ -45,6 +48,51 @@ export async function fetchMergeContext(this: Merge) {
         : threads,
     },
     text: `Finished fetching merge context for ${this.getLink()}.`,
+  })
+}
+
+export async function markRepliedReviewers(this: Merge) {
+  this.context.abort.throwIfAborted()
+
+  if (!this.state.editor?.output)
+    throw new MagiError("blocked", "Editor output not found.")
+  if (!this.state.pr?.threads)
+    throw new MagiError("blocked", "PR threads not found.")
+  if (!this.state.reviewers)
+    throw new MagiError("blocked", "Reviewers not found.")
+
+  const replied = new Set(
+    this.state.editor.output.responses.flatMap(({ commentId }) => {
+      const thread = this.state.pr!.threads!.find(({ comments }) =>
+        comments.some(({ databaseId }) => databaseId === commentId),
+      )
+
+      if (!thread) return []
+
+      if (this.config.mode === "single") {
+        return thread.comments
+          .flatMap(({ body }) => marker.parse<PullRequestReviewMarker>(body))
+          .flatMap(({ reviewer }) => (reviewer ? [reviewer] : []))
+      }
+
+      return Object.entries(this.state.reviewers!)
+        .filter(([, { account }]) =>
+          thread.comments.some(({ author }) => account === author?.login),
+        )
+        .map(([id]) => id)
+    }),
+  )
+
+  if (!replied.size)
+    throw new MagiError("blocked", "No replied reviewers found.")
+
+  this.state = await this.magi.updateState(this.state.output, {
+    reviewers: Object.fromEntries(
+      Object.keys(this.state.reviewers).map((id) => [
+        id,
+        { status: replied.has(id) ? "reply" : "skip" },
+      ]),
+    ),
   })
 }
 

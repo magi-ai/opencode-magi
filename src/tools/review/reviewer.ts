@@ -66,17 +66,17 @@ export async function review(this: Review) {
                 `Missing previous review commit for reviewer ${id}.`,
               )
 
-            const label = `${status === "rereview" ? "re" : ""}review`
+            const rereview = status !== "initial"
+            const label = rereview ? "rereview" : "review"
 
             await this.magi.notify(
               this.state.sessionId,
               `Running ${label} for ${this.getLink()} with reviewer ${id}.`,
             )
 
-            const sha =
-              status === "initial"
-                ? this.state.pr.metadata.base.sha
-                : review!.commit_id!
+            const sha = rereview
+              ? (review?.commit_id ?? this.state.pr.metadata.base.sha)
+              : this.state.pr.metadata.base.sha
             const inlineCommentTargets =
               this.state.pr.inlineCommentTargets?.[sha] ?? {}
             const failedChecks = this.state.pr.checks.failed.filter(
@@ -163,19 +163,21 @@ export async function review(this: Review) {
             const prompt = await Prompt.init(
               this.magi,
               this.config,
-              `review/${status === "rereview" ? "rereview" : "review"}`,
+              `review/${rereview ? "rereview" : "review"}`,
             )
             const taskMessage = await prompt.create(
-              status === "rereview"
-                ? this.config.review.prompts?.rereview
-                : this.config.review.prompts?.review,
+              !rereview
+                ? this.config.review.prompts?.review
+                : this.config.review.prompts?.rereview,
               tags,
               omitNullish({
                 baseSha: this.state.pr.metadata.base.sha,
                 headSha: this.state.pr.metadata.head.sha,
                 owner: this.config.github.owner,
                 pr: this.number.toString(),
-                previousHeadSha: review?.commit_id,
+                previousHeadSha: rereview
+                  ? (review?.commit_id ?? this.state.pr.metadata.head.sha)
+                  : undefined,
                 repo: this.config.github.repo,
                 worktreePath: this.state.worktree.path,
               }),
@@ -326,7 +328,7 @@ export async function reconsiderClose(this: Review) {
             const sha =
               status === "initial"
                 ? this.state.pr.metadata.base.sha
-                : review!.commit_id!
+                : (review?.commit_id ?? this.state.pr.metadata.base.sha)
             const inlineCommentTargets =
               this.state.pr.inlineCommentTargets?.[sha] ?? {}
             const taskMessage = await prompt.create(
@@ -679,7 +681,7 @@ function validateInlineCommentTargets(
   output: ReviewOutput,
   inlineCommentTargets: { [key: string]: number[] },
 ) {
-  const target = status === "rereview" ? "newFindings" : "findings"
+  const target = status === "initial" ? "findings" : "newFindings"
   const findings = output[target] ?? []
 
   for (const [index, finding] of findings.entries()) {

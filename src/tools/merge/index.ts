@@ -143,9 +143,18 @@ export const merge: Tool = function (magi) {
                 if (edited) {
                   await run.classifyChecks(prevHeadSha)
                   await run.rerunChecks()
+                  await run.checkExistingReviews()
                 }
 
                 await run.fetchMergeContext()
+
+                if (!edited) await run.markRepliedReviewers()
+
+                await run.review()
+                await run.validateFindings()
+                await run.reconsiderClose()
+                await run.resolveVerdict()
+                await run.postReviews()
               }
 
               await run.automate()
