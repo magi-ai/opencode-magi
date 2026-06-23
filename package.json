@@ -66,6 +66,7 @@
     "@limegrass/eslint-plugin-import-alias": "^1.6.1",
     "@octokit/graphql-schema": "^15.26.1",
     "@octokit/plugin-throttling": "^11.0.3",
+    "@stylistic/eslint-plugin": "^5.10.0",
     "@types/node": "^25.9.1",
     "@types/picomatch": "^4.0.3",
     "@typescript/native-preview": "7.0.0-dev.20260525.1",

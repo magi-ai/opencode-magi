@@ -17,7 +17,7 @@ interface Finding {
   reviewer: string
 }
 
-export async function review(this: Review) {
+export async function review(this: Review): Promise<void> {
   this.context.abort.throwIfAborted()
 
   this.state = await this.magi.updateState(this.state.output, {
@@ -86,18 +86,17 @@ export async function review(this: Review) {
               ({ comments, isResolved }) => {
                 if (isResolved) return false
 
-                if (this.config.mode === "single") {
+                if (this.config.mode === "single")
                   return comments.some(({ body }) => {
                     const markers = marker.parse<PullRequestReviewMarker>(body)
                     const { reviewer } = markers[0] ?? {}
 
                     return reviewer === id
                   })
-                } else {
+                else
                   return comments.some(
                     ({ author }) => author?.login === account,
                   )
-                }
               },
             )
             const reviewContext = JSON.stringify(
@@ -231,7 +230,7 @@ export async function review(this: Review) {
   })
 }
 
-export async function validateFindings(this: Review) {
+export async function validateFindings(this: Review): Promise<void> {
   this.context.abort.throwIfAborted()
 
   if (!this.config.review.reviewers?.length)
@@ -256,7 +255,6 @@ export async function validateFindings(this: Review) {
   })
 
   const accepted = await collectAcceptedFindings.call(this, findings)
-
   const reviewers = Object.fromEntries(
     Object.entries(this.state.reviewers ?? {}).map(([id, reviewer]) => [
       id,
@@ -277,7 +275,7 @@ export async function validateFindings(this: Review) {
   })
 }
 
-export async function reconsiderClose(this: Review) {
+export async function reconsiderClose(this: Review): Promise<void> {
   this.context.abort.throwIfAborted()
 
   if (this.config.review.merge.approvalPolicy !== "unanimous") return
@@ -402,7 +400,6 @@ export async function reconsiderClose(this: Review) {
       ),
     ),
   )
-
   const findings = Object.entries(reviewers).flatMap(
     ([reviewer, { output }]) => {
       if (output?.verdict !== "CHANGES_REQUESTED") return []
@@ -414,6 +411,7 @@ export async function reconsiderClose(this: Review) {
       }))
     },
   )
+
   await notifyVerdictChanges.call(
     this,
     this.state.reviewers ?? {},
@@ -442,7 +440,10 @@ export async function reconsiderClose(this: Review) {
   })
 }
 
-async function collectAcceptedFindings(this: Review, findings: Finding[]) {
+async function collectAcceptedFindings(
+  this: Review,
+  findings: Finding[],
+): Promise<Set<string>> {
   const accepted = new Set<string>()
 
   if (!findings.length) return accepted
@@ -525,10 +526,9 @@ async function collectAcceptedFindings(this: Review, findings: Finding[]) {
                 seen.add(key)
               }
 
-              for (const key of expectedKeys) {
+              for (const key of expectedKeys)
                 if (!seen.has(key))
                   throw new Error(`Missing finding vote: ${key}.`)
-              }
 
               return parsed
             },
@@ -612,17 +612,13 @@ function transformState(
     discardedFindings: PullRequestFinding[]
   }>(
     (prev, finding, index) => {
-      if (accepted.has(`${id}:${index}`)) {
-        prev.acceptedFindings.push(finding)
-      } else {
-        prev.discardedFindings.push(finding)
-      }
+      if (accepted.has(`${id}:${index}`)) prev.acceptedFindings.push(finding)
+      else prev.discardedFindings.push(finding)
 
       return prev
     },
     { acceptedFindings: [], discardedFindings: [] },
   )
-
   const output: ReviewOutput = { ...reviewer.output }
 
   if (reviewer.output.findings) {
@@ -634,23 +630,20 @@ function transformState(
 
       reviewer.history = [...(reviewer.history ?? []), reviewer.output]
     }
+  } else if (acceptedFindings.length || reviewer.output.followUps?.length) {
+    output.newFindings = acceptedFindings
   } else {
-    if (acceptedFindings.length || reviewer.output.followUps?.length) {
-      output.newFindings = acceptedFindings
-    } else {
-      output.verdict = "APPROVED"
-      output.newFindings = []
+    output.verdict = "APPROVED"
+    output.newFindings = []
 
-      reviewer.history = [...(reviewer.history ?? []), reviewer.output]
-    }
+    reviewer.history = [...(reviewer.history ?? []), reviewer.output]
   }
 
-  if (discardedFindings.length) {
+  if (discardedFindings.length)
     output.discardedFindings = [
       ...(output.discardedFindings ?? []),
       ...discardedFindings,
     ]
-  }
 
   return { ...reviewer, output }
 }
@@ -660,7 +653,7 @@ async function notifyVerdictChanges(
   prev: { [key: string]: ReviewerState },
   next: { [key: string]: ReviewerState },
   reason: string,
-) {
+): Promise<void> {
   await Promise.all(
     Object.entries(next).map(async ([id, reviewer]) => {
       const prevVerdict = prev[id]?.output?.verdict
@@ -680,7 +673,7 @@ function validateInlineCommentTargets(
   status: string | undefined,
   output: ReviewOutput,
   inlineCommentTargets: { [key: string]: number[] },
-) {
+): void {
   const target = status === "initial" ? "findings" : "newFindings"
   const findings = output[target] ?? []
 
@@ -709,12 +702,11 @@ function validateInlineCommentTargets(
     } else {
       const startLine = finding.startLine ?? finding.line
 
-      for (let line = startLine; line <= finding.line; line++) {
+      for (let line = startLine; line <= finding.line; line++)
         if (!lines.includes(line))
           throw new Error(
             `${name} targets ${finding.path}:${line}, but line is not in a right-side PR diff hunk.`,
           )
-      }
     }
   }
 }

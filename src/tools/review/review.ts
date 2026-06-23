@@ -1,5 +1,6 @@
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { Octokit } from "octokit"
+import type { PullRequestVerdict } from "."
 import type { Config } from "@/config"
 import type { Graphql } from "@/graphql"
 import type { Magi, State } from "@/magi"
@@ -43,7 +44,7 @@ export class Review {
     config: Config.Root,
     context: ToolContext,
     options: ReviewOptions,
-  ) {
+  ): Promise<Review> {
     const url = `${config.github.url}/pull/${number}`
     const octokit = await magi.createOctokit(config, context.abort)
     const graphql = magi.createGraphql(octokit)
@@ -103,17 +104,17 @@ export class Review {
   public automate = automate
   public createReport = createReport
 
-  public async cleanup() {
+  public async cleanup(): Promise<void> {
     if (!this.state.worktree?.path) return
 
     await this.magi.deleteWorktree(this.state.worktree.path)
   }
 
-  public getLink() {
+  public getLink(): string {
     return `[#${this.state.pr!.number}](${this.state.pr!.url})`
   }
 
-  public async createSessions() {
+  public async createSessions(): Promise<void> {
     this.context.abort.throwIfAborted()
 
     if (!this.state.reviewers)
@@ -153,11 +154,9 @@ export class Review {
       operator,
       reviewers,
     })
-
-    return reviewers
   }
 
-  public async createWorktree() {
+  public async createWorktree(): Promise<void> {
     this.context.abort.throwIfAborted()
 
     this.state = await this.magi.updateState(this.state.output, {
@@ -177,23 +176,29 @@ export class Review {
     })
   }
 
-  public async resolveVerdict() {
+  public async resolveVerdict(): Promise<PullRequestVerdict> {
     if (!this.config.review.reviewers?.length)
       throw new MagiError("blocked", "No reviewers configured.")
     if (!this.state.reviewers)
       throw new MagiError("blocked", "Reviewers not found.")
 
-    const counts = { APPROVED: 0, CHANGES_REQUESTED: 0, CLOSED: 0 }
+    const counts = Object.entries(this.state.reviewers).reduce(
+      (prev, [id, { output }]) => {
+        if (!output)
+          throw new MagiError("blocked", `No output found for reviewer ${id}.`)
+
+        prev[output.verdict] += 1
+
+        return prev
+      },
+      {
+        APPROVED: 0,
+        CHANGES_REQUESTED: 0,
+        CLOSED: 0,
+      },
+    )
     const length = this.config.review.reviewers.length
     const threshold = Math.floor(length / 2) + 1
-
-    for (const [id, { output }] of Object.entries(this.state.reviewers)) {
-      if (!output)
-        throw new MagiError("blocked", `No output found for reviewer ${id}.`)
-
-      counts[output.verdict] += 1
-    }
-
     const majority = this.config.review.merge.approvalPolicy === "majority"
     const verdict =
       counts.CLOSED >= threshold

@@ -13,7 +13,7 @@ export class Worker<T> {
     this.limit = Math.max(1, Math.floor(limit))
   }
 
-  public async run(run: () => Promise<T>) {
+  public async run(run: () => Promise<T>): Promise<T> {
     const task = new Promise<T>((resolve, reject) => {
       this.tasks.push({ reject, resolve, run })
     })
@@ -23,7 +23,7 @@ export class Worker<T> {
     return task
   }
 
-  private drain() {
+  private drain(): void {
     while (this.active < this.limit) {
       const task = this.tasks.shift()
 

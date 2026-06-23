@@ -7,6 +7,7 @@ import type {
 import type { DocumentNode } from "graphql"
 import type { EditOutput } from "./tools/merge"
 import type { Config, ConfigValidationOptions } from "@/config"
+import type { Graphql } from "@/graphql"
 import type {
   PullRequestChecks,
   PullRequestClosingIssue,
@@ -142,7 +143,10 @@ export class Magi {
     this.exec = createExec(input.directory)
   }
 
-  public async getGhToken(account?: string, signal?: AbortSignal) {
+  public async getGhToken(
+    account?: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
     const result = await this.exec(
       command(
         "gh",
@@ -161,7 +165,7 @@ export class Magi {
     config: Config.Root,
     signal?: AbortSignal,
     account?: string,
-  ) {
+  ): Promise<Octokit> {
     const token = await this.getGhToken(account)
     const retries = config.github.retryApiAttempts
 
@@ -180,20 +184,27 @@ export class Magi {
     })
   }
 
-  public createGraphql(octokit: Octokit) {
+  public createGraphql(octokit: Octokit): Graphql {
     return graphql(<T, U>(document: DocumentNode, variables?: U) =>
       octokit.graphql<T>(print(document), variables as Dict),
     )
   }
 
-  public async notify(sessionID: string, text: string) {
+  public async notify(sessionID: string, text: string): Promise<void> {
     await this.input.client.session.promptAsync({
       parts: [{ synthetic: true, text, type: "text" }],
       sessionID,
     })
   }
 
-  public async clear(config: Config.Root) {
+  public async clear(config: Config.Root): Promise<{
+    branch: number
+    output: number
+    run: number
+    session: number
+    skipped: number
+    worktree: number
+  }> {
     const summary = {
       branch: 0,
       output: 0,
@@ -229,11 +240,13 @@ export class Magi {
     return summary
   }
 
-  public getPath(value: string) {
+  public getPath(value: string): string {
     return isAbsolute(value) ? value : join(this.input.directory, value)
   }
 
-  public async getConfig(require?: ConfigValidationOptions["require"]) {
+  public async getConfig(
+    require?: ConfigValidationOptions["require"],
+  ): Promise<Config.Root> {
     const config = await getConfig(this.input)
     const errors = await validateConfig(config, { exec: this.exec, require })
 
@@ -242,7 +255,7 @@ export class Magi {
     return config
   }
 
-  private async getStates(config: Config.Root) {
+  private async getStates(config: Config.Root): Promise<State[]> {
     const files = await Promise.all([
       this.getStateFiles(config.review.output),
       this.getStateFiles(config.triage.output),
@@ -255,11 +268,11 @@ export class Magi {
     )
   }
 
-  private async getState(dir: string) {
+  private async getState(dir: string): Promise<State> {
     return JSON.parse(await readFile(join(dir, "state.json"), "utf8")) as State
   }
 
-  private async getStateFiles(dir: string) {
+  private async getStateFiles(dir: string): Promise<string[]> {
     try {
       const entries = await readdir(this.getPath(dir), {
         recursive: true,
@@ -274,7 +287,7 @@ export class Magi {
     }
   }
 
-  private getAgents(state: State) {
+  private getAgents(state: State): AgentState[] {
     return filterEmpty([
       state.editor,
       state.creator,
@@ -290,10 +303,9 @@ export class Magi {
       State,
       "createdAt" | "id" | "output" | "status" | "updatedAt"
     >,
-  ) {
+  ): Promise<State> {
     const id = `run-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`
     const createdAt = new Date().toISOString()
-
     const state: State = {
       createdAt,
       id,
@@ -308,7 +320,7 @@ export class Magi {
     return state
   }
 
-  private async createStateFile(state: State) {
+  private async createStateFile(state: State): Promise<void> {
     await mkdir(state.output, { recursive: true })
     await writeFile(
       join(state.output, "state.json"),
@@ -316,12 +328,14 @@ export class Magi {
     )
   }
 
-  public async updateState(dir: string, next: DeepPartial<State>) {
+  public async updateState(
+    dir: string,
+    next: DeepPartial<State>,
+  ): Promise<State> {
     next.updatedAt = new Date().toISOString()
 
     const prev = await this.getState(dir)
     const state = merge<State>(prev, next)
-
     const values = [this.createStateFile(state)]
 
     if (next.text) values.push(this.notify(prev.sessionId, next.text))
@@ -331,7 +345,7 @@ export class Magi {
     return state
   }
 
-  private getSessionIds(state: State) {
+  private getSessionIds(state: State): string[] {
     return [
       state.sessionId,
       ...filterEmpty(this.getAgents(state).map(({ sessionId }) => sessionId)),
@@ -348,12 +362,11 @@ export class Magi {
       model: Config.Model | undefined
       permissions?: Config.Permissions
     },
-  ) {
+  ): Promise<string> {
     if (isArray(model) || !isObject(model)) throw new Error()
 
     const { id, variant } = model
     const [providerId, modelId] = id.split("/")
-
     const result = await this.input.client.session.create({
       model: {
         id: modelId!,
@@ -374,7 +387,7 @@ export class Magi {
     }
   }
 
-  public async promptSession(sessionID: string, text: string) {
+  public async promptSession(sessionID: string, text: string): Promise<string> {
     const result = await this.input.client.session.prompt({
       parts: [{ text, type: "text" }],
       sessionID,
@@ -395,18 +408,17 @@ export class Magi {
     }
   }
 
-  private async deleteSessions(state: State) {
+  private async deleteSessions(state: State): Promise<number> {
     const sessionIds = this.getSessionIds(state)
 
     let count = 0
 
-    for (const sessionID of sessionIds) {
+    for (const sessionID of sessionIds)
       try {
         await this.input.client.session.delete({ sessionID })
 
         count += 1
       } catch {}
-    }
 
     return count
   }
@@ -416,7 +428,7 @@ export class Magi {
     number: number,
     id: string,
     signal?: AbortSignal,
-  ) {
+  ): Promise<{ branch: string; path: string }> {
     const path = this.getPath(join(dir, number.toString(), id))
 
     try {
@@ -450,7 +462,7 @@ export class Magi {
     }
   }
 
-  public async deleteWorktree(value: string) {
+  public async deleteWorktree(value: string): Promise<number> {
     try {
       const path = this.getPath(value)
 
@@ -465,7 +477,7 @@ export class Magi {
     }
   }
 
-  private async deleteBranch(branch: string) {
+  private async deleteBranch(branch: string): Promise<number> {
     try {
       await this.exec(command("git", "branch", "-D", quote(branch)))
 
@@ -475,7 +487,7 @@ export class Magi {
     }
   }
 
-  private async deleteOutput(path: string) {
+  private async deleteOutput(path: string): Promise<number> {
     try {
       await rm(path, { force: true, recursive: true })
 

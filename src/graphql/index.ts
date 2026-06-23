@@ -59,7 +59,14 @@ function findConnection(value: unknown): Connection | undefined {
   return undefined
 }
 
-export function graphql<T>(requester: Requester<T>) {
+export function graphql<T>(
+  requester: Requester<T>,
+): BoundSdk & {
+  paginate: <T extends PageableSdk>(
+    req: T,
+    params: PaginateParams<T>,
+  ) => Promise<Awaited<ReturnType<T>>>
+} {
   const sdk = getSdk(requester)
   const bound = Object.fromEntries(
     Object.entries(sdk).map(([key, req]) => [key, req.bind(sdk)]),

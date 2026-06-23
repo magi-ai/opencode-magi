@@ -11,7 +11,7 @@ function overrideConfig(
   args: string[],
   dryRun = false,
   sync = false,
-) {
+): { config: Config.Root; dryRun: boolean; sync: boolean } {
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]!
     const value = args[index + 1]!
@@ -21,42 +21,55 @@ function overrideConfig(
     switch (arg) {
       case "--dry-run":
         dryRun = true
+
         break
       case "--sync":
         sync = true
+
         break
       case "--retry-api-attempts":
         config.github.retryApiAttempts = parseInt(value)
+
         break
       case "--language":
         config.language = value
+
         break
       case "--merge":
         config.review.automation.merge = true
+
         break
       case "--no-merge":
         config.review.automation.merge = false
+
         break
       case "--close":
         config.review.automation.close = true
+
         break
       case "--no-close":
         config.review.automation.close = false
+
         break
       case "--retry-failed-jobs":
         config.review.checks.retryFailedJobs = parseInt(value)
+
         break
       case "--concurrency-reviewers":
         config.review.concurrency.reviewers = parseInt(value)
+
         break
       case "--concurrency-runs":
         config.review.concurrency.runs = parseInt(value)
+
         break
       case "--wait-checks":
         config.review.checks.wait = true
+
         break
       case "--no-wait-checks":
         config.review.checks.wait = false
+
         break
     }
   }

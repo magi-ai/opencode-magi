@@ -23,7 +23,7 @@ export function resolvePermissions(
 ): PermissionRuleset | undefined {
   if (!permissions) return undefined
 
-  if (isString(permissions)) {
+  if (isString(permissions))
     return [
       "read",
       "edit",
@@ -42,32 +42,25 @@ export function resolvePermissions(
       pattern: "*",
       permission,
     }))
-  } else {
+  else
     return Object.entries(permissions).flatMap(([permission, rule]) => {
-      if (isString(rule)) {
-        return [{ action: rule, pattern: "*", permission }]
-      } else {
+      if (isString(rule)) return [{ action: rule, pattern: "*", permission }]
+      else
         return Object.entries(rule).map(([pattern, action]) => ({
           action,
           pattern,
           permission,
         }))
-      }
     })
-  }
 }
 
 function mergePermissions(
   base: Config.Permissions,
   override?: Config.Permissions,
 ): Config.Permissions {
-  if (!override) {
-    return base
-  } else if (isString(override) || isString(base)) {
-    return override
-  } else {
-    return merge(base, override)
-  }
+  if (!override) return base
+  else if (isString(override) || isString(base)) return override
+  else return merge(base, override)
 }
 
 function mergeAgent<T extends Config.Agent>(base: Config.Root, agent: T): T {
@@ -95,11 +88,8 @@ function resolveModel(
 
   if (!model) return undefined
 
-  if (isString(model)) {
-    return models.includes(model) ? { id: model } : undefined
-  } else {
-    return models.includes(model.id) ? model : undefined
-  }
+  if (isString(model)) return models.includes(model) ? { id: model } : undefined
+  else return models.includes(model.id) ? model : undefined
 }
 
 async function readConfig(path: string): Promise<Config.Root | undefined> {
@@ -126,11 +116,10 @@ export async function getConfig(input: PluginInput): Promise<Config.Root> {
   ])
   const results = filterEmpty(data)
 
-  if (!results.length) {
+  if (!results.length)
     throw new Error(
       `No Magi config found. Expected ${CONFIG_PATH.GLOBAL} or ${projectPath}.`,
     )
-  }
 
   const config = results.reduce(
     (prev, current) => merge<Config.Root>(prev, current),
@@ -139,7 +128,7 @@ export async function getConfig(input: PluginInput): Promise<Config.Root> {
 
   config.github.url = `https://${config.github.host}/${config.github.owner}/${config.github.repo}`
 
-  if (config.review.reviewers) {
+  if (config.review.reviewers)
     config.review.reviewers = config.review.reviewers.map((agent, index) => {
       const { id, model, ...rest } = mergeAgent(config, agent)
 
@@ -149,12 +138,11 @@ export async function getConfig(input: PluginInput): Promise<Config.Root> {
         model: resolveModel(models, model),
       }
     })
-  }
 
   config.merge.editor = mergeAgent(config, config.merge.editor)
   config.merge.editor.model = resolveModel(models, config.merge.editor.model)
 
-  if (config.triage.voters) {
+  if (config.triage.voters)
     config.triage.voters = config.triage.voters.map((agent, index) => {
       const { id, model, ...rest } = mergeAgent(config, agent)
 
@@ -164,7 +152,6 @@ export async function getConfig(input: PluginInput): Promise<Config.Root> {
         model: resolveModel(models, model),
       }
     })
-  }
 
   config.triage.creator = mergeAgent(config, config.triage.creator)
   config.triage.creator.model = resolveModel(

@@ -1,11 +1,11 @@
 import type { Dict } from "./index.type"
 import { filterEmpty } from "./array"
 
-export function quote(value: string) {
+export function quote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`
 }
 
-export function split(value: string) {
+export function split(value: string): string[] {
   return filterEmpty(value.split(/[\s,]+/))
 }
 
@@ -42,7 +42,7 @@ export const marker = {
       ),
     ) as T[]
   },
-  stringify(...values: Dict[]) {
+  stringify(...values: Dict[]): string {
     return values
       .map(
         (value) =>

@@ -6,7 +6,7 @@ import { Prompt } from "@/prompts"
 import { getMetadata } from "@/tools/review/check"
 import { command, filterDuplicates, filterEmpty, quote, retry } from "@/utils"
 
-export async function edit(this: Merge) {
+export async function edit(this: Merge): Promise<boolean> {
   this.context.abort.throwIfAborted()
 
   if (!this.state.editor?.sessionId)
@@ -163,7 +163,9 @@ export async function edit(this: Merge) {
   return output.mode === "EDITED" && !this.state.dryRun
 }
 
-async function getUnresolvedThreads(this: Merge) {
+async function getUnresolvedThreads(
+  this: Merge,
+): Promise<PullRequestReviewThread[]> {
   const data = await this.graphql.paginate(this.graphql.reviewThreads, {
     owner: this.config.github.owner,
     pr: this.number,

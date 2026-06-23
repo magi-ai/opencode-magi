@@ -18,7 +18,7 @@ const events = {
   CLOSED: "COMMENT",
 } as const
 
-export async function postReviews(this: Review) {
+export async function postReviews(this: Review): Promise<void> {
   this.context.abort.throwIfAborted()
 
   if (this.state.dryRun) return
@@ -116,11 +116,8 @@ export async function postReviews(this: Review) {
         reviewers.flatMap<PullRequestFinding | string>(([, { output }]) => {
           if (!output || output.verdict === "APPROVED") return []
 
-          if (output.verdict === "CLOSED") {
-            return [output.comment!]
-          } else {
-            return output.findings ?? output.newFindings ?? []
-          }
+          if (output.verdict === "CLOSED") return [output.comment!]
+          else return output.findings ?? output.newFindings ?? []
         }),
         null,
         2,
@@ -276,7 +273,7 @@ export async function postReviews(this: Review) {
   }
 }
 
-export async function automate(this: Review) {
+export async function automate(this: Review): Promise<void> {
   this.context.abort.throwIfAborted()
 
   if (!this.state.pr?.verdict)

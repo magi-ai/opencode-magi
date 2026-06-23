@@ -1,7 +1,11 @@
 import { cp, mkdir, readdir } from "node:fs/promises"
 import { dirname, join } from "node:path"
 
-async function copyData(src: string, dest: string, extensions: string[]) {
+async function copyData(
+  src: string,
+  dest: string,
+  extensions: string[],
+): Promise<void> {
   const entries = await readdir(src, { withFileTypes: true })
 
   await Promise.all(

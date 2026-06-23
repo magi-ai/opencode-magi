@@ -201,7 +201,7 @@ export interface ConfigValidationOptions {
 export async function validateConfig(
   config: Config.Root,
   { exec, require }: ConfigValidationOptions = {},
-) {
+): Promise<string[]> {
   const errors = [
     ...schemaErrors(config),
     ...requiredErrors(config, require),

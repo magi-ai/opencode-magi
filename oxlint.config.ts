@@ -14,6 +14,7 @@ export default defineConfig({
     "*.generated.ts",
   ],
   jsPlugins: [
+    "@stylistic/eslint-plugin",
     "eslint-plugin-unused-imports",
     "eslint-plugin-perfectionist",
     {
@@ -24,6 +25,7 @@ export default defineConfig({
   options: { typeAware: true },
   plugins: ["eslint", "typescript", "unicorn", "import", "vitest"],
   rules: {
+    curly: ["error", "multi", "consistent"],
     "no-console": ["warn", { allow: ["warn", "error"] }],
     "no-duplicate-imports": ["error", { allowSeparateTypeImports: true }],
     "no-empty": "off",
@@ -31,12 +33,57 @@ export default defineConfig({
     "no-useless-escape": "off",
     "no-var": "error",
 
+    "@stylistic/line-comment-position": ["error", { position: "above" }],
+    "@stylistic/no-floating-decimal": "error",
+    "@stylistic/padding-line-between-statements": [
+      "warn",
+      {
+        blankLine: "always",
+        next: [
+          "return",
+          "break",
+          "expression",
+          "import",
+          "export",
+          "block-like",
+          "class",
+          "interface",
+          "type",
+          "throw",
+        ],
+        prev: "*",
+      },
+      {
+        blankLine: "always",
+        next: "*",
+        prev: ["directive", "import", "export"],
+      },
+      ...["const", "let", "var", "function-overload"].map((statement) => ({
+        blankLine: "never",
+        next: statement,
+        prev: statement,
+      })),
+      ...[
+        "directive",
+        "import",
+        "export",
+        "expression",
+        "interface",
+        "type",
+      ].map((statement) => ({
+        blankLine: "any",
+        next: statement,
+        prev: statement,
+      })),
+    ],
+
     "typescript/await-thenable": "error",
     "typescript/ban-ts-comment": "off",
     "typescript/consistent-indexed-object-style": ["error", "index-signature"],
     "typescript/consistent-type-exports": "error",
     "typescript/consistent-type-imports": "error",
     "typescript/dot-notation": "warn",
+    "typescript/explicit-function-return-type": "error",
     "typescript/no-empty-object-type": "off",
     "typescript/no-explicit-any": "off",
     "typescript/no-extraneous-class": "error",
@@ -44,6 +91,7 @@ export default defineConfig({
     "typescript/no-for-in-array": "error",
     "typescript/no-implied-eval": "off",
     "typescript/no-import-type-side-effects": "error",
+    "typescript/no-inferrable-types": "warn",
     "typescript/no-misused-spread": "off",
     "typescript/no-non-null-asserted-nullish-coalescing": "error",
     "typescript/no-redundant-type-constituents": "off",

@@ -1,6 +1,11 @@
 import type {
+  PullRequestClosingIssue,
+  PullRequestComment,
+  PullRequestCommit,
   PullRequestInlineCommentTargets,
+  PullRequestReview,
   PullRequestReviewMarker,
+  PullRequestReviewThread,
   PullRequestVerdict,
 } from "./index.type"
 import type { Review } from "./review"
@@ -8,7 +13,7 @@ import type { ReviewerState } from "@/magi"
 import { MagiError } from "@/magi"
 import { command, filterDuplicates, filterEmpty, marker, quote } from "@/utils"
 
-export async function checkExistingReviews(this: Review) {
+export async function checkExistingReviews(this: Review): Promise<boolean> {
   this.context.abort.throwIfAborted()
 
   this.state = await this.magi.updateState(this.state.output, {
@@ -25,6 +30,7 @@ export async function checkExistingReviews(this: Review) {
     getCommits.call(this),
     getReviewThreads.call(this),
   ])
+
   this.state = await this.magi.updateState(this.state.output, {
     pr: { commits, reviews, threads },
   })
@@ -83,11 +89,8 @@ export async function checkExistingReviews(this: Review) {
         )
         const review = targetReviews.at(-1)
 
-        if (latestReviews.length) {
-          return [id, { review, status: "skip" }]
-        } else {
-          return [id, { review, status: "rereview" }]
-        }
+        if (latestReviews.length) return [id, { review, status: "skip" }]
+        else return [id, { review, status: "rereview" }]
       }
     }),
   )
@@ -142,7 +145,7 @@ export async function checkExistingReviews(this: Review) {
   return skip
 }
 
-export async function fetchReviewContext(this: Review) {
+export async function fetchReviewContext(this: Review): Promise<void> {
   this.context.abort.throwIfAborted()
 
   this.state = await this.magi.updateState(this.state.output, {
@@ -166,7 +169,7 @@ export async function fetchReviewContext(this: Review) {
   })
 }
 
-export async function getComments(this: Review) {
+export async function getComments(this: Review): Promise<PullRequestComment[]> {
   return await this.octokit.paginate(this.octokit.rest.issues.listComments, {
     issue_number: this.number,
     owner: this.config.github.owner,
@@ -174,7 +177,7 @@ export async function getComments(this: Review) {
   })
 }
 
-async function getReviews(this: Review) {
+async function getReviews(this: Review): Promise<PullRequestReview[]> {
   return await this.octokit.paginate(this.octokit.rest.pulls.listReviews, {
     owner: this.config.github.owner,
     pull_number: this.number,
@@ -182,7 +185,7 @@ async function getReviews(this: Review) {
   })
 }
 
-async function getCommits(this: Review) {
+async function getCommits(this: Review): Promise<PullRequestCommit[]> {
   return await this.octokit.paginate(this.octokit.rest.pulls.listCommits, {
     owner: this.config.github.owner,
     pull_number: this.number,
@@ -190,7 +193,9 @@ async function getCommits(this: Review) {
   })
 }
 
-export async function getClosingIssues(this: Review) {
+export async function getClosingIssues(
+  this: Review,
+): Promise<PullRequestClosingIssue[]> {
   const data = await this.graphql.paginate(this.graphql.closingIssues, {
     owner: this.config.github.owner,
     pr: this.number,
@@ -205,7 +210,9 @@ export async function getClosingIssues(this: Review) {
   )
 }
 
-export async function getReviewThreads(this: Review) {
+export async function getReviewThreads(
+  this: Review,
+): Promise<PullRequestReviewThread[]> {
   const data = await this.graphql.paginate(this.graphql.reviewThreads, {
     owner: this.config.github.owner,
     pr: this.number,
@@ -222,8 +229,8 @@ export async function getReviewThreads(this: Review) {
 
 export async function getInlineCommentTargets(
   this: Review,
-  conflict: boolean = false,
-) {
+  conflict = false,
+): Promise<PullRequestInlineCommentTargets> {
   if (!this.state.reviewers)
     throw new MagiError("blocked", "Reviewers not found.")
   if (!this.state.pr?.metadata)
@@ -231,7 +238,10 @@ export async function getInlineCommentTargets(
   if (!this.state.worktree)
     throw new MagiError("blocked", "PR worktree not found.")
 
-  const get = async (from: [string, string], to: [string, string]) => {
+  const get = async (
+    from: [string, string],
+    to: [string, string],
+  ): Promise<{ [key: string]: number[] }> => {
     const inlineCommentTargets: { [key: string]: number[] } = {}
     const [fromSource, fromSha] = from
     const [toSource, toSha] = to
@@ -304,13 +314,12 @@ export async function getInlineCommentTargets(
 
         if (value === "/dev/null") continue
 
-        if (value.startsWith('"') && value.endsWith('"')) {
+        if (value.startsWith('"') && value.endsWith('"'))
           try {
             value = JSON.parse(value)
           } catch {
             value = value.slice(1, -1)
           }
-        }
 
         path = value.startsWith("b/") ? value.slice(2) : value
         line = undefined
@@ -340,7 +349,6 @@ export async function getInlineCommentTargets(
 
     return inlineCommentTargets
   }
-
   const baseSha = this.state.pr.metadata.base.sha
   const headSha = this.state.pr.metadata.head.sha
   const inlineCommentTargets: PullRequestInlineCommentTargets = {
@@ -358,12 +366,11 @@ export async function getInlineCommentTargets(
 
     const previousHeadSha = review.commit_id
 
-    if (!inlineCommentTargets[previousHeadSha]) {
+    if (!inlineCommentTargets[previousHeadSha])
       inlineCommentTargets[previousHeadSha] = await get(
         ["head", previousHeadSha],
         ["head", headSha],
       )
-    }
 
     if (!conflict) continue
 
@@ -376,7 +383,7 @@ export async function getInlineCommentTargets(
   return inlineCommentTargets
 }
 
-async function hasCommit(this: Review, sha: string) {
+async function hasCommit(this: Review, sha: string): Promise<boolean> {
   if (!this.state.worktree)
     throw new MagiError("blocked", "PR worktree not found.")
 
@@ -398,23 +405,24 @@ async function hasCommit(this: Review, sha: string) {
 function getMergeInlineCommentTargets(
   left: { [key: string]: number[] },
   right: { [key: string]: number[] },
-) {
+): { [key: string]: number[] } {
   const inlineCommentTargets: { [key: string]: number[] } = {}
 
   for (const [path, lines] of [
     ...Object.entries(left),
     ...Object.entries(right),
-  ]) {
+  ])
     inlineCommentTargets[path] = filterDuplicates([
       ...(inlineCommentTargets[path] ?? []),
       ...lines,
     ])
-  }
 
   return inlineCommentTargets
 }
 
-export async function getConflicts(this: Review) {
+export async function getConflicts(
+  this: Review,
+): Promise<undefined | { [key: string]: string }> {
   if (!this.state.pr?.metadata)
     throw new MagiError("blocked", "PR metadata not found.")
   if (!this.state.worktree)
@@ -463,18 +471,16 @@ export async function getConflicts(this: Review) {
           if (
             !/^(?:added|changed) in both$/.test(acc.header) &&
             !/^removed in (?:local|remote)$/.test(acc.header)
-          ) {
+          )
             return acc
-          }
 
           const file = line.match(
             /^  (?:base|our|their)\s+\d+\s+[0-9a-f]+\s+(.+)$/,
           )?.[1]
           const entry = acc.entries.at(-1)
 
-          if (file && entry?.[0] !== file) {
+          if (file && entry?.[0] !== file)
             acc.entries.push([file, [acc.header]])
-          }
 
           acc.entries.at(-1)?.[1].push(line)
 

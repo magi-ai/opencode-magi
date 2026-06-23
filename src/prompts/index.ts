@@ -16,7 +16,11 @@ export class Prompt {
     private validateSchema: Dict | undefined,
   ) {}
 
-  static async init(magi: Magi, config: Config.Root, dir: string) {
+  static async init(
+    magi: Magi,
+    config: Config.Root,
+    dir: string,
+  ): Promise<Prompt> {
     const url = new URL(dir, import.meta.url)
 
     let validateSchema: Dict | undefined
@@ -34,7 +38,7 @@ export class Prompt {
     taskPath: string | undefined,
     tags: PromptTag[],
     values: { [key: string]: string },
-  ) {
+  ): Promise<string> {
     const [task, ...rest] = await Promise.all([
       readFile(
         taskPath ? this.magi.getPath(taskPath) : join(this.pathname, "task.md"),
@@ -63,7 +67,7 @@ export class Prompt {
     )
   }
 
-  public async repair() {
+  public async repair(): Promise<string> {
     const instructions = [
       "Your previous output did not match the required schema. Regenerate the result.",
       "Return only a JSON object matching the output contract below. Do not include analysis, explanation, apologies, markdown, or any text before or after the JSON object.",
@@ -104,11 +108,10 @@ export class Prompt {
         if (candidate) candidates.unshift(candidate)
       }
 
-      for (const candidate of candidates) {
+      for (const candidate of candidates)
         try {
           return JSON.parse(candidate)
         } catch {}
-      }
     }
 
     return {}

@@ -60,7 +60,7 @@ export function createExecWithGitHubApiRetry(
   delay = 1_000,
 ): Exec {
   return async (command, options) => {
-    for (let attempt = 0; ; attempt += 1) {
+    for (let attempt = 0; ; attempt += 1)
       try {
         return await exec(command, options)
       } catch (e) {
@@ -68,9 +68,8 @@ export function createExecWithGitHubApiRetry(
           attempt >= retryAttempts ||
           !isGitHubCommand(command) ||
           !isRateLimitError(e)
-        ) {
+        )
           throw e
-        }
 
         const ms = delay * 2 ** attempt
 
@@ -92,6 +91,5 @@ export function createExecWithGitHubApiRetry(
           })
         }
       }
-    }
   }
 }

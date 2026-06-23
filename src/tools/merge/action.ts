@@ -1,7 +1,7 @@
 import type { Merge } from "./merge"
 import { MagiError } from "@/magi"
 
-export async function postReplies(this: Merge) {
+export async function postReplies(this: Merge): Promise<void> {
   this.context.abort.throwIfAborted()
 
   if (this.state.dryRun) return

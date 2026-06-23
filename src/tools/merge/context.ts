@@ -13,7 +13,7 @@ import {
 } from "@/tools/review/context"
 import { marker } from "@/utils"
 
-export async function fetchMergeContext(this: Merge) {
+export async function fetchMergeContext(this: Merge): Promise<void> {
   this.context.abort.throwIfAborted()
 
   if (!this.state.editor?.output)
@@ -51,7 +51,7 @@ export async function fetchMergeContext(this: Merge) {
   })
 }
 
-export async function markRepliedReviewers(this: Merge) {
+export async function markRepliedReviewers(this: Merge): Promise<void> {
   this.context.abort.throwIfAborted()
 
   if (!this.state.editor?.output)
@@ -69,11 +69,10 @@ export async function markRepliedReviewers(this: Merge) {
 
       if (!thread) return []
 
-      if (this.config.mode === "single") {
+      if (this.config.mode === "single")
         return thread.comments
           .flatMap(({ body }) => marker.parse<PullRequestReviewMarker>(body))
           .flatMap(({ reviewer }) => (reviewer ? [reviewer] : []))
-      }
 
       return Object.entries(this.state.reviewers!)
         .filter(([, { account }]) =>
@@ -133,7 +132,10 @@ function createSyntheticThreads(this: Merge): PullRequestReviewThread[] {
   }))
 }
 
-function addSyntheticReplies(this: Merge, threads: PullRequestReviewThread[]) {
+function addSyntheticReplies(
+  this: Merge,
+  threads: PullRequestReviewThread[],
+): PullRequestReviewThread[] {
   return threads.map((thread) => ({
     ...thread,
     comments: [

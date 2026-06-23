@@ -21,7 +21,7 @@ export class Merge extends Review {
     config: Config.Root,
     context: ToolContext,
     options: MergeOptions,
-  ) {
+  ): Promise<Merge> {
     const url = `${config.github.url}/pull/${number}`
     const octokit = await magi.createOctokit(config, context.abort)
     const graphql = magi.createGraphql(octokit)
@@ -81,7 +81,7 @@ export class Merge extends Review {
   public markRepliedReviewers = markRepliedReviewers
   public postReplies = postReplies
 
-  public async createSession() {
+  public async createSession(): Promise<void> {
     this.context.abort.throwIfAborted()
 
     if (!this.state.editor) throw new MagiError("blocked", "Editor not found.")
@@ -105,7 +105,5 @@ export class Merge extends Review {
       editor,
       text: `Finished creating editor session for ${this.getLink()}.`,
     })
-
-    return editor
   }
 }

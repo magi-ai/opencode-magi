@@ -1,10 +1,11 @@
 import type { Review } from "./review"
+import type { State } from "@/magi"
 import { writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { MagiError } from "@/magi"
 import { filterEmpty, toTitleCase } from "@/utils"
 
-export async function createReport(this: Review, e?: unknown) {
+export async function createReport(this: Review, e?: unknown): Promise<State> {
   if (!e) {
     const status = "completed"
     const text = createContent.call(this, { status })
@@ -40,7 +41,7 @@ export async function createReport(this: Review, e?: unknown) {
 function createContent(
   this: Review,
   input: { error?: string; status: string },
-) {
+): string {
   return filterEmpty([
     ...createMetaContent.call(this, input),
     ...createCheckContent.call(this),
@@ -51,7 +52,7 @@ function createContent(
 export function createMetaContent(
   this: Review,
   input: { error?: string; status: string },
-) {
+): (null | string | undefined)[] {
   const rows: (null | string | undefined)[] = [
     `- **Pull Request:** ${this.getLink()}`,
     `- **Mode**: ${toTitleCase(this.config.mode)}`,
@@ -59,9 +60,8 @@ export function createMetaContent(
     `- **Status**: ${toTitleCase(input.status)}`,
   ]
 
-  if (this.state.pr?.verdict) {
+  if (this.state.pr?.verdict)
     rows.push(`- **Verdict**: ${this.state.pr.verdict}`)
-  }
 
   if (this.state.text) rows.push(`- **Last action**: ${this.state.text}`)
   if (input.error) rows.push(`- **Error**: ${input.error}`)
@@ -69,7 +69,7 @@ export function createMetaContent(
   return rows
 }
 
-export function createCheckContent(this: Review) {
+export function createCheckContent(this: Review): string[] {
   const checks = this.state.pr?.checks
 
   if (!checks) return []
@@ -94,7 +94,7 @@ export function createCheckContent(this: Review) {
     })),
   ]
 
-  if (failures.length) {
+  if (failures.length)
     return [
       "- **Check**: Failure",
       ...failures.flatMap(({ comments, detail, name }) => [
@@ -105,12 +105,10 @@ export function createCheckContent(this: Review) {
         ),
       ]),
     ]
-  } else {
-    return ["- **Check**: Pass"]
-  }
+  else return ["- **Check**: Pass"]
 }
 
-export function createReviewerContent(this: Review) {
+export function createReviewerContent(this: Review): string[] {
   const reviewers = Object.entries(this.state.reviewers ?? {})
 
   if (!reviewers.length) return []
@@ -134,9 +132,8 @@ export function createReviewerContent(this: Review) {
           lines.push(`    - ${output.comment ?? review?.body}`)
 
         for (const output of history ?? []) {
-          if (output.verdict === "CLOSED") {
+          if (output.verdict === "CLOSED")
             lines.push(`    - ~~${output.comment ?? review?.body}~~`)
-          }
 
           if (output.verdict === "CHANGES_REQUESTED") {
             const findings = output.findings ?? output.newFindings ?? []

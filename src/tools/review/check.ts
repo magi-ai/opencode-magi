@@ -3,6 +3,7 @@ import type {
   PullRequestCheck,
   PullRequestChecks,
   PullRequestClassifiedChecks,
+  PullRequestMetadata,
 } from "./index.type"
 import type { Review } from "./review"
 import picomatch from "picomatch"
@@ -19,31 +20,30 @@ import {
 } from "@/utils"
 
 const ci = {
-  isExcluded(exclude: string[], { name }: PullRequestCheck) {
+  isExcluded(exclude: string[], { name }: PullRequestCheck): boolean {
     return exclude.some((pattern) => {
       if (
         pattern.startsWith("/") &&
         pattern.endsWith("/") &&
         pattern.length > 1
-      ) {
+      )
         return new RegExp(pattern.slice(1, -1)).test(name)
-      }
 
       return pattern === name
     })
   },
-  isFailed(check: PullRequestCheck) {
+  isFailed(check: PullRequestCheck): boolean {
     return check.bucket === "fail" || check.state === "FAILURE"
   },
-  isPassed(check: PullRequestCheck) {
+  isPassed(check: PullRequestCheck): boolean {
     return check.bucket === "pass" || check.state === "SUCCESS"
   },
-  isPending(check: PullRequestCheck) {
+  isPending(check: PullRequestCheck): boolean {
     return !this.isFailed(check) && !this.isPassed(check)
   },
 }
 
-export async function checkPr(this: Review) {
+export async function checkPr(this: Review): Promise<void> {
   this.context.abort.throwIfAborted()
 
   await this.magi.updateState(this.state.output, {
@@ -59,10 +59,9 @@ export async function checkPr(this: Review) {
 
   const errors: string[] = []
 
-  if (this.config.review.safety.allowAuthors.length) {
+  if (this.config.review.safety.allowAuthors.length)
     if (!this.config.review.safety.allowAuthors.includes(metadata.user.login))
       errors.push(`Author is not allowed: ${metadata.user.login}.`)
-  }
 
   if (this.config.review.safety.requiredLabels.length) {
     const missingLabels = this.config.review.safety.requiredLabels.filter(
@@ -76,11 +75,10 @@ export async function checkPr(this: Review) {
   if (
     isNumber(this.config.review.safety.maxChangedFiles) &&
     metadata.changed_files > this.config.review.safety.maxChangedFiles
-  ) {
+  )
     errors.push(
       `Changed files exceed limit: ${metadata.changed_files} > ${this.config.review.safety.maxChangedFiles}.`,
     )
-  }
 
   if (this.config.review.safety.blockedPaths.length) {
     const isBlocked = picomatch(this.config.review.safety.blockedPaths, {
@@ -92,9 +90,8 @@ export async function checkPr(this: Review) {
       errors.push(`Blocked paths changed: ${blocked.join(", ")}.`)
   }
 
-  if (errors.length) {
+  if (errors.length)
     throw new MagiError("blocked", `PR is safety blocked. ${errors.join(" ")}`)
-  }
 
   this.state = await this.magi.updateState(this.state.output, {
     pr: { files, metadata },
@@ -105,7 +102,7 @@ export async function checkPr(this: Review) {
 export async function checkCi(
   this: Review,
   wait = this.config.review.checks.wait,
-) {
+): Promise<void> {
   this.context.abort.throwIfAborted()
 
   this.state = await this.magi.updateState(this.state.output, {
@@ -122,7 +119,10 @@ export async function checkCi(
   })
 }
 
-export async function classifyChecks(this: Review, baseSha?: string) {
+export async function classifyChecks(
+  this: Review,
+  baseSha?: string,
+): Promise<void> {
   this.context.abort.throwIfAborted()
 
   if (!this.state.pr?.checks?.failed.length) return
@@ -251,7 +251,7 @@ export async function classifyChecks(this: Review, baseSha?: string) {
   })
 }
 
-export async function rerunChecks(this: Review) {
+export async function rerunChecks(this: Review): Promise<void> {
   this.context.abort.throwIfAborted()
 
   if (!this.state.pr?.checks)
@@ -352,7 +352,9 @@ export async function rerunChecks(this: Review) {
   })
 }
 
-export async function getMetadata(this: Review) {
+export async function getMetadata(
+  this: Review,
+): Promise<{ files: string[]; metadata: PullRequestMetadata }> {
   const [{ data }, files] = await Promise.all([
     this.octokit.rest.pulls.get({
       owner: this.config.github.owner,
@@ -369,7 +371,7 @@ export async function getMetadata(this: Review) {
   return { files: files.map(({ filename }) => filename), metadata: data }
 }
 
-async function getChecks(this: Review) {
+async function getChecks(this: Review): Promise<PullRequestChecks> {
   const fields = "name,state,bucket,link,workflow"
   const checks: PullRequestChecks = {
     excluded: [],
@@ -420,7 +422,7 @@ async function getChecks(this: Review) {
   return checks
 }
 
-async function getCheckLog(this: Review, id: string) {
+async function getCheckLog(this: Review, id: string): Promise<string> {
   const log = await this.exec(
     command(
       "gh",
@@ -445,7 +447,7 @@ async function getCheckLog(this: Review, id: string) {
   )
 }
 
-async function rerunCheck(this: Review, id: string) {
+async function rerunCheck(this: Review, id: string): Promise<void> {
   await this.exec(
     command(
       "gh",
@@ -460,7 +462,7 @@ async function rerunCheck(this: Review, id: string) {
   )
 }
 
-async function watchChecks(this: Review) {
+async function watchChecks(this: Review): Promise<void> {
   try {
     await this.exec(
       command(
