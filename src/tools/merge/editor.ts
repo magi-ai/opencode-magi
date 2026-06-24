@@ -117,6 +117,27 @@ export async function edit(this: Merge): Promise<boolean> {
     text: `Finished editing ${this.getLink()}.`,
   })
 
+  await this.magi.notify(
+    this.state.sessionId,
+    filterEmpty([
+      `Editor ${output.mode === "EDITED" ? "edited" : "replied to"} ${this.getLink()}.`,
+      output.commitSha
+        ? `Commit: ${output.commitSha}${output.commitMessage ? ` ${output.commitMessage}` : ""}`
+        : undefined,
+      output.filesTouched.length
+        ? `Files touched:\n${output.filesTouched.map((file) => `- ${file}`).join("\n")}`
+        : undefined,
+      output.responses.length
+        ? `Responses:\n${output.responses
+            .map(
+              ({ action, body, commentId }) =>
+                `- ${action} comment ${commentId}: ${body}`,
+            )
+            .join("\n")}`
+        : undefined,
+    ]).join("\n\n"),
+  )
+
   if (output.mode === "EDITED") {
     if (!this.state.editor?.account)
       throw new MagiError("blocked", "Editor account not found.")

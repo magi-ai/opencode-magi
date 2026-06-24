@@ -69,7 +69,7 @@ function createEditorContent(this: Review): string[] {
     const lines = [`  - **Cycle ${index + 1}**: ${toTitleCase(mode)}`]
 
     if (commitSha)
-      lines.push(`    - **Commit**: \`${commitSha}\`: ${commitMessage}`)
+      lines.push(`    - **Commit**: \`${commitSha}\` ${commitMessage}`)
 
     if (filesTouched.length) {
       lines.push("    - **Files touched**:")
