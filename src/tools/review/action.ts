@@ -1,4 +1,8 @@
-import type { PullRequestFinding, PullRequestReviewParams } from "./index.type"
+import type {
+  PullRequestAutomationResult,
+  PullRequestFinding,
+  PullRequestReviewParams,
+} from "./index.type"
 import type { Review } from "./review"
 import type { ReviewerState } from "@/magi"
 import { MagiError } from "@/magi"
@@ -293,18 +297,20 @@ export async function postReviews(this: Review): Promise<void> {
   }
 }
 
-export async function automate(this: Review): Promise<void> {
+export async function automate(
+  this: Review,
+): Promise<PullRequestAutomationResult> {
   this.context.abort.throwIfAborted()
 
   if (!this.state.pr?.verdict)
     throw new MagiError("blocked", "PR verdict not found.")
 
-  if (!["APPROVED", "CLOSED"].includes(this.state.pr.verdict)) return
+  if (!["APPROVED", "CLOSED"].includes(this.state.pr.verdict)) return "skipped"
 
   const automation = this.config[this.state.command].automation
   const action = this.state.pr.verdict === "APPROVED" ? "merge" : "close"
 
-  if (!automation[action]) return
+  if (!automation[action]) return "skipped"
 
   const account = this.state.operator!.account!
 
@@ -320,7 +326,7 @@ export async function automate(this: Review): Promise<void> {
         text: `Skipped merge automation for ${this.getLink()}: unresolved CI checks remain.`,
       })
 
-      return
+      return "skipped"
     }
   }
 
@@ -329,7 +335,7 @@ export async function automate(this: Review): Promise<void> {
       text: `Skipped ${action} automation for ${this.getLink()} during dry run.`,
     })
 
-    return
+    return "skipped"
   }
 
   this.state = await this.magi.updateState(this.state.output, {
@@ -366,4 +372,8 @@ export async function automate(this: Review): Promise<void> {
       output.trim() || undefined,
     ]).join("\n"),
   })
+
+  if (action === "close") return "closed"
+
+  return this.config.review.merge.queue ? "queued" : "submitted"
 }

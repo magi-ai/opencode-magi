@@ -30,6 +30,13 @@ export interface PullRequestClassifiedChecks {
   [key: string]: { comment: string; scope: boolean }
 }
 
+export type PullRequestAutomationResult =
+  | "closed"
+  | "dequeued"
+  | "queued"
+  | "skipped"
+  | "submitted"
+
 export interface PullRequestFinding {
   body: string
   line: number
