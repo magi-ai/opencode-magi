@@ -7,7 +7,6 @@ import { MagiError } from "@/magi"
 import {
   getClosingIssues,
   getComments,
-  getConflicts,
   getInlineCommentTargets,
   getReviewThreads,
 } from "@/tools/review/context"
@@ -24,21 +23,16 @@ export async function fetchMergeContext(this: Merge): Promise<void> {
     text: `Fetching merge context for ${this.getLink()}.`,
   })
 
-  const [comments, conflicts, issues, threads] = await Promise.all([
+  const [comments, issues, threads] = await Promise.all([
     getComments.call(this),
-    getConflicts.call(this),
     getClosingIssues.call(this),
     getReviewThreads.call(this),
   ])
-  const inlineCommentTargets = await getInlineCommentTargets.call(
-    this,
-    !!conflicts,
-  )
+  const inlineCommentTargets = await getInlineCommentTargets.call(this)
 
   this.state = await this.magi.updateState(this.state.output, {
     pr: {
       comments,
-      conflicts,
       inlineCommentTargets,
       issues,
       threads: this.state.dryRun

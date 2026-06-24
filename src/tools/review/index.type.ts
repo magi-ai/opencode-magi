@@ -101,10 +101,6 @@ export interface PullRequestClosingIssue extends Omit<
   comments: ExpectNode<ExpectNode<ClosingIssuesQuery>["comments"]>[]
 }
 
-export interface PullRequestConflicts {
-  [path: string]: string
-}
-
 export interface PullRequestReviewThread extends Omit<
   ExpectNode<ReviewThreadsQuery>,
   "comments"

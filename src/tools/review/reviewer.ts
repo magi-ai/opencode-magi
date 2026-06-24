@@ -142,16 +142,6 @@ export async function review(this: Review): Promise<void> {
               tags.push(["unresolved_threads", unresolvedThreadsContext])
             }
 
-            if (this.state.pr.conflicts) {
-              const mergeConflictContext = JSON.stringify(
-                this.state.pr.conflicts,
-                null,
-                2,
-              )
-
-              tags.push(["merge_conflict", mergeConflictContext])
-            }
-
             if (failedChecks.length) {
               const ciFailureContext = JSON.stringify(failedChecks, null, 2)
 

@@ -11,7 +11,7 @@ import type {
 import type { Review } from "./review"
 import type { ReviewerState } from "@/magi"
 import { MagiError } from "@/magi"
-import { command, filterDuplicates, filterEmpty, marker, quote } from "@/utils"
+import { command, filterEmpty, marker, quote } from "@/utils"
 
 export async function checkExistingReviews(this: Review): Promise<boolean> {
   this.context.abort.throwIfAborted()
@@ -152,19 +152,15 @@ export async function fetchReviewContext(this: Review): Promise<void> {
     text: `Fetching review context for ${this.getLink()}.`,
   })
 
-  const [comments, conflicts, issues, threads] = await Promise.all([
+  const [comments, issues, threads] = await Promise.all([
     getComments.call(this),
-    getConflicts.call(this),
     getClosingIssues.call(this),
     getReviewThreads.call(this),
   ])
-  const inlineCommentTargets = await getInlineCommentTargets.call(
-    this,
-    !!conflicts,
-  )
+  const inlineCommentTargets = await getInlineCommentTargets.call(this)
 
   this.state = await this.magi.updateState(this.state.output, {
-    pr: { comments, conflicts, inlineCommentTargets, issues, threads },
+    pr: { comments, inlineCommentTargets, issues, threads },
     text: `Finished fetching review context for ${this.getLink()}.`,
   })
 }
@@ -229,7 +225,6 @@ export async function getReviewThreads(
 
 export async function getInlineCommentTargets(
   this: Review,
-  conflict = false,
 ): Promise<PullRequestInlineCommentTargets> {
   if (!this.state.reviewers)
     throw new MagiError("blocked", "Reviewers not found.")
@@ -371,13 +366,6 @@ export async function getInlineCommentTargets(
         ["head", previousHeadSha],
         ["head", headSha],
       )
-
-    if (!conflict) continue
-
-    inlineCommentTargets[previousHeadSha] = getMergeInlineCommentTargets(
-      inlineCommentTargets[previousHeadSha],
-      inlineCommentTargets[baseSha]!,
-    )
   }
 
   return inlineCommentTargets
@@ -400,96 +388,4 @@ async function hasCommit(this: Review, sha: string): Promise<boolean> {
   } catch {
     return false
   }
-}
-
-function getMergeInlineCommentTargets(
-  left: { [key: string]: number[] },
-  right: { [key: string]: number[] },
-): { [key: string]: number[] } {
-  const inlineCommentTargets: { [key: string]: number[] } = {}
-
-  for (const [path, lines] of [
-    ...Object.entries(left),
-    ...Object.entries(right),
-  ])
-    inlineCommentTargets[path] = filterDuplicates([
-      ...(inlineCommentTargets[path] ?? []),
-      ...lines,
-    ])
-
-  return inlineCommentTargets
-}
-
-export async function getConflicts(
-  this: Review,
-): Promise<undefined | { [key: string]: string }> {
-  if (!this.state.pr?.metadata)
-    throw new MagiError("blocked", "PR metadata not found.")
-  if (!this.state.worktree)
-    throw new MagiError("blocked", "PR worktree not found.")
-
-  const mergeBaseSha = (
-    await this.exec(
-      command(
-        "git",
-        "merge-base",
-        this.state.pr.metadata.base.sha,
-        this.state.pr.metadata.head.sha,
-      ),
-      {
-        cwd: this.state.worktree.path,
-        signal: this.context.abort,
-      },
-    )
-  ).trim()
-  const output = (
-    await this.exec(
-      command(
-        "git",
-        "merge-tree",
-        mergeBaseSha,
-        this.state.pr.metadata.base.sha,
-        this.state.pr.metadata.head.sha,
-      ),
-      {
-        cwd: this.state.worktree.path,
-        signal: this.context.abort,
-      },
-    )
-  ).trim()
-  const lines = output.split("\n")
-  const conflicts = Object.fromEntries(
-    lines
-      .reduce<{ entries: [string, string[]][]; header: string }>(
-        (acc, line) => {
-          if (line.trim() && !line.startsWith(" ")) {
-            acc.header = line.trim()
-
-            return acc
-          }
-
-          if (
-            !/^(?:added|changed) in both$/.test(acc.header) &&
-            !/^removed in (?:local|remote)$/.test(acc.header)
-          )
-            return acc
-
-          const file = line.match(
-            /^  (?:base|our|their)\s+\d+\s+[0-9a-f]+\s+(.+)$/,
-          )?.[1]
-          const entry = acc.entries.at(-1)
-
-          if (file && entry?.[0] !== file)
-            acc.entries.push([file, [acc.header]])
-
-          acc.entries.at(-1)?.[1].push(line)
-
-          return acc
-        },
-        { entries: [], header: "" },
-      )
-      .entries.map(([file, lines]) => [file, lines.join("\n").trim()]),
-  )
-
-  if (Object.keys(conflicts).length) return conflicts
 }
