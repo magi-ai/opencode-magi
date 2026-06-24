@@ -437,6 +437,7 @@ export class Magi {
         cwd: path,
         signal,
       })
+
       const branch = (
         await this.exec("git branch --show-current", {
           cwd: path,

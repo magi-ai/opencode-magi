@@ -34,6 +34,7 @@ export async function checkExistingReviews(this: Review): Promise<boolean> {
   this.state = await this.magi.updateState(this.state.output, {
     pr: { commits, reviews, threads },
   })
+
   const latestNonMergeCommit = commits
     .toReversed()
     .find(({ parents }) => parents.length < 2)

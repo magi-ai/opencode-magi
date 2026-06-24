@@ -17,6 +17,7 @@ export function parseIssues(value: string): number[] {
 
 export function parsePrs(value: string): number[] {
   let options = false
+
   const numbers = filterEmpty(
     value.split(/[\s,]+/).map((item) => {
       if (item.startsWith("--")) options = true
