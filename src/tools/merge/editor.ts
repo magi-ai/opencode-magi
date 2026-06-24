@@ -104,16 +104,8 @@ export async function edit(this: Merge): Promise<boolean> {
 
   if (!output) throw new MagiError("blocked", "Invalid output for editor.")
 
-  const prevOutput = this.state.editor?.output
-
   this.state = await this.magi.updateState(this.state.output, {
-    editor: {
-      history: [
-        ...(this.state.editor?.history ?? []),
-        ...(prevOutput ? [prevOutput] : []),
-      ],
-      output,
-    },
+    editor: { outputs: [...(this.state.editor?.outputs ?? []), output] },
     text: `Finished editing ${this.getLink()}.`,
   })
 
@@ -212,7 +204,9 @@ async function getUnresolvedThreads(
 
 function createSyntheticThreads(this: Merge): PullRequestReviewThread[] {
   const findings = Object.entries(this.state.reviewers ?? {}).flatMap(
-    ([reviewer, { output }]) => {
+    ([reviewer, { outputs }]) => {
+      const output = outputs?.at(-1)
+
       if (output?.verdict !== "CHANGES_REQUESTED") return []
 
       const findings = output.findings ?? output.newFindings ?? []
@@ -221,7 +215,7 @@ function createSyntheticThreads(this: Merge): PullRequestReviewThread[] {
     },
   )
 
-  return findings.map(({ body, line, path, reviewer }, index) => ({
+  return findings.map(({ body, line, path, reviewer, state }, index) => ({
     comments: [
       {
         author: { login: reviewer },
@@ -235,5 +229,6 @@ function createSyntheticThreads(this: Merge): PullRequestReviewThread[] {
     isResolved: false,
     line,
     path,
+    state,
   }))
 }

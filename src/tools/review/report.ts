@@ -116,65 +116,61 @@ export function createReviewerContent(this: Review): string[] {
   return [
     [
       "- **Reviewer**:",
-      ...reviewers.flatMap(([id, { history, output, posted, review }]) => {
-        if (!output) return []
+      ...reviewers.flatMap(([id, { outputs, posted, review }]) => {
+        if (!outputs?.length) return []
 
+        const output = outputs.at(-1)!
         const url = posted ?? review?.html_url
         const status = toTitleCase(output.verdict)
-        const prevStatuses = (history ?? []).map(({ verdict }) =>
-          toTitleCase(verdict),
-        )
+        const prevStatuses = outputs
+          .slice(0, -1)
+          .map(({ verdict }) => toTitleCase(verdict))
+          .reduce<string[]>((prev, current) => {
+            if (prev.at(-1) !== current) prev.push(current)
+
+            return prev
+          }, [])
         const lines = [
           `  - **${id}**: ${[...prevStatuses, url ? `[${status}](${url})` : status].join(" -> ")}`,
-        ]
-
-        if (output.verdict === "CLOSED")
-          lines.push(`    - ${output.comment ?? review?.body}`)
-
-        for (const output of history ?? []) {
-          if (output.verdict === "CLOSED")
-            lines.push(`    - ~~${output.comment ?? review?.body}~~`)
-
-          if (output.verdict === "CHANGES_REQUESTED") {
+          ...outputs.flatMap((output, index) => {
+            const lines = [`    - **Verdict**: ${toTitleCase(output.verdict)}`]
+            const latest = index === outputs.length - 1
             const findings = output.findings ?? output.newFindings ?? []
 
-            for (const { body, line, path, startLine } of findings) {
-              const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
+            if (output.verdict === "CLOSED")
+              lines.push(
+                `      - **Comment**: ${latest ? "" : "~~"}${output.comment ?? review?.body}${latest ? "" : "~~"}`,
+              )
 
-              lines.push(`    - ~~\`${prefix}\`: ${body}~~`)
+            if (findings.length) {
+              lines.push("      - **Findings**:")
+
+              for (const { body, line, path, startLine, state } of findings) {
+                const discarded = state === "discarded"
+                const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
+
+                lines.push(
+                  `        - ${discarded ? "~~" : ""}\`${prefix}\`: ${body}${discarded ? "~~" : ""}`,
+                )
+              }
             }
-          }
-        }
 
-        if (output.verdict === "CHANGES_REQUESTED") {
-          const findings = output.findings ?? output.newFindings ?? []
-          const discardedFindings = output.discardedFindings ?? []
-          const followUps = output.followUps ?? []
+            if (output.followUps?.length) {
+              lines.push("      - **FollowUps**:")
 
-          for (const { body, line, path, startLine } of discardedFindings) {
-            const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
+              for (const { body, commentId } of output.followUps) {
+                const thread = this.state.pr?.threads?.find(({ comments }) =>
+                  comments.some(({ databaseId }) => databaseId === commentId),
+                )
+                const prefix = `${thread?.path ?? "unknown"}:${thread?.line ?? "N/A"}`
 
-            lines.push(`    - ~~\`${prefix}\`: ${body}~~`)
-          }
+                lines.push(`        - \`${prefix}\`: ${body}`)
+              }
+            }
 
-          for (const { body, line, path, startLine } of findings) {
-            const prefix = `${path}:${startLine != null ? `${startLine}-` : ""}${line}`
-
-            lines.push(`    - \`${prefix}\`: ${body}`)
-          }
-
-          for (const { body, commentId } of followUps) {
-            const thread = this.state.pr?.threads?.find(({ comments }) =>
-              comments.some(({ databaseId }) => databaseId === commentId),
-            )
-
-            if (!thread) continue
-
-            const prefix = `${thread.path}:${thread.line ?? "N/A"}`
-
-            lines.push(`    - \`${prefix}\`: ${body}`)
-          }
-        }
+            return lines
+          }),
+        ]
 
         return lines
       }),

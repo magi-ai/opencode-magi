@@ -183,7 +183,9 @@ export class Review {
       throw new MagiError("blocked", "Reviewers not found.")
 
     const counts = Object.entries(this.state.reviewers).reduce(
-      (prev, [id, { output }]) => {
+      (prev, [id, { outputs }]) => {
+        const output = outputs?.at(-1)
+
         if (!output)
           throw new MagiError("blocked", `No output found for reviewer ${id}.`)
 

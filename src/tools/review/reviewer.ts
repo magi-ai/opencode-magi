@@ -45,7 +45,8 @@ export async function review(this: Review): Promise<void> {
           if (!this.state.reviewers)
             throw new MagiError("blocked", "Reviewers not found.")
 
-          const { review, sessionId, status } = this.state.reviewers[id]!
+          const { outputs, review, sessionId, status } =
+            this.state.reviewers[id]!
 
           if (status === "skip") {
             this.magi.notify(
@@ -217,7 +218,12 @@ export async function review(this: Review): Promise<void> {
                 `Invalid output for reviewer ${id}.`,
               )
 
-            return [id, { output }]
+            output.findings = output.findings?.map((finding) => ({
+              ...finding,
+              state: "accepted",
+            }))
+
+            return [id, { outputs: [...(outputs ?? []), output] }]
           }
         }),
       ),
@@ -239,7 +245,9 @@ export async function validateFindings(this: Review): Promise<void> {
     throw new MagiError("blocked", "Reviewers not found.")
 
   const findings = Object.entries(this.state.reviewers).flatMap(
-    ([reviewer, { output }]) => {
+    ([reviewer, { outputs }]) => {
+      const output = outputs?.at(-1)
+
       if (output?.verdict !== "CHANGES_REQUESTED") return []
 
       return (output.findings ?? output.newFindings ?? []).map(
@@ -287,7 +295,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
 
   const threshold = Math.floor(this.config.review.reviewers.length / 2) + 1
   const targetReviewers = Object.entries(this.state.reviewers).filter(
-    ([, { output }]) => output?.verdict === "CLOSED",
+    ([, { outputs }]) => outputs?.at(-1)?.verdict === "CLOSED",
   )
   const count = targetReviewers.length
 
@@ -307,101 +315,94 @@ export async function reconsiderClose(this: Review): Promise<void> {
   )
   const reviewers = Object.fromEntries(
     await Promise.all(
-      targetReviewers.map(
-        ([id, { history, output: prevOutput, review, sessionId, status }]) =>
-          worker.run(async () => {
-            if (!this.state.pr?.metadata)
-              throw new MagiError("blocked", "PR metadata not found.")
-            if (!sessionId)
-              throw new MagiError(
-                "blocked",
-                `No session ID found for reviewer ${id}.`,
-              )
-            if (status === "rereview" && !review?.commit_id)
-              throw new MagiError(
-                "blocked",
-                `Missing previous review commit for reviewer ${id}.`,
-              )
-
-            const sha =
-              status === "initial"
-                ? this.state.pr.metadata.base.sha
-                : (review?.commit_id ?? this.state.pr.metadata.base.sha)
-            const inlineCommentTargets =
-              this.state.pr.inlineCommentTargets?.[sha] ?? {}
-            const taskMessage = await prompt.create(
-              this.config.review.prompts?.closeReconsideration,
-              ["output_contract"],
-              {
-                owner: this.config.github.owner,
-                pr: this.number.toString(),
-                repo: this.config.github.repo,
-              },
+      targetReviewers.map(([id, { outputs, review, sessionId, status }]) =>
+        worker.run(async () => {
+          if (!this.state.pr?.metadata)
+            throw new MagiError("blocked", "PR metadata not found.")
+          if (!sessionId)
+            throw new MagiError(
+              "blocked",
+              `No session ID found for reviewer ${id}.`,
             )
-            const repairMessage = await prompt.repair()
-
-            await this.magi.notify(
-              this.state.sessionId,
-              `Reconsidering close verdict for ${this.getLink()} with reviewer ${id}.`,
+          if (status === "rereview" && !review?.commit_id)
+            throw new MagiError(
+              "blocked",
+              `Missing previous review commit for reviewer ${id}.`,
             )
 
-            const output = await retry<ReviewOutput>(
-              async (count) => {
-                const raw = await this.magi.promptSession(
-                  sessionId,
-                  count === 1 ? taskMessage : repairMessage,
-                )
-                const parsed = prompt.parse(raw)
+          const sha =
+            status === "initial"
+              ? this.state.pr.metadata.base.sha
+              : (review?.commit_id ?? this.state.pr.metadata.base.sha)
+          const inlineCommentTargets =
+            this.state.pr.inlineCommentTargets?.[sha] ?? {}
+          const taskMessage = await prompt.create(
+            this.config.review.prompts?.closeReconsideration,
+            ["output_contract"],
+            {
+              owner: this.config.github.owner,
+              pr: this.number.toString(),
+              repo: this.config.github.repo,
+            },
+          )
+          const repairMessage = await prompt.repair()
 
-                if (!prompt.validate<ReviewOutput>(parsed))
-                  throw new Error(
-                    `Invalid close reconsideration output for reviewer ${id}.`,
-                  )
+          await this.magi.notify(
+            this.state.sessionId,
+            `Reconsidering close verdict for ${this.getLink()} with reviewer ${id}.`,
+          )
 
-                validateInlineCommentTargets(
-                  "initial",
-                  parsed,
-                  inlineCommentTargets,
+          const output = await retry<ReviewOutput>(
+            async (count) => {
+              const raw = await this.magi.promptSession(
+                sessionId,
+                count === 1 ? taskMessage : repairMessage,
+              )
+              const parsed = prompt.parse(raw)
+
+              if (!prompt.validate<ReviewOutput>(parsed))
+                throw new Error(
+                  `Invalid close reconsideration output for reviewer ${id}.`,
                 )
 
-                return parsed
-              },
-              {
-                error: (_, count) =>
-                  this.magi.notify(
-                    this.state.sessionId,
-                    `Attempt ${count} failed to reconsider close verdict for ${this.getLink()} with reviewer ${id}. Retrying...`,
-                  ),
-                retries: this.config.output.repairAttempts,
-              },
-            )
-
-            if (!output)
-              throw new MagiError(
-                "blocked",
-                `Invalid close reconsideration output for reviewer ${id}.`,
+              validateInlineCommentTargets(
+                "initial",
+                parsed,
+                inlineCommentTargets,
               )
 
-            return [
-              id,
-              {
-                history: [...(history ?? []), prevOutput!],
-                output: {
-                  comment: output.comment,
-                  findings: output.findings,
-                  followUps: undefined,
-                  newFindings: undefined,
-                  resolves: undefined,
-                  verdict: output.verdict,
-                },
-              },
-            ]
-          }),
+              return parsed
+            },
+            {
+              error: (_, count) =>
+                this.magi.notify(
+                  this.state.sessionId,
+                  `Attempt ${count} failed to reconsider close verdict for ${this.getLink()} with reviewer ${id}. Retrying...`,
+                ),
+              retries: this.config.output.repairAttempts,
+            },
+          )
+
+          if (!output)
+            throw new MagiError(
+              "blocked",
+              `Invalid close reconsideration output for reviewer ${id}.`,
+            )
+
+          output.findings = output.findings?.map((finding) => ({
+            ...finding,
+            state: "accepted",
+          }))
+
+          return [id, { outputs: [...(outputs ?? []), output] }]
+        }),
       ),
     ),
   )
   const findings = Object.entries(reviewers).flatMap(
-    ([reviewer, { output }]) => {
+    ([reviewer, { outputs }]) => {
+      const output = outputs?.at(-1)
+
       if (output?.verdict !== "CHANGES_REQUESTED") return []
 
       return (output.findings ?? []).map((finding, index) => ({
@@ -604,48 +605,30 @@ function transformState(
   id: string,
   accepted: Set<string>,
 ): ReviewerState {
-  if (reviewer.output?.verdict !== "CHANGES_REQUESTED") return reviewer
+  const outputs = [...(reviewer.outputs ?? [])]
+  const prevOutput = outputs[outputs.length - 1]
 
-  const findings = reviewer.output.findings ?? reviewer.output.newFindings ?? []
-  const { acceptedFindings, discardedFindings } = findings.reduce<{
-    acceptedFindings: PullRequestFinding[]
-    discardedFindings: PullRequestFinding[]
-  }>(
-    (prev, finding, index) => {
-      if (accepted.has(`${id}:${index}`)) prev.acceptedFindings.push(finding)
-      else prev.discardedFindings.push(finding)
+  if (prevOutput?.verdict !== "CHANGES_REQUESTED") return reviewer
 
-      return prev
-    },
-    { acceptedFindings: [], discardedFindings: [] },
-  )
-  const output: ReviewOutput = { ...reviewer.output }
+  const nextOutput: ReviewOutput = { ...prevOutput }
+  const findings = (
+    prevOutput.findings ??
+    prevOutput.newFindings ??
+    []
+  ).map<PullRequestFinding>((finding, index) => ({
+    ...finding,
+    state: accepted.has(`${id}:${index}`) ? "accepted" : "discarded",
+  }))
 
-  if (reviewer.output.findings) {
-    if (acceptedFindings.length) {
-      output.findings = acceptedFindings
-    } else {
-      output.verdict = "APPROVED"
-      output.findings = []
+  if (prevOutput.findings) nextOutput.findings = findings
+  else if (prevOutput.newFindings) nextOutput.newFindings = findings
 
-      reviewer.history = [...(reviewer.history ?? []), reviewer.output]
-    }
-  } else if (acceptedFindings.length || reviewer.output.followUps?.length) {
-    output.newFindings = acceptedFindings
-  } else {
-    output.verdict = "APPROVED"
-    output.newFindings = []
+  outputs[outputs.length - 1] = nextOutput
 
-    reviewer.history = [...(reviewer.history ?? []), reviewer.output]
-  }
+  if (!findings.some(({ state }) => state === "accepted"))
+    outputs.push({ verdict: "APPROVED" })
 
-  if (discardedFindings.length)
-    output.discardedFindings = [
-      ...(output.discardedFindings ?? []),
-      ...discardedFindings,
-    ]
-
-  return { ...reviewer, output }
+  return { ...reviewer, outputs }
 }
 
 async function notifyVerdictChanges(
@@ -656,8 +639,8 @@ async function notifyVerdictChanges(
 ): Promise<void> {
   await Promise.all(
     Object.entries(next).map(async ([id, reviewer]) => {
-      const prevVerdict = prev[id]?.output?.verdict
-      const nextVerdict = reviewer.output?.verdict
+      const prevVerdict = prev[id]?.outputs?.at(-1)?.verdict
+      const nextVerdict = reviewer.outputs?.at(-1)?.verdict
 
       if (!prevVerdict || !nextVerdict || prevVerdict === nextVerdict) return
 

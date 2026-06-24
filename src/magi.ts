@@ -63,8 +63,7 @@ export interface AgentState {
 }
 
 export interface ReviewerState extends AgentState {
-  history?: ReviewOutput[]
-  output?: ReviewOutput
+  outputs?: ReviewOutput[]
   posted?: string
   review?: PullRequestReview
   status?: string
@@ -72,8 +71,7 @@ export interface ReviewerState extends AgentState {
 
 export interface EditorState extends AgentState {
   author?: Config.Author
-  history?: EditOutput[]
-  output?: EditOutput
+  outputs?: EditOutput[]
 }
 
 export interface State {

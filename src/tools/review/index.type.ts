@@ -35,6 +35,7 @@ export interface PullRequestFinding {
   line: number
   path: string
   startLine?: number
+  state: "accepted" | "discarded" | "resolved"
 }
 
 export interface PullRequestFollowUp {
@@ -57,7 +58,6 @@ export interface CiClassificationOutput {
 
 export interface ReviewOutput {
   comment?: string
-  discardedFindings?: PullRequestFinding[]
   findings?: PullRequestFinding[]
   followUps?: PullRequestFollowUp[]
   newFindings?: PullRequestFinding[]

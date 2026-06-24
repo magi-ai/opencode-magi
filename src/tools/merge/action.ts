@@ -43,10 +43,11 @@ export async function postReplies(this: Merge): Promise<void> {
 
   if (this.state.dryRun) return
 
-  if (!this.state.editor?.output)
-    throw new MagiError("blocked", "Editor output not found.")
+  const output = this.state.editor?.outputs?.at(-1)
 
-  if (!this.state.editor.output.responses.length) return
+  if (!output) throw new MagiError("blocked", "Editor output not found.")
+
+  if (!output.responses.length) return
 
   this.state = await this.magi.updateState(this.state.output, {
     text: `Posting editor replies for ${this.getLink()}.`,
@@ -67,7 +68,7 @@ export async function postReplies(this: Merge): Promise<void> {
   }
 
   await Promise.all(
-    this.state.editor.output!.responses.map(({ body, commentId }) =>
+    output.responses.map(({ body, commentId }) =>
       octokit.rest.pulls.createReplyForReviewComment({
         ...args,
         body,

@@ -56,42 +56,47 @@ function createContent(
 }
 
 function createEditorContent(this: Review): string[] {
-  if (!this.state.editor?.output) return []
+  if (!this.state.editor?.outputs?.length) return []
 
-  const outputs = [
-    ...(this.state.editor.history ?? []),
-    this.state.editor.output,
+  return [
+    [
+      "- **Editor**:",
+      ...this.state.editor.outputs.flatMap((output, index) => {
+        const lines = [
+          `  - **Cycle ${index + 1}**: ${toTitleCase(output.mode)}`,
+        ]
+
+        if (output.commitSha)
+          lines.push(
+            `    - **Commit**: \`${output.commitSha}\` ${output.commitMessage}`,
+          )
+
+        if (output.filesTouched.length) {
+          lines.push("    - **Files touched**:")
+
+          for (const file of output.filesTouched)
+            lines.push(`      - \`${file}\``)
+        }
+
+        if (output.responses.length) {
+          lines.push("    - **Responses**:")
+
+          for (const { action, body, commentId } of output.responses) {
+            const thread = this.state.pr?.threads?.find(({ comments }) =>
+              comments.some(({ databaseId }) => databaseId === commentId),
+            )
+            const prefix = thread
+              ? `${thread.path}:${thread.line ?? "N/A"}`
+              : commentId
+
+            lines.push(
+              `      - **${toTitleCase(action)}** \`${prefix}\`: ${body}`,
+            )
+          }
+        }
+
+        return lines
+      }),
+    ].join("\n"),
   ]
-  const lines = ["- **Editor**:"]
-
-  for (const [index, output] of outputs.entries()) {
-    const { commitMessage, commitSha, filesTouched, mode, responses } = output
-    const lines = [`  - **Cycle ${index + 1}**: ${toTitleCase(mode)}`]
-
-    if (commitSha)
-      lines.push(`    - **Commit**: \`${commitSha}\` ${commitMessage}`)
-
-    if (filesTouched.length) {
-      lines.push("    - **Files touched**:")
-
-      for (const file of filesTouched) lines.push(`      - \`${file}\``)
-    }
-
-    if (responses.length) {
-      lines.push("    - **Responses**:")
-
-      for (const { action, body, commentId } of responses) {
-        const thread = this.state.pr?.threads?.find(({ comments }) =>
-          comments.some(({ databaseId }) => databaseId === commentId),
-        )
-        const prefix = thread
-          ? `${thread.path}:${thread.line ?? "N/A"}`
-          : commentId
-
-        lines.push(`      - **${toTitleCase(action)}** \`${prefix}\`: ${body}`)
-      }
-    }
-  }
-
-  return lines
 }

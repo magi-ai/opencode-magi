@@ -53,15 +53,15 @@ export async function postReviews(this: Review): Promise<void> {
     )
 
     await Promise.all(
-      reviewers.flatMap(([, { output }]) =>
-        (output?.resolves ?? []).map(({ threadId }) =>
+      reviewers.flatMap(([, { outputs }]) =>
+        (outputs?.at(-1)?.resolves ?? []).map(({ threadId }) =>
           graphql.resolveReviewThread({ threadId }),
         ),
       ),
     )
     await Promise.all(
-      reviewers.flatMap(([, { output }]) =>
-        (output?.followUps ?? []).map(({ body, commentId }) =>
+      reviewers.flatMap(([, { outputs }]) =>
+        (outputs?.at(-1)?.followUps ?? []).map(({ body, commentId }) =>
           octokit.rest.pulls.createReplyForReviewComment({
             ...args,
             body,
@@ -75,12 +75,13 @@ export async function postReviews(this: Review): Promise<void> {
     const params: PullRequestReviewParams = { ...args, event }
 
     if (this.state.pr.verdict === "CHANGES_REQUESTED") {
-      const findings = reviewers.flatMap(([id, { output }]) =>
-        (output?.findings ?? output?.newFindings ?? []).map((finding) => ({
-          ...finding,
-          id,
-        })),
-      )
+      const findings = reviewers.flatMap(([id, { outputs }]) => {
+        const output = outputs?.at(-1)
+
+        return (output?.findings ?? output?.newFindings ?? [])
+          .filter(({ state }) => state === "accepted")
+          .map((finding) => ({ ...finding, id }))
+      })
 
       if (!findings.length) {
         this.magi.notify(
@@ -91,12 +92,13 @@ export async function postReviews(this: Review): Promise<void> {
         return
       }
 
-      params.comments = findings.map(({ body, id, startLine, ...rest }) => ({
-        ...rest,
+      params.comments = findings.map(({ body, id, line, path, startLine }) => ({
         body: [
           body,
           marker.stringify({ command: "review", reviewer: id }),
         ].join("\n\n"),
+        line,
+        path,
         ...(startLine == null
           ? {}
           : { start_line: startLine, start_side: "RIGHT" }),
@@ -113,11 +115,16 @@ export async function postReviews(this: Review): Promise<void> {
       )
 
       const contents = JSON.stringify(
-        reviewers.flatMap<PullRequestFinding | string>(([, { output }]) => {
+        reviewers.flatMap<PullRequestFinding | string>(([, { outputs }]) => {
+          const output = outputs?.at(-1)
+
           if (!output || output.verdict === "APPROVED") return []
 
           if (output.verdict === "CLOSED") return [output.comment!]
-          else return output.findings ?? output.newFindings ?? []
+          else
+            return (output.findings ?? output.newFindings ?? []).filter(
+              ({ state }) => state === "accepted",
+            )
         }),
         null,
         2,
@@ -169,7 +176,9 @@ export async function postReviews(this: Review): Promise<void> {
       params.body ?? "",
       marker.stringify(
         ...filterEmpty(
-          reviewers.map(([id, { output }]) => {
+          reviewers.map(([id, { outputs }]) => {
+            const output = outputs?.at(-1)
+
             if (!output) return
 
             const body = output.comment
@@ -203,9 +212,12 @@ export async function postReviews(this: Review): Promise<void> {
     const reviewers = Object.fromEntries(
       await Promise.all(
         Object.entries(this.state.reviewers).map(
-          ([id, { account, output, review, status }]) =>
+          ([id, { account, outputs, review, status }]) =>
             worker.run(async () => {
               if (status === "skip") return [id, { posted: review?.html_url }]
+
+              const output = outputs?.at(-1)
+
               if (!output)
                 throw new MagiError("blocked", "Reviewer output not found.")
 
@@ -237,16 +249,24 @@ export async function postReviews(this: Review): Promise<void> {
               if (output.verdict !== "APPROVED") params.body = output.comment
 
               if (output.verdict === "CHANGES_REQUESTED") {
-                const findings = output.findings ?? output.newFindings ?? []
+                const findings = (
+                  output.findings ??
+                  output.newFindings ??
+                  []
+                ).filter(({ state }) => state === "accepted")
 
                 if (!findings.length) return [id, {}]
 
-                params.comments = findings.map(({ startLine, ...rest }) => ({
-                  ...rest,
-                  ...(startLine == null
-                    ? {}
-                    : { start_line: startLine, start_side: "RIGHT" }),
-                }))
+                params.comments = findings.map(
+                  ({ body, line, path, startLine }) => ({
+                    body,
+                    line,
+                    path,
+                    ...(startLine == null
+                      ? {}
+                      : { start_line: startLine, start_side: "RIGHT" }),
+                  }),
+                )
               }
 
               params.body = [

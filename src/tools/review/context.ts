@@ -131,7 +131,7 @@ export async function checkExistingReviews(this: Review): Promise<boolean> {
     } else {
       const verdict = reviewer.review.state as PullRequestVerdict
 
-      reviewer.output = { verdict }
+      reviewer.outputs = [...(reviewer.outputs ?? []), { verdict }]
     }
   }
 
