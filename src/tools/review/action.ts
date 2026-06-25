@@ -1,5 +1,5 @@
 import type {
-  PullRequestAutomationResult,
+  PullRequestAutomation,
   PullRequestFinding,
   PullRequestReviewParams,
 } from "./index.type"
@@ -299,21 +299,26 @@ export async function postReviews(this: Review): Promise<void> {
   }
 }
 
-export async function automate(
-  this: Review,
-): Promise<PullRequestAutomationResult> {
+export async function automate(this: Review): Promise<PullRequestAutomation> {
   this.context.abort.throwIfAborted()
 
   if (!this.state.pr?.metadata)
     throw new MagiError("blocked", "PR metadata not found.")
   if (!this.state.pr.verdict)
     throw new MagiError("blocked", "PR verdict not found.")
-  if (!["APPROVED", "CLOSED"].includes(this.state.pr.verdict)) return "skipped"
+  if (!["APPROVED", "CLOSED"].includes(this.state.pr.verdict)) return "SKIPPED"
 
   const automation = this.config[this.state.command].automation
   const action = this.state.pr.verdict === "APPROVED" ? "merge" : "close"
 
-  if (!automation[action]) return "skipped"
+  if (!automation[action]) {
+    this.state = await this.magi.updateState(this.state.output, {
+      pr: { automation: "SKIPPED" },
+      text: `Skipped ${action} automation for ${this.getLink()}.`,
+    })
+
+    return "SKIPPED"
+  }
 
   const account = this.state.operator!.account!
 
@@ -326,27 +331,30 @@ export async function automate(
 
     if (failed.length || pending.length) {
       this.state = await this.magi.updateState(this.state.output, {
-        text: `Skipped merge automation for ${this.getLink()}: unresolved CI checks remain.`,
+        pr: { automation: "SKIPPED" },
+        text: `Skipped merge automation for ${this.getLink()} because unresolved CI checks remain.`,
       })
 
-      return "skipped"
+      return "SKIPPED"
     }
 
     if (await localMergeConflict.call(this)) {
       this.state = await this.magi.updateState(this.state.output, {
+        pr: { automation: "CONFLICT" },
         text: `Merge automation found conflicts for ${this.getLink()}.`,
       })
 
-      return "conflict"
+      return "CONFLICT"
     }
   }
 
   if (this.state.dryRun) {
     this.state = await this.magi.updateState(this.state.output, {
+      pr: { automation: "SKIPPED" },
       text: `Skipped ${action} automation for ${this.getLink()} during dry run.`,
     })
 
-    return "skipped"
+    return "SKIPPED"
   }
 
   this.state = await this.magi.updateState(this.state.output, {
@@ -387,10 +395,11 @@ export async function automate(
       throw e
 
     this.state = await this.magi.updateState(this.state.output, {
+      pr: { automation: "CONFLICT" },
       text: `Merge automation found conflicts for ${this.getLink()}.`,
     })
 
-    return "conflict"
+    return "CONFLICT"
   }
 
   if (action === "merge" && this.config.review.merge.queue) {
@@ -398,7 +407,7 @@ export async function automate(
       text: `Waiting for merge queue for ${this.getLink()}.`,
     })
 
-    const result = await loop<PullRequestAutomationResult>(async () => {
+    const result = await loop<PullRequestAutomation>(async () => {
       this.context.abort.throwIfAborted()
 
       const { repository } = await this.graphql.mergeQueueStatus({
@@ -412,15 +421,16 @@ export async function automate(
 
       const { isInMergeQueue, mergeQueueEntry, state } = repository.pullRequest
 
-      if (state === "MERGED") return "merged"
+      if (state === "MERGED") return "MERGED"
 
       if (state === "OPEN" && !isInMergeQueue && !mergeQueueEntry) {
         if (await localMergeConflict.call(this)) {
           this.state = await this.magi.updateState(this.state.output, {
+            pr: { automation: "CONFLICT" },
             text: `Merge automation found conflicts for ${this.getLink()}.`,
           })
 
-          return "conflict"
+          return "CONFLICT"
         }
 
         throw new MagiError(
@@ -430,16 +440,15 @@ export async function automate(
       }
     }, 30_000)
 
-    if (result === "conflict") return result
+    if (result === "CONFLICT") return result
   }
 
   this.state = await this.magi.updateState(this.state.output, {
+    pr: { automation: action === "merge" ? "MERGED" : "CLOSED" },
     text: `Finished ${action} automation for ${this.getLink()}.`,
   })
 
-  if (action === "close") return "closed"
-
-  return "merged"
+  return action === "merge" ? "MERGED" : "CLOSED"
 }
 
 async function localMergeConflict(this: Review): Promise<boolean> {

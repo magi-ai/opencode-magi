@@ -9,6 +9,7 @@ import type { EditOutput } from "./tools/merge"
 import type { Config, ConfigValidationOptions } from "@/config"
 import type { Graphql } from "@/graphql"
 import type {
+  PullRequestAutomation,
   PullRequestChecks,
   PullRequestClosingIssue,
   PullRequestComment,
@@ -86,6 +87,7 @@ export interface State {
   operator?: AgentState
   output: string
   pr?: {
+    automation?: PullRequestAutomation
     checks?: PullRequestChecks
     comments?: PullRequestComment[]
     commits?: PullRequestCommit[]
