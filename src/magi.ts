@@ -140,11 +140,8 @@ export class Magi {
     this.exec = createExec(input.directory)
   }
 
-  public async getGhToken(
-    account?: string,
-    signal?: AbortSignal,
-  ): Promise<string> {
-    const result = await this.exec(
+  public getGhToken(account?: string, signal?: AbortSignal): Promise<string> {
+    return this.exec(
       command(
         "gh",
         "auth",
@@ -154,8 +151,6 @@ export class Magi {
       ),
       { signal },
     )
-
-    return result.trim()
   }
 
   public async createOctokit(
@@ -163,11 +158,11 @@ export class Magi {
     signal?: AbortSignal,
     account?: string,
   ): Promise<Octokit> {
-    const token = await this.getGhToken(account)
+    const auth = await this.getGhToken(account)
     const retries = config.github.retryApiAttempts
 
     return new Octokit({
-      auth: token.trim(),
+      auth,
       request: { signal },
       retry: { retries },
       throttle: {
@@ -438,12 +433,10 @@ export class Magi {
         signal,
       })
 
-      const branch = (
-        await this.exec("git branch --show-current", {
-          cwd: path,
-          signal,
-        })
-      ).trim()
+      const branch = await this.exec("git branch --show-current", {
+        cwd: path,
+        signal,
+      })
 
       if (!branch) throw new Error("Failed to determine worktree branch")
 

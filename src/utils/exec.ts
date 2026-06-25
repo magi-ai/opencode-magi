@@ -21,6 +21,6 @@ export function createExec(defaultCwd: string): Exec {
       signal,
     })
 
-    return stdout
+    return stdout.trim()
   }
 }

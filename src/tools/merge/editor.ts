@@ -22,9 +22,7 @@ export async function edit(this: Merge): Promise<boolean> {
     text: `Editing ${this.getLink()}.`,
   })
 
-  const signal = this.context.abort
-  const cwd = this.state.worktree!.path
-  const options = { cwd, signal }
+  const options = { cwd: this.state.worktree!.path, signal: this.context.abort }
 
   await this.exec(
     command(
@@ -80,9 +78,10 @@ export async function edit(this: Merge): Promise<boolean> {
         throw new Error("Invalid output for editor.")
 
       if (parsed.mode === "EDITED") {
-        const head = (
-          await this.exec(command("git", "rev-parse", "HEAD"), options)
-        ).trim()
+        const head = await this.exec(
+          command("git", "rev-parse", "HEAD"),
+          options,
+        )
 
         if (head !== parsed.commitSha)
           throw new Error(
