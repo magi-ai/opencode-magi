@@ -12,6 +12,7 @@ import {
   filterEmpty,
   marker,
   omitNullish,
+  quote,
   retry,
   Worker,
 } from "@/utils"
@@ -238,7 +239,7 @@ export async function postReviews(this: Review): Promise<void> {
                 ),
               )
               await Promise.all(
-                (output.followUps ?? []).map(async ({ body, commentId }) =>
+                (output.followUps ?? []).map(({ body, commentId }) =>
                   octokit.rest.pulls.createReplyForReviewComment({
                     ...args,
                     body,
@@ -302,9 +303,10 @@ export async function automate(
 ): Promise<PullRequestAutomationResult> {
   this.context.abort.throwIfAborted()
 
-  if (!this.state.pr?.verdict)
+  if (!this.state.pr?.metadata)
+    throw new MagiError("blocked", "PR metadata not found.")
+  if (!this.state.pr.verdict)
     throw new MagiError("blocked", "PR verdict not found.")
-
   if (!["APPROVED", "CLOSED"].includes(this.state.pr.verdict)) return "skipped"
 
   const automation = this.config[this.state.command].automation
@@ -327,6 +329,55 @@ export async function automate(
       })
 
       return "skipped"
+    }
+
+    if (this.state.worktree) {
+      const options = {
+        cwd: this.state.worktree.path,
+        signal: this.context.abort,
+      }
+      const status = await this.exec(
+        command("git", "status", "--porcelain"),
+        options,
+      )
+
+      if (status)
+        throw new MagiError("blocked", "PR worktree has uncommitted changes.")
+
+      await this.exec(
+        command(
+          "git",
+          "fetch",
+          "--no-tags",
+          quote(this.state.pr.metadata.base.repo.clone_url),
+          quote(`refs/heads/${this.state.pr.metadata.base.ref}`),
+        ),
+        options,
+      )
+
+      try {
+        try {
+          await this.exec(
+            command("git", "merge", "--no-commit", "--no-ff", "FETCH_HEAD"),
+            options,
+          )
+        } catch (e) {
+          const conflicts = await this.exec(
+            command("git", "diff", "--name-only", "--diff-filter=U"),
+            options,
+          )
+
+          if (!conflicts) throw e
+
+          this.state = await this.magi.updateState(this.state.output, {
+            text: `Merge automation found conflicts for ${this.getLink()}.`,
+          })
+
+          return "conflict"
+        }
+      } finally {
+        await this.exec(command("git", "merge", "--abort"), options)
+      }
     }
   }
 
@@ -361,19 +412,32 @@ export async function automate(
     args.push("close", this.number.toString(), "--repo", this.state.repo)
   }
 
-  const output = await this.exec(command(...args), {
-    env: { GH_TOKEN: token },
-    signal: this.context.abort,
-  })
+  try {
+    await this.exec(command(...args), {
+      env: { GH_TOKEN: token },
+      signal: this.context.abort,
+    })
+  } catch (e) {
+    if (action !== "merge") throw e
+    if (
+      !/\bconflicts?\b|not mergeable|merge commit cannot be cleanly created/i.test(
+        e instanceof Error ? e.message : String(e),
+      )
+    )
+      throw e
+
+    this.state = await this.magi.updateState(this.state.output, {
+      text: `Merge automation found conflicts for ${this.getLink()}.`,
+    })
+
+    return "conflict"
+  }
 
   this.state = await this.magi.updateState(this.state.output, {
-    text: filterEmpty([
-      `Finished ${action} automation for ${this.getLink()}.`,
-      output.trim() || undefined,
-    ]).join("\n"),
+    text: `Finished ${action} automation for ${this.getLink()}.`,
   })
 
   if (action === "close") return "closed"
 
-  return this.config.review.merge.queue ? "queued" : "submitted"
+  return "merged"
 }

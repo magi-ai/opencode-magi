@@ -32,10 +32,9 @@ export interface PullRequestClassifiedChecks {
 
 export type PullRequestAutomationResult =
   | "closed"
-  | "dequeued"
-  | "queued"
+  | "conflict"
+  | "merged"
   | "skipped"
-  | "submitted"
 
 export interface PullRequestFinding {
   body: string
