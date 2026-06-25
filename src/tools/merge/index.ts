@@ -1,10 +1,50 @@
 import type { Config } from "@/config"
 import type { State, Tool } from "@/magi"
+import type { PullRequestVerdict } from "@/tools/review"
 import { tool } from "@opencode-ai/plugin"
 import { filterEmpty, parsePrs, split, Worker } from "@/utils"
 import { Merge } from "./merge"
 
 export type * from "./index.type"
+
+async function editCycle(
+  run: Merge,
+  { conflict, cycle }: { conflict?: boolean; cycle?: number } = {},
+): Promise<PullRequestVerdict> {
+  if (!run.state.editor?.sessionId) await run.createSession()
+  if (!run.state.worktree) await run.createWorktree()
+
+  const reviewers = Object.entries(run.state.reviewers ?? {})
+  const hasSessions =
+    reviewers.length && reviewers.every(([_, { sessionId }]) => sessionId)
+  const edited = cycle === 1 && conflict ? true : await run.edit()
+
+  if (cycle === 1 && conflict) await run.resolveConflict()
+  else await run.postReplies()
+
+  if (edited) await run.checkCi(run.config.merge.checks.wait)
+  if (!hasSessions) await run.createSessions()
+
+  if (edited) {
+    await run.classifyChecks()
+    await run.rerunChecks()
+    await run.checkExistingReviews()
+  }
+
+  await run.fetchMergeContext()
+
+  if (!edited) await run.markRepliedReviewers()
+
+  await run.review()
+  await run.validateFindings()
+  await run.reconsiderClose()
+
+  const verdict = await run.resolveVerdict()
+
+  await run.postReviews()
+
+  return verdict
+}
 
 function overrideConfig(
   config: Config.Root,
@@ -144,71 +184,19 @@ export const merge: Tool = function (magi) {
               if (!skip) await run.postReviews()
 
               if (verdict === "CHANGES_REQUESTED")
-                await run.editCycles(async () => {
-                  if (!run.state.editor?.sessionId) await run.createSession()
-                  if (!run.state.worktree) await run.createWorktree()
-
-                  const prevHeadSha = run.state.pr?.metadata?.head.sha
-                  const reviewers = Object.entries(run.state.reviewers ?? {})
-                  const hasSessions =
-                    reviewers.length &&
-                    reviewers.every(([_, { sessionId }]) => sessionId)
-                  const edited = await run.edit()
-
-                  await run.postReplies()
-
-                  if (edited) await run.checkCi(run.config.merge.checks.wait)
-                  if (!hasSessions) await run.createSessions()
-
-                  if (edited) {
-                    await run.classifyChecks(prevHeadSha)
-                    await run.rerunChecks()
-                    await run.checkExistingReviews()
-                  }
-
-                  await run.fetchMergeContext()
-
-                  if (!edited) await run.markRepliedReviewers()
-
-                  await run.review()
-                  await run.validateFindings()
-                  await run.reconsiderClose()
-
-                  const verdict = await run.resolveVerdict()
-
-                  await run.postReviews()
-
-                  return verdict
-                })
+                await run.editCycles(async () => editCycle(run))
 
               const automation = await run.automate()
 
               if (
                 automation === "CONFLICT" &&
                 run.config.merge.automation.conflict
-              )
-                await run.editCycles(async () => {
-                  if (!run.state.editor?.sessionId) await run.createSession()
-                  if (!run.state.worktree) await run.createWorktree()
-
-                  const prevHeadSha = run.state.pr?.metadata?.head.sha
-                  const reviewers = Object.entries(run.state.reviewers ?? {})
-                  const hasSessions =
-                    reviewers.length &&
-                    reviewers.every(([_, { sessionId }]) => sessionId)
-
-                  await run.resolveConflict()
-                  await run.checkCi(run.config.merge.checks.wait)
-
-                  if (!hasSessions) await run.createSessions()
-
-                  await run.classifyChecks(prevHeadSha)
-                  await run.rerunChecks()
-
-                  const verdict = await run.resolveVerdict()
-
-                  return verdict
-                })
+              ) {
+                await run.editCycles(async (cycle) =>
+                  editCycle(run, { conflict: true, cycle }),
+                )
+                await run.automate()
+              }
 
               return await run.createReport()
             } catch (e) {
