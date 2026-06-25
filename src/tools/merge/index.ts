@@ -146,7 +146,6 @@ export const merge: Tool = function (magi) {
               if (verdict === "CHANGES_REQUESTED")
                 await run.editCycles(async () => {
                   if (!run.state.editor?.sessionId) await run.createSession()
-
                   if (!run.state.worktree) await run.createWorktree()
 
                   const prevHeadSha = run.state.pr?.metadata?.head.sha
@@ -182,7 +181,29 @@ export const merge: Tool = function (magi) {
                   return verdict
                 })
 
-              await run.automate()
+              const automation = await run.automate()
+
+              if (
+                automation === "CONFLICT" &&
+                run.config.merge.automation.conflict
+              )
+                await run.editCycles(async () => {
+                  if (!run.state.editor?.sessionId) await run.createSession()
+                  if (!run.state.worktree) await run.createWorktree()
+
+                  const prevHeadSha = run.state.pr?.metadata?.head.sha
+
+                  await run.resolveConflict()
+                  await run.checkCi(run.config.merge.checks.wait)
+                  await run.classifyChecks(prevHeadSha)
+                  await run.rerunChecks()
+
+                  const verdict = await run.resolveVerdict()
+
+                  await run.postReviews()
+
+                  return verdict
+                })
 
               return await run.createReport()
             } catch (e) {

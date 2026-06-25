@@ -338,7 +338,7 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
       return "SKIPPED"
     }
 
-    if (await localMergeConflict.call(this)) {
+    if (await isConflict.call(this)) {
       this.state = await this.magi.updateState(this.state.output, {
         pr: { automation: "CONFLICT" },
         text: `Merge automation found conflicts for ${this.getLink()}.`,
@@ -424,7 +424,7 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
       if (state === "MERGED") return "MERGED"
 
       if (state === "OPEN" && !isInMergeQueue && !mergeQueueEntry) {
-        if (await localMergeConflict.call(this)) {
+        if (await isConflict.call(this)) {
           this.state = await this.magi.updateState(this.state.output, {
             pr: { automation: "CONFLICT" },
             text: `Merge automation found conflicts for ${this.getLink()}.`,
@@ -451,7 +451,7 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
   return action === "merge" ? "MERGED" : "CLOSED"
 }
 
-async function localMergeConflict(this: Review): Promise<boolean> {
+async function isConflict(this: Review): Promise<boolean> {
   if (!this.state.worktree) return false
   if (!this.state.pr?.metadata)
     throw new MagiError("blocked", "PR metadata not found.")

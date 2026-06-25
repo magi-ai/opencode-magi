@@ -7,7 +7,7 @@ import { Review } from "@/tools/review/review"
 import { createExecWithGitHubApiRetry, quote } from "@/utils"
 import { editCycles, postReplies } from "./action"
 import { fetchMergeContext, markRepliedReviewers } from "./context"
-import { edit } from "./editor"
+import { edit, resolveConflict } from "./editor"
 import { createReport } from "./report"
 
 interface MergeOptions {
@@ -81,6 +81,7 @@ export class Merge extends Review {
   public fetchMergeContext = fetchMergeContext
   public markRepliedReviewers = markRepliedReviewers
   public postReplies = postReplies
+  public resolveConflict = resolveConflict
 
   public async createSession(): Promise<void> {
     this.context.abort.throwIfAborted()
