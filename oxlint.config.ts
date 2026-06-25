@@ -45,8 +45,8 @@ export default defineConfig({
           "expression",
           "import",
           "export",
+          "block",
           "block-like",
-          "if",
           "class",
           "interface",
           "type",
@@ -60,7 +60,21 @@ export default defineConfig({
       {
         blankLine: "always",
         next: "*",
-        prev: ["directive", "import", "export"],
+        prev: [
+          "directive",
+          "expression",
+          "import",
+          "export",
+          "block",
+          "block-like",
+          "class",
+          "interface",
+          "type",
+          "throw",
+          "const",
+          "let",
+          "var",
+        ],
       },
       ...["directive", "const", "let", "var", "function-overload"].map(
         (statement) => ({
@@ -69,19 +83,13 @@ export default defineConfig({
           prev: statement,
         }),
       ),
-      ...[
-        "block-like",
-        "if",
-        "import",
-        "export",
-        "expression",
-        "interface",
-        "type",
-      ].map((statement) => ({
-        blankLine: "any",
-        next: statement,
-        prev: statement,
-      })),
+      ...["import", "export", "expression", "interface", "type"].map(
+        (statement) => ({
+          blankLine: "any",
+          next: statement,
+          prev: statement,
+        }),
+      ),
     ],
 
     "typescript/await-thenable": "error",
