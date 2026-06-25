@@ -10,6 +10,7 @@ import { Prompt } from "@/prompts"
 import {
   command,
   filterEmpty,
+  loop,
   marker,
   omitNullish,
   quote,
@@ -331,53 +332,12 @@ export async function automate(
       return "skipped"
     }
 
-    if (this.state.worktree) {
-      const options = {
-        cwd: this.state.worktree.path,
-        signal: this.context.abort,
-      }
-      const status = await this.exec(
-        command("git", "status", "--porcelain"),
-        options,
-      )
+    if (await localMergeConflict.call(this)) {
+      this.state = await this.magi.updateState(this.state.output, {
+        text: `Merge automation found conflicts for ${this.getLink()}.`,
+      })
 
-      if (status)
-        throw new MagiError("blocked", "PR worktree has uncommitted changes.")
-
-      await this.exec(
-        command(
-          "git",
-          "fetch",
-          "--no-tags",
-          quote(this.state.pr.metadata.base.repo.clone_url),
-          quote(`refs/heads/${this.state.pr.metadata.base.ref}`),
-        ),
-        options,
-      )
-
-      try {
-        try {
-          await this.exec(
-            command("git", "merge", "--no-commit", "--no-ff", "FETCH_HEAD"),
-            options,
-          )
-        } catch (e) {
-          const conflicts = await this.exec(
-            command("git", "diff", "--name-only", "--diff-filter=U"),
-            options,
-          )
-
-          if (!conflicts) throw e
-
-          this.state = await this.magi.updateState(this.state.output, {
-            text: `Merge automation found conflicts for ${this.getLink()}.`,
-          })
-
-          return "conflict"
-        }
-      } finally {
-        await this.exec(command("git", "merge", "--abort"), options)
-      }
+      return "conflict"
     }
   }
 
@@ -433,6 +393,46 @@ export async function automate(
     return "conflict"
   }
 
+  if (action === "merge" && this.config.review.merge.queue) {
+    this.state = await this.magi.updateState(this.state.output, {
+      text: `Waiting for merge queue for ${this.getLink()}.`,
+    })
+
+    const result = await loop<PullRequestAutomationResult>(async () => {
+      this.context.abort.throwIfAborted()
+
+      const { repository } = await this.graphql.mergeQueueStatus({
+        owner: this.config.github.owner,
+        pr: this.number,
+        repo: this.config.github.repo,
+      })
+
+      if (!repository?.pullRequest)
+        throw new MagiError("blocked", "Could not fetch merge queue status.")
+
+      const { isInMergeQueue, mergeQueueEntry, state } = repository.pullRequest
+
+      if (state === "MERGED") return "merged"
+
+      if (state === "OPEN" && !isInMergeQueue && !mergeQueueEntry) {
+        if (await localMergeConflict.call(this)) {
+          this.state = await this.magi.updateState(this.state.output, {
+            text: `Merge automation found conflicts for ${this.getLink()}.`,
+          })
+
+          return "conflict"
+        }
+
+        throw new MagiError(
+          "blocked",
+          `PR left the merge queue before merging ${this.getLink()}.`,
+        )
+      }
+    }, 30_000)
+
+    if (result === "conflict") return result
+  }
+
   this.state = await this.magi.updateState(this.state.output, {
     text: `Finished ${action} automation for ${this.getLink()}.`,
   })
@@ -440,4 +440,52 @@ export async function automate(
   if (action === "close") return "closed"
 
   return "merged"
+}
+
+async function localMergeConflict(this: Review): Promise<boolean> {
+  if (!this.state.worktree) return false
+  if (!this.state.pr?.metadata)
+    throw new MagiError("blocked", "PR metadata not found.")
+
+  const options = { cwd: this.state.worktree.path, signal: this.context.abort }
+  const status = await this.exec(
+    command("git", "status", "--porcelain"),
+    options,
+  )
+
+  if (status)
+    throw new MagiError("blocked", "PR worktree has uncommitted changes.")
+
+  await this.exec(
+    command(
+      "git",
+      "fetch",
+      "--no-tags",
+      quote(this.state.pr.metadata.base.repo.clone_url),
+      quote(`refs/heads/${this.state.pr.metadata.base.ref}`),
+    ),
+    options,
+  )
+
+  try {
+    try {
+      await this.exec(
+        command("git", "merge", "--no-commit", "--no-ff", "FETCH_HEAD"),
+        options,
+      )
+    } catch (e) {
+      const conflicts = await this.exec(
+        command("git", "diff", "--name-only", "--diff-filter=U"),
+        options,
+      )
+
+      if (!conflicts) throw e
+
+      return true
+    }
+  } finally {
+    await this.exec(command("git", "merge", "--abort"), options)
+  }
+
+  return false
 }

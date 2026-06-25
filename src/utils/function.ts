@@ -3,6 +3,19 @@ export const wait = async (ms = 0): Promise<void> =>
     setTimeout(resolve, ms)
   })
 
+export async function loop<T>(
+  callback: () => Promise<T | void> | T | void,
+  ms = 0,
+): Promise<T> {
+  for (;;) {
+    const value = await callback()
+
+    if (value != null) return value
+
+    await wait(ms)
+  }
+}
+
 export interface RetryOptions {
   error?: (e: unknown, count: number) => void
   retries?: number

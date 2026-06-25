@@ -1,0 +1,11 @@
+query mergeQueueStatus($owner: String!, $repo: String!, $pr: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      state
+      isInMergeQueue
+      mergeQueueEntry {
+        id
+      }
+    }
+  }
+}

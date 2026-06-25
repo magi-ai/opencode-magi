@@ -11,6 +11,15 @@ export type IssueState =
   /** An issue that is still open */
   | 'OPEN';
 
+/** The possible states of a pull request. */
+export type PullRequestState =
+  /** A pull request that has been closed without being merged. */
+  | 'CLOSED'
+  /** A pull request that has been closed by being merged. */
+  | 'MERGED'
+  /** A pull request that is still open. */
+  | 'OPEN';
+
 export type ClosingIssuesQueryVariables = Exact<{
   cursor: string | null | undefined;
   owner: string;
@@ -32,6 +41,15 @@ export type ClosingIssuesQuery = { repository: { pullRequest: { closingIssuesRef
                 | { login: string }
                 | { login: string }
                | null } | null> | null } } | null> | null, pageInfo: { endCursor: string | null, hasNextPage: boolean } } | null } | null } | null };
+
+export type MergeQueueStatusQueryVariables = Exact<{
+  owner: string;
+  repo: string;
+  pr: number;
+}>;
+
+
+export type MergeQueueStatusQuery = { repository: { pullRequest: { state: PullRequestState, isInMergeQueue: boolean, mergeQueueEntry: { id: string } | null } | null } | null };
 
 export type ResolveReviewThreadMutationVariables = Exact<{
   threadId: string | number;
@@ -61,13 +79,13 @@ export const ClosingIssuesDocument = gql`
     query closingIssues($cursor: String, $owner: String!, $repo: String!, $pr: Int!) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $pr) {
-      closingIssuesReferences(first: 20, after: $cursor) {
+      closingIssuesReferences(first: 50, after: $cursor) {
         nodes {
           author {
             login
           }
           body
-          comments(last: 20) {
+          comments(last: 50) {
             nodes {
               author {
                 login
@@ -92,6 +110,19 @@ export const ClosingIssuesDocument = gql`
   }
 }
     `;
+export const MergeQueueStatusDocument = gql`
+    query mergeQueueStatus($owner: String!, $repo: String!, $pr: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      state
+      isInMergeQueue
+      mergeQueueEntry {
+        id
+      }
+    }
+  }
+}
+    `;
 export const ResolveReviewThreadDocument = gql`
     mutation resolveReviewThread($threadId: ID!) {
   resolveReviewThread(input: {threadId: $threadId}) {
@@ -107,7 +138,7 @@ export const ReviewThreadsDocument = gql`
     pullRequest(number: $pr) {
       reviewThreads(first: 50, after: $cursor) {
         nodes {
-          comments(first: 20) {
+          comments(last: 50) {
             nodes {
               author {
                 login
@@ -137,6 +168,9 @@ export function getSdk<C>(requester: Requester<C>) {
   return {
     closingIssues(variables: ClosingIssuesQueryVariables, options?: C): Promise<ClosingIssuesQuery> {
       return requester<ClosingIssuesQuery, ClosingIssuesQueryVariables>(ClosingIssuesDocument, variables, options) as Promise<ClosingIssuesQuery>;
+    },
+    mergeQueueStatus(variables: MergeQueueStatusQueryVariables, options?: C): Promise<MergeQueueStatusQuery> {
+      return requester<MergeQueueStatusQuery, MergeQueueStatusQueryVariables>(MergeQueueStatusDocument, variables, options) as Promise<MergeQueueStatusQuery>;
     },
     resolveReviewThread(variables: ResolveReviewThreadMutationVariables, options?: C): Promise<ResolveReviewThreadMutation> {
       return requester<ResolveReviewThreadMutation, ResolveReviewThreadMutationVariables>(ResolveReviewThreadDocument, variables, options) as Promise<ResolveReviewThreadMutation>;
