@@ -119,10 +119,7 @@ export async function checkCi(
   })
 }
 
-export async function classifyChecks(
-  this: Review,
-  baseSha?: string,
-): Promise<void> {
+export async function classifyChecks(this: Review): Promise<void> {
   this.context.abort.throwIfAborted()
 
   if (!this.state.pr?.checks?.failed.length) return
@@ -149,7 +146,9 @@ export async function classifyChecks(
     this.config[command].prompts?.ciClassification,
     ["output_contract"],
     {
-      baseSha: baseSha ?? this.state.pr.metadata.base.sha,
+      baseSha:
+        this.state.pr.metadata[this.state.command === "merge" ? "head" : "base"]
+          .sha,
       failedChecks: JSON.stringify(this.state.pr.checks.failed, null, 2),
       headSha: this.state.pr.metadata.head.sha,
       owner: this.config.github.owner,
