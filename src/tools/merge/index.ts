@@ -158,7 +158,7 @@ export const merge: Tool = function (magi) {
                   await run.postReplies()
 
                   if (edited) await run.checkCi(run.config.merge.checks.wait)
-                  if (skip && hasSessions) await run.createSessions()
+                  if (!hasSessions) await run.createSessions()
 
                   if (edited) {
                     await run.classifyChecks(prevHeadSha)
@@ -192,15 +192,20 @@ export const merge: Tool = function (magi) {
                   if (!run.state.worktree) await run.createWorktree()
 
                   const prevHeadSha = run.state.pr?.metadata?.head.sha
+                  const reviewers = Object.entries(run.state.reviewers ?? {})
+                  const hasSessions =
+                    reviewers.length &&
+                    reviewers.every(([_, { sessionId }]) => sessionId)
 
                   await run.resolveConflict()
                   await run.checkCi(run.config.merge.checks.wait)
+
+                  if (!hasSessions) await run.createSessions()
+
                   await run.classifyChecks(prevHeadSha)
                   await run.rerunChecks()
 
                   const verdict = await run.resolveVerdict()
-
-                  await run.postReviews()
 
                   return verdict
                 })
