@@ -334,6 +334,7 @@ async function getConflictedFiles(this: Merge): Promise<string[]> {
       command("git", "merge", "--no-commit", "--no-ff", "FETCH_HEAD"),
       options,
     )
+    await this.exec(command("git", "merge", "--abort"), options)
 
     return []
   } catch {
