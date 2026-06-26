@@ -3,12 +3,12 @@ pre-commit:
   jobs:
     - name: lint & typecheck
       glob: "*.{js,cjs,mjs,jsx,ts,cts,mts,tsx,d.ts}"
-      run: pnpm oxlint {staged_files} --type-check --max-warnings=0 --fix
+      run: pnpm oxlint {staged_files} --type-check --max-warnings=0 --fix --no-error-on-unmatched-pattern
       stage_fixed: true
 
     - name: format
       glob: "*.{js,cjs,mjs,jsx,ts,cts,mts,tsx,d.ts,md,mdx,yaml,yml,json,html,css}"
-      run: pnpm exec oxfmt {staged_files} --write
+      run: pnpm exec oxfmt {staged_files} --write --no-error-on-unmatched-pattern
       stage_fixed: true
 
 commit-msg:
