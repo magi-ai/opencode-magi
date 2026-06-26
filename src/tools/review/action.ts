@@ -475,13 +475,8 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
       const message = e instanceof Error ? e.message : String(e)
 
       if (
-        /merge queue enabled/i.test(message) ||
-        !/\bconflicts?\b|not mergeable|merge commit cannot be cleanly created/i.test(
-          message,
-        )
+        /\bconflicts?\b|merge commit cannot be cleanly created/i.test(message)
       ) {
-        throw e
-      } else {
         this.state = await this.magi.updateState(this.state.output, {
           pr: { automation: "CONFLICT" },
           text: `Merge automation found conflicts for ${this.getLink()}.`,
@@ -489,6 +484,8 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
 
         return "CONFLICT"
       }
+
+      throw e
     }
   }
 
