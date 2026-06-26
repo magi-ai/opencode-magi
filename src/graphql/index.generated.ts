@@ -42,6 +42,13 @@ export type ClosingIssuesQuery = { repository: { pullRequest: { closingIssuesRef
                 | { login: string }
                | null } | null> | null } } | null> | null, pageInfo: { endCursor: string | null, hasNextPage: boolean } } | null } | null } | null };
 
+export type EnqueuePullRequestMutationVariables = Exact<{
+  id: string | number;
+}>;
+
+
+export type EnqueuePullRequestMutation = { enqueuePullRequest: { mergeQueueEntry: { id: string } | null } | null };
+
 export type MergeQueueStatusQueryVariables = Exact<{
   owner: string;
   repo: string;
@@ -110,6 +117,15 @@ export const ClosingIssuesDocument = gql`
   }
 }
     `;
+export const EnqueuePullRequestDocument = gql`
+    mutation enqueuePullRequest($id: ID!) {
+  enqueuePullRequest(input: {pullRequestId: $id}) {
+    mergeQueueEntry {
+      id
+    }
+  }
+}
+    `;
 export const MergeQueueStatusDocument = gql`
     query mergeQueueStatus($owner: String!, $repo: String!, $pr: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -168,6 +184,9 @@ export function getSdk<C>(requester: Requester<C>) {
   return {
     closingIssues(variables: ClosingIssuesQueryVariables, options?: C): Promise<ClosingIssuesQuery> {
       return requester<ClosingIssuesQuery, ClosingIssuesQueryVariables>(ClosingIssuesDocument, variables, options) as Promise<ClosingIssuesQuery>;
+    },
+    enqueuePullRequest(variables: EnqueuePullRequestMutationVariables, options?: C): Promise<EnqueuePullRequestMutation> {
+      return requester<EnqueuePullRequestMutation, EnqueuePullRequestMutationVariables>(EnqueuePullRequestDocument, variables, options) as Promise<EnqueuePullRequestMutation>;
     },
     mergeQueueStatus(variables: MergeQueueStatusQueryVariables, options?: C): Promise<MergeQueueStatusQuery> {
       return requester<MergeQueueStatusQuery, MergeQueueStatusQueryVariables>(MergeQueueStatusDocument, variables, options) as Promise<MergeQueueStatusQuery>;
