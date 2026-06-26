@@ -431,17 +431,6 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
       if (state === "MERGED") return "MERGED"
 
       if (state === "OPEN" && !isInMergeQueue && !mergeQueueEntry) {
-        await this.checkCi(false)
-
-        if (this.state.pr?.checks?.failed.length) {
-          this.state = await this.magi.updateState(this.state.output, {
-            pr: { automation: "FAILED" },
-            text: `Merge automation found failed checks for ${this.getLink()}.`,
-          })
-
-          return "FAILED"
-        }
-
         if (await isConflict.call(this)) {
           this.state = await this.magi.updateState(this.state.output, {
             pr: { automation: "CONFLICT" },
@@ -458,7 +447,7 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
       }
     }, 30_000)
 
-    if (result === "CONFLICT" || result === "FAILED") return result
+    if (result === "CONFLICT") return result
   } else {
     const args = [
       "gh",
@@ -485,20 +474,21 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
 
-      if (/merge queue enabled/i.test(message)) throw e
       if (
+        /merge queue enabled/i.test(message) ||
         !/\bconflicts?\b|not mergeable|merge commit cannot be cleanly created/i.test(
           message,
         )
-      )
+      ) {
         throw e
+      } else {
+        this.state = await this.magi.updateState(this.state.output, {
+          pr: { automation: "CONFLICT" },
+          text: `Merge automation found conflicts for ${this.getLink()}.`,
+        })
 
-      this.state = await this.magi.updateState(this.state.output, {
-        pr: { automation: "CONFLICT" },
-        text: `Merge automation found conflicts for ${this.getLink()}.`,
-      })
-
-      return "CONFLICT"
+        return "CONFLICT"
+      }
     }
   }
 
