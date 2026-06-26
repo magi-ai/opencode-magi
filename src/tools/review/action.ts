@@ -10,6 +10,8 @@ import { Prompt } from "@/prompts"
 import {
   command,
   filterEmpty,
+  isArray,
+  isObject,
   loop,
   marker,
   omitNullish,
@@ -47,6 +49,16 @@ export async function postReviews(this: Review): Promise<void> {
   if (this.config.mode === "single") {
     if (!this.state.pr?.verdict)
       throw new MagiError("blocked", "PR verdict not found.")
+    if (!this.state.pr.metadata)
+      throw new MagiError("blocked", "PR metadata not found.")
+    if (
+      this.state.pr.verdict === "APPROVED" &&
+      this.config.account === this.state.pr.metadata.user.login
+    )
+      throw new MagiError(
+        "blocked",
+        `Single mode account ${this.config.account} cannot approve ${this.getLink()} because it opened the pull request. Configure account to a different GitHub user.`,
+      )
 
     const octokit = await this.magi.createOctokit(
       this.config,
@@ -306,6 +318,7 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
     throw new MagiError("blocked", "PR metadata not found.")
   if (!this.state.pr.verdict)
     throw new MagiError("blocked", "PR verdict not found.")
+
   if (!["APPROVED", "CLOSED"].includes(this.state.pr.verdict)) return "SKIPPED"
 
   const automation = this.config[this.state.command].automation
@@ -357,52 +370,56 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
     return "SKIPPED"
   }
 
+  const token = await this.magi.getGhToken(account)
+
+  if (action === "merge" && !this.config.review.merge.queue) {
+    const rules = JSON.parse(
+      await this.exec(
+        command(
+          "gh",
+          "api",
+          quote(
+            `repos/${this.config.github.owner}/${this.config.github.repo}/rules/branches/${this.state.pr.metadata.base.ref}`,
+          ),
+        ),
+        {
+          env: { GH_TOKEN: token },
+          signal: this.context.abort,
+        },
+      ),
+    )
+
+    if (isArray(rules)) {
+      const enabledMergeQueue = rules.some(
+        (rule) =>
+          !!rule &&
+          isObject(rule) &&
+          "type" in rule &&
+          rule.type === "merge_queue",
+      )
+
+      if (!enabledMergeQueue)
+        throw new MagiError(
+          "blocked",
+          `Base branch \`${this.state.pr.metadata.base.ref}\` requires merge queue, but \`review.merge.queue\` is \`false\`. Enable \`review.merge.queue\` or target a branch without merge queue.`,
+        )
+    }
+  }
+
   this.state = await this.magi.updateState(this.state.output, {
     text: `${action === "merge" ? "Merging" : "Closing"} ${this.getLink()}.`,
   })
 
-  const token = await this.magi.getGhToken(account)
-  const args = ["gh", "pr"]
-
-  if (action === "merge") {
-    args.push("merge", this.number.toString(), "--repo", this.state.repo)
-
-    if (this.config.review.merge.queue) {
-      args.push("--queue")
-    } else {
-      if (this.config.review.merge.method === "merge") args.push("--merge")
-      if (this.config.review.merge.method === "rebase") args.push("--rebase")
-      if (this.config.review.merge.method === "squash") args.push("--squash")
-      if (this.config.review.merge.auto) args.push("--auto")
-      if (this.config.review.merge.deleteBranch) args.push("--delete-branch")
-    }
-  } else {
-    args.push("close", this.number.toString(), "--repo", this.state.repo)
-  }
-
-  try {
-    await this.exec(command(...args), {
-      env: { GH_TOKEN: token },
-      signal: this.context.abort,
-    })
-  } catch (e) {
-    if (action !== "merge") throw e
-    if (
-      !/\bconflicts?\b|not mergeable|merge commit cannot be cleanly created/i.test(
-        e instanceof Error ? e.message : String(e),
-      )
-    )
-      throw e
-
-    this.state = await this.magi.updateState(this.state.output, {
-      pr: { automation: "CONFLICT" },
-      text: `Merge automation found conflicts for ${this.getLink()}.`,
-    })
-
-    return "CONFLICT"
-  }
-
   if (action === "merge" && this.config.review.merge.queue) {
+    const octokit = await this.magi.createOctokit(
+      this.config,
+      this.context.abort,
+      account,
+    )
+    const graphql = this.magi.createGraphql(octokit)
+
+    await graphql.enqueuePullRequest({ id: this.state.pr!.metadata.node_id })
+
     this.state = await this.magi.updateState(this.state.output, {
       text: `Waiting for merge queue for ${this.getLink()}.`,
     })
@@ -441,6 +458,47 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
     }, 30_000)
 
     if (result === "CONFLICT") return result
+  } else {
+    const args = [
+      "gh",
+      "pr",
+      action,
+      this.number.toString(),
+      "--repo",
+      this.state.repo,
+    ]
+
+    if (action === "merge") {
+      if (this.config.review.merge.method === "merge") args.push("--merge")
+      if (this.config.review.merge.method === "rebase") args.push("--rebase")
+      if (this.config.review.merge.method === "squash") args.push("--squash")
+      if (this.config.review.merge.auto) args.push("--auto")
+      if (this.config.review.merge.deleteBranch) args.push("--delete-branch")
+    }
+
+    try {
+      await this.exec(command(...args), {
+        env: { GH_TOKEN: token },
+        signal: this.context.abort,
+      })
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+
+      if (/merge queue enabled/i.test(message)) throw e
+      if (
+        !/\bconflicts?\b|not mergeable|merge commit cannot be cleanly created/i.test(
+          message,
+        )
+      )
+        throw e
+
+      this.state = await this.magi.updateState(this.state.output, {
+        pr: { automation: "CONFLICT" },
+        text: `Merge automation found conflicts for ${this.getLink()}.`,
+      })
+
+      return "CONFLICT"
+    }
   }
 
   this.state = await this.magi.updateState(this.state.output, {
@@ -493,7 +551,9 @@ async function isConflict(this: Review): Promise<boolean> {
       return true
     }
   } finally {
-    await this.exec(command("git", "merge", "--abort"), options)
+    try {
+      await this.exec(command("git", "merge", "--abort"), options)
+    } catch {}
   }
 
   return false
