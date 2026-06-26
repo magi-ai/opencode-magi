@@ -5,6 +5,7 @@ import type {
 } from "./index.type"
 import type { Review } from "./review"
 import type { ReviewerState } from "@/magi"
+import type { Dict } from "@/utils"
 import { MagiError } from "@/magi"
 import { Prompt } from "@/prompts"
 import {
@@ -12,6 +13,7 @@ import {
   filterEmpty,
   isArray,
   isObject,
+  isString,
   loop,
   marker,
   omitNullish,
@@ -449,14 +451,9 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
 
     if (result === "CONFLICT") return result
   } else {
-    const args = [
-      "gh",
-      "pr",
-      action,
-      this.number.toString(),
-      "--repo",
-      this.state.repo,
-    ]
+    const prefix = ["gh", "pr"]
+    const suffix = [this.number.toString(), "--repo", this.state.repo]
+    const args = [...prefix, action, ...suffix]
 
     if (action === "merge") {
       if (this.config.review.merge.method === "merge") args.push("--merge")
@@ -466,26 +463,128 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
       if (this.config.review.merge.deleteBranch) args.push("--delete-branch")
     }
 
+    const options = { env: { GH_TOKEN: token }, signal: this.context.abort }
+    const waitMerge = async (): Promise<PullRequestAutomation> => {
+      return await loop<PullRequestAutomation>(async () => {
+        this.context.abort.throwIfAborted()
+
+        const data = await this.exec(
+          command(
+            ...prefix,
+            "view",
+            ...suffix,
+            "--json",
+            "autoMergeRequest,mergeStateStatus,state,statusCheckRollup",
+          ),
+          options,
+        )
+        const { autoMergeRequest, mergeStateStatus, state, statusCheckRollup } =
+          JSON.parse(data)
+
+        if (state === "MERGED") return "MERGED"
+        if (mergeStateStatus === "DIRTY") return "CONFLICT"
+        if (mergeStateStatus === "BLOCKED" && isArray(statusCheckRollup))
+          if (
+            statusCheckRollup.some(
+              (check) =>
+                isObject<Dict>(check) &&
+                ["conclusion", "state", "status"].some(
+                  (key) =>
+                    isString(check[key]) &&
+                    /failure|failed|error|cancelled|timed_out|action_required/i.test(
+                      check[key],
+                    ),
+                ),
+            )
+          )
+            throw new MagiError(
+              "blocked",
+              `Required checks failed before merging ${this.getLink()}.`,
+            )
+        if (!autoMergeRequest && state === "OPEN")
+          throw new MagiError(
+            "blocked",
+            `Auto-merge is no longer enabled for ${this.getLink()}.`,
+          )
+      }, 30_000)
+    }
+
     try {
-      await this.exec(command(...args), {
-        env: { GH_TOKEN: token },
-        signal: this.context.abort,
-      })
+      await this.exec(command(...args), options)
+
+      if (action === "merge" && this.config.review.merge.auto) {
+        const result = await waitMerge()
+
+        if (result === "CONFLICT") {
+          this.state = await this.magi.updateState(this.state.output, {
+            pr: { automation: "CONFLICT" },
+            text: `Merge automation found conflicts for ${this.getLink()}.`,
+          })
+
+          return "CONFLICT"
+        }
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
 
-      if (
-        /\bconflicts?\b|merge commit cannot be cleanly created/i.test(message)
-      ) {
-        this.state = await this.magi.updateState(this.state.output, {
-          pr: { automation: "CONFLICT" },
-          text: `Merge automation found conflicts for ${this.getLink()}.`,
-        })
+      if (action !== "merge") throw e
 
-        return "CONFLICT"
+      switch (true) {
+        case /\bconflicts?\b|merge commit cannot be cleanly created/i.test(
+          message,
+        ):
+          this.state = await this.magi.updateState(this.state.output, {
+            pr: { automation: "CONFLICT" },
+            text: `Merge automation found conflicts for ${this.getLink()}.`,
+          })
+
+          return "CONFLICT"
+
+        case /head (branch|ref) is (not up to date|out of date)/i.test(message):
+          this.state = await this.magi.updateState(this.state.output, {
+            text: `Updating ${this.getLink()} with the base branch before merging.`,
+          })
+
+          await this.exec(
+            command(...prefix, "update-branch", ...suffix),
+            options,
+          )
+
+          if (!this.config.review.merge.auto)
+            await this.exec(
+              command(
+                ...prefix,
+                "checks",
+                ...suffix,
+                "--required",
+                "--watch",
+                "--fail-fast",
+                "--interval",
+                "30",
+              ),
+              options,
+            )
+
+          await this.exec(command(...args), options)
+
+          if (this.config.review.merge.auto) {
+            const result = await waitMerge()
+
+            if (result === "CONFLICT") {
+              this.state = await this.magi.updateState(this.state.output, {
+                pr: { automation: "CONFLICT" },
+                text: `Merge automation found conflicts for ${this.getLink()}.`,
+              })
+
+              return "CONFLICT"
+            }
+          }
+
+          break
+
+        default:
+          throw e
       }
-
-      throw e
     }
   }
 
