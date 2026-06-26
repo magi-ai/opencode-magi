@@ -431,6 +431,17 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
       if (state === "MERGED") return "MERGED"
 
       if (state === "OPEN" && !isInMergeQueue && !mergeQueueEntry) {
+        await this.checkCi(false)
+
+        if (this.state.pr?.checks?.failed.length) {
+          this.state = await this.magi.updateState(this.state.output, {
+            pr: { automation: "FAILED" },
+            text: `Merge automation found failed checks for ${this.getLink()}.`,
+          })
+
+          return "FAILED"
+        }
+
         if (await isConflict.call(this)) {
           this.state = await this.magi.updateState(this.state.output, {
             pr: { automation: "CONFLICT" },
@@ -447,7 +458,7 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
       }
     }, 30_000)
 
-    if (result === "CONFLICT") return result
+    if (result === "CONFLICT" || result === "FAILED") return result
   } else {
     const args = [
       "gh",

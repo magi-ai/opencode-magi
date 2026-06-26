@@ -6,7 +6,12 @@ import type {
 } from "@/graphql"
 
 export type PullRequestVerdict = "APPROVED" | "CHANGES_REQUESTED" | "CLOSED"
-export type PullRequestAutomation = "CLOSED" | "CONFLICT" | "MERGED" | "SKIPPED"
+export type PullRequestAutomation =
+  | "CLOSED"
+  | "CONFLICT"
+  | "FAILED"
+  | "MERGED"
+  | "SKIPPED"
 
 export interface PullRequestCheck {
   bucket: string
