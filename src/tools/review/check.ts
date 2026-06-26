@@ -93,6 +93,24 @@ export async function checkPr(this: Review): Promise<void> {
   if (errors.length)
     throw new MagiError("blocked", `PR is safety blocked. ${errors.join(" ")}`)
 
+  if (this.config.mode === "single") {
+    if (this.config.account === metadata.user.login)
+      throw new MagiError(
+        "blocked",
+        `Single mode account ${this.config.account} cannot review ${this.getLink()} because it opened the pull request. Configure account to a different GitHub user.`,
+      )
+  } else {
+    const accounts = Object.values(this.state.reviewers ?? {})
+      .filter(({ account }) => account === metadata.user.login)
+      .map(({ account }) => account)
+
+    if (accounts.length)
+      throw new MagiError(
+        "blocked",
+        `Multi mode accounts ${accounts.join(", ")} cannot review ${this.getLink()} because they opened the pull request. Configure accounts to different GitHub users.`,
+      )
+  }
+
   this.state = await this.magi.updateState(this.state.output, {
     pr: { files, metadata },
     text: `Finished checking PR ${this.getLink()}.`,

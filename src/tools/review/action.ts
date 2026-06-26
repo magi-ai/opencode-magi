@@ -49,16 +49,6 @@ export async function postReviews(this: Review): Promise<void> {
   if (this.config.mode === "single") {
     if (!this.state.pr?.verdict)
       throw new MagiError("blocked", "PR verdict not found.")
-    if (!this.state.pr.metadata)
-      throw new MagiError("blocked", "PR metadata not found.")
-    if (
-      this.state.pr.verdict === "APPROVED" &&
-      this.config.account === this.state.pr.metadata.user.login
-    )
-      throw new MagiError(
-        "blocked",
-        `Single mode account ${this.config.account} cannot approve ${this.getLink()} because it opened the pull request. Configure account to a different GitHub user.`,
-      )
 
     const octokit = await this.magi.createOctokit(
       this.config,
