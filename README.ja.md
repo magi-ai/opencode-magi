@@ -108,7 +108,7 @@ touch ~/.config/opencode/magi.json
 
 #### プロジェクト設定を作成する
 
-グローバル設定は任意ですが、プロジェクト設定は必須です。
+Magiの設定ファイルは少なくとも1つ必要です。プロジェクト固有の設定には、プロジェクト設定を使用します。
 
 ```bash
 cd <project>
@@ -202,11 +202,11 @@ OpenCodeからコマンドを実行します。
 
 ```txt
 /magi:review 123 124
-/magi:review --dry-run 123
+/magi:review 123 --dry-run
 /magi:merge 123
-/magi:merge --dry-run 123
+/magi:merge 123 --dry-run
 /magi:triage 47 48
-/magi:triage --dry-run 47
+/magi:triage 47 --dry-run
 /magi:clear
 ```
 
@@ -214,7 +214,6 @@ OpenCodeからコマンドを実行します。
 
 - [コマンド](docs/commands/index.ja.md)
 - [設定](docs/config.ja.md)
-- [プロンプト](docs/prompts/index.ja.md)
 
 ## コントリビュート
 

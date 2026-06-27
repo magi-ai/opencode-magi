@@ -108,7 +108,7 @@ By default, Magi uses single mode (`mode: "single"`). To use multi mode with mul
 
 #### Set project config
 
-Global config is optional, but project config is required.
+At least one Magi config file is required. Use project config for project-specific settings.
 
 ```bash
 cd <project>
@@ -202,11 +202,11 @@ Run commands from OpenCode.
 
 ```txt
 /magi:review 123 124
-/magi:review --dry-run 123
+/magi:review 123 --dry-run
 /magi:merge 123
-/magi:merge --dry-run 123
+/magi:merge 123 --dry-run
 /magi:triage 47 48
-/magi:triage --dry-run 47
+/magi:triage 47 --dry-run
 /magi:clear
 ```
 
@@ -214,7 +214,6 @@ Run commands from OpenCode.
 
 - [Commands](docs/commands/index.en.md)
 - [Config](docs/config.en.md)
-- [Prompts](docs/prompts/index.en.md)
 
 ## Contributing
 
