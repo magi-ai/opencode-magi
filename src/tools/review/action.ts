@@ -27,6 +27,7 @@ const events = {
   CHANGES_REQUESTED: "REQUEST_CHANGES",
   CLOSED: "COMMENT",
 } as const
+const mergeWorker = new Worker<PullRequestAutomation | void>(1)
 
 export async function postReviews(this: Review): Promise<void> {
   this.context.abort.throwIfAborted()
@@ -499,68 +500,77 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
           )
       }, 30_000)
     }
+    const runAutomation = async (): Promise<PullRequestAutomation | void> => {
+      try {
+        await this.exec(command(...args), options)
 
-    try {
-      await this.exec(command(...args), options)
+        if (action === "merge" && this.config.review.merge.auto) {
+          const result = await waitMerge()
 
-      if (action === "merge" && this.config.review.merge.auto) {
-        const result = await waitMerge()
+          if (result === "CONFLICT") {
+            this.state = await this.magi.updateState(this.state.output, {
+              pr: { automation: "CONFLICT" },
+              text: `Merge automation found conflicts for ${this.getLink()}.`,
+            })
 
-        if (result === "CONFLICT") {
-          this.state = await this.magi.updateState(this.state.output, {
-            pr: { automation: "CONFLICT" },
-            text: `Merge automation found conflicts for ${this.getLink()}.`,
-          })
+            return "CONFLICT"
+          }
+        }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e)
 
-          return "CONFLICT"
+        if (action !== "merge") throw e
+
+        switch (true) {
+          case /\bconflicts?\b|merge commit cannot be cleanly created/i.test(
+            message,
+          ):
+            this.state = await this.magi.updateState(this.state.output, {
+              pr: { automation: "CONFLICT" },
+              text: `Merge automation found conflicts for ${this.getLink()}.`,
+            })
+
+            return "CONFLICT"
+
+          case /head (branch|ref) is (not up to date|out of date)/i.test(
+            message,
+          ):
+            this.state = await this.magi.updateState(this.state.output, {
+              text: `Updating ${this.getLink()} with the base branch before merging.`,
+            })
+
+            await this.exec(
+              command(...prefix, "update-branch", ...suffix),
+              options,
+            )
+            await this.exec(command(...args), options)
+
+            if (this.config.review.merge.auto) {
+              const result = await waitMerge()
+
+              if (result === "CONFLICT") {
+                this.state = await this.magi.updateState(this.state.output, {
+                  pr: { automation: "CONFLICT" },
+                  text: `Merge automation found conflicts for ${this.getLink()}.`,
+                })
+
+                return "CONFLICT"
+              }
+            }
+
+            break
+
+          default:
+            throw e
         }
       }
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e)
-
-      if (action !== "merge") throw e
-
-      switch (true) {
-        case /\bconflicts?\b|merge commit cannot be cleanly created/i.test(
-          message,
-        ):
-          this.state = await this.magi.updateState(this.state.output, {
-            pr: { automation: "CONFLICT" },
-            text: `Merge automation found conflicts for ${this.getLink()}.`,
-          })
-
-          return "CONFLICT"
-
-        case /head (branch|ref) is (not up to date|out of date)/i.test(message):
-          this.state = await this.magi.updateState(this.state.output, {
-            text: `Updating ${this.getLink()} with the base branch before merging.`,
-          })
-
-          await this.exec(
-            command(...prefix, "update-branch", ...suffix),
-            options,
-          )
-          await this.exec(command(...args), options)
-
-          if (this.config.review.merge.auto) {
-            const result = await waitMerge()
-
-            if (result === "CONFLICT") {
-              this.state = await this.magi.updateState(this.state.output, {
-                pr: { automation: "CONFLICT" },
-                text: `Merge automation found conflicts for ${this.getLink()}.`,
-              })
-
-              return "CONFLICT"
-            }
-          }
-
-          break
-
-        default:
-          throw e
-      }
     }
+    const result =
+      action === "merge"
+        ? await mergeWorker.run(runAutomation)
+        : await runAutomation()
+
+    if (result) return result
   }
 
   this.state = await this.magi.updateState(this.state.output, {
