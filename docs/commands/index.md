@@ -1,7 +1,7 @@
 # Commands
 
-- [`/magi:review`](review.md) - Review pull requests with configured reviewer agents.
-- [`/magi:merge`](merge.md) - Review, edit, re-review, and merge or close pull requests.
-- [`/magi:triage`](triage.md) - Triage GitHub issues with configured triage voters.
-- [`/magi:clear`](clear.md) - Clear inactive Magi run resources.
-- [`/magi:validate`](validate.md) - Validate Magi configuration.
+- [`/magi:clear`](clear/index.md) - Clear inactive data.
+- [`/magi:merge`](merge/index.md) - Review and merge PRs.
+- [`/magi:review`](review/index.md) - Review PRs.
+- [`/magi:triage`](triage/index.md) - Triage issues.
+- [`/magi:validate`](validate/index.md) - Validate config.
