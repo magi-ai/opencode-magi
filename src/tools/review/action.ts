@@ -540,22 +540,6 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
             command(...prefix, "update-branch", ...suffix),
             options,
           )
-
-          if (!this.config.review.merge.auto)
-            await this.exec(
-              command(
-                ...prefix,
-                "checks",
-                ...suffix,
-                "--required",
-                "--watch",
-                "--fail-fast",
-                "--interval",
-                "30",
-              ),
-              options,
-            )
-
           await this.exec(command(...args), options)
 
           if (this.config.review.merge.auto) {
