@@ -141,13 +141,16 @@ export async function postReviews(this: Review): Promise<void> {
         2,
       )
       const prompt = await Prompt.init(this.magi, this.config, "review/comment")
-      const taskMessage = await prompt.create(undefined, ["output_contract"], {
-        contents,
-        owner: this.config.github.owner,
-        pr: this.number.toString(),
-        repo: this.config.github.repo,
-        verdict: this.state.pr.verdict,
-      })
+      const taskMessage = await prompt.create(
+        undefined,
+        ["output_contract", ["contents", contents]],
+        {
+          owner: this.config.github.owner,
+          pr: this.number.toString(),
+          repo: this.config.github.repo,
+          verdict: this.state.pr.verdict,
+        },
+      )
       const repairMessage = await prompt.repair()
       const output = await retry(
         async (count) => {
@@ -391,7 +394,7 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
           rule.type === "merge_queue",
       )
 
-      if (!enabledMergeQueue)
+      if (enabledMergeQueue)
         throw new MagiError(
           "blocked",
           `Base branch \`${this.state.pr.metadata.base.ref}\` requires merge queue, but \`review.merge.queue\` is \`false\`. Enable \`review.merge.queue\` or target a branch without merge queue.`,

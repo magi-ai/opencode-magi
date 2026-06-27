@@ -7,8 +7,4 @@ Use: git -C "{worktreePath}" diff {baseSha}...{headSha}
 Treat failures that appeared after the editor changes as `"SCOPE_IN"` unless there is strong evidence they are unrelated.
 If uncertain, choose `"SCOPE_IN"`.
 
-Failed checks with structured failure evidence:
-
-```json
-{failedChecks}
-```
+Failed checks with structured failure evidence are provided in `<failed_checks>`.

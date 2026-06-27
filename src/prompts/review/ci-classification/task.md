@@ -4,8 +4,4 @@ The PR worktree is {worktreePath}.
 Review only the diff from {baseSha} to {headSha}.
 Use: git -C "{worktreePath}" diff {baseSha}...{headSha}
 
-Failed checks with structured failure evidence:
-
-```json
-{failedChecks}
-```
+Failed checks with structured failure evidence are provided in `<failed_checks>`.

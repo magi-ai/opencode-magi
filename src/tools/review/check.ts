@@ -162,12 +162,14 @@ export async function classifyChecks(this: Review): Promise<void> {
   )
   const taskMessage = await prompt.create(
     this.config[command].prompts?.ciClassification,
-    ["output_contract"],
+    [
+      "output_contract",
+      ["failed_checks", JSON.stringify(this.state.pr.checks.failed, null, 2)],
+    ],
     {
       baseSha:
         this.state.pr.metadata[this.state.command === "merge" ? "head" : "base"]
           .sha,
-      failedChecks: JSON.stringify(this.state.pr.checks.failed, null, 2),
       headSha: this.state.pr.metadata.head.sha,
       owner: this.config.github.owner,
       pr: this.number.toString(),
