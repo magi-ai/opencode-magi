@@ -45,12 +45,12 @@ The project is intentionally small, so please keep contributions focused. If you
 - **`pnpm format:check`**: runs the formatting check.
 - **`pnpm lint:check`**: runs the rule check.
 - **`pnpm typecheck`**: runs typechecking.
-- **`pnpm release:version`**: updates package versions and changelogs.
+- **`pnpm release:dev`**: publishes the dev package.
 - **`pnpm release`**: publishes the package.
 
 ## AI Usage Policy
 
-Yamada UI welcomes contributions from everyone, including those created with the assistance of Artificial Intelligence (AI) tools. If you contribute using AI, please follow the [AI Usage Policy](AI_POLICY.md).
+OpenCode Magi welcomes contributions from everyone, including those created with the assistance of Artificial Intelligence (AI) tools. If you contribute using AI, please follow the [AI Usage Policy](AI_POLICY.md).
 
 ## Think you found a bug?
 

@@ -45,12 +45,12 @@ OpenCode Magiは、OpenCodeのマルチエージェントによるGitHubのPRの
 - **`pnpm format:check`**: フォーマットのチェックを実行します。
 - **`pnpm lint:check`**: ルールのチェックを実行します。
 - **`pnpm typecheck`**: 型のチェックを実行します。
-- **`pnpm release:version`**: パッケージバージョンと変更履歴を更新します。
+- **`pnpm release:dev`**: 開発パッケージを公開します。
 - **`pnpm release`**: パッケージを公開します。
 
 ## AI 利用ポリシー
 
-Yamada UIは、人工知能（AI）ツールの支援を活用した貢献を含め、すべての方からの貢献を歓迎します。AIを用いて貢献を行う場合は、以下の[AI利用ポリシー](./AI_POLICY.ja.md)に従ってください。
+OpenCode Magiは、人工知能（AI）ツールの支援を活用した貢献を含め、すべての方からの貢献を歓迎します。AIを用いて貢献を行う場合は、以下の[AI利用ポリシー](AI_POLICY.ja.md)に従ってください。
 
 ## バグを見つけたと思いますか？
 
