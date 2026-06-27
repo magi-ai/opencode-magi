@@ -478,30 +478,21 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
           ),
           options,
         )
-        const { autoMergeRequest, mergeStateStatus, state, statusCheckRollup } =
-          JSON.parse(data)
+        const {
+          autoMergeRequest: auto,
+          mergeStateStatus: status,
+          state,
+          statusCheckRollup: checks,
+        } = JSON.parse(data)
 
         if (state === "MERGED") return "MERGED"
-        if (mergeStateStatus === "DIRTY") return "CONFLICT"
-        if (mergeStateStatus === "BLOCKED" && isArray(statusCheckRollup))
-          if (
-            statusCheckRollup.some(
-              (check) =>
-                isObject<Dict>(check) &&
-                ["conclusion", "state", "status"].some(
-                  (key) =>
-                    isString(check[key]) &&
-                    /failure|failed|error|cancelled|timed_out|action_required/i.test(
-                      check[key],
-                    ),
-                ),
-            )
+        if (status === "DIRTY") return "CONFLICT"
+        if (status === "BLOCKED" && hasFailedChecks(checks))
+          throw new MagiError(
+            "blocked",
+            `Required checks failed before merging ${this.getLink()}.`,
           )
-            throw new MagiError(
-              "blocked",
-              `Required checks failed before merging ${this.getLink()}.`,
-            )
-        if (!autoMergeRequest && state === "OPEN")
+        if (!auto && state === "OPEN")
           throw new MagiError(
             "blocked",
             `Auto-merge is no longer enabled for ${this.getLink()}.`,
@@ -594,6 +585,20 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
   })
 
   return action === "merge" ? "MERGED" : "CLOSED"
+}
+
+function hasFailedChecks(checks: unknown): boolean {
+  if (!isArray(checks)) return false
+
+  const regexp = /failure|failed|error|cancelled|timed_out|action_required/i
+
+  return checks.some(
+    (check) =>
+      isObject<Dict>(check) &&
+      ["conclusion", "state", "status"].some(
+        (key) => isString(check[key]) && regexp.test(check[key]),
+      ),
+  )
 }
 
 async function isConflict(this: Review): Promise<boolean> {
