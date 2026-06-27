@@ -1,3 +1,9 @@
+<p align='center'>
+  English | <a href='./README.ja.md'>日本語</a>
+</p>
+
+# Contributing to OpenCode Magi
+
 ## Thanks for your interest in contribute to OpenCode Magi 😎, you are amazing!!!
 
 There are several ways to contribute to open source, and all of them are valuable. These guidelines should help you prepare your contribution.

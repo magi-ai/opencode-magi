@@ -1,3 +1,7 @@
+<p align='center'>
+  English | <a href='./README.ja.md'>日本語</a>
+</p>
+
 # AI Usage Policy
 
 OpenCode Magi welcomes contributions from everyone, including those created with the assistance of Artificial Intelligence (AI) tools. We believe AI can be a powerful tool for improving software and want to encourage its responsible use in our project.
