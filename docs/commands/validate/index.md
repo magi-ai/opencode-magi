@@ -3,3 +3,13 @@
 </p>
 
 # `magi:validate`
+
+Reads OpenCode Magi config files and validates the config content, GitHub authentication status, and model availability.
+
+## Usage
+
+Run the following command in OpenCode.
+
+```txt
+/magi:validate
+```

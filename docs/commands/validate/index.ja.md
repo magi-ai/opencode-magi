@@ -3,3 +3,13 @@
 </p>
 
 # `magi:validate`
+
+OpenCode Magiの設定ファイルを読み込み、設定内容とGitHub認証状態とモデルが使用可能かどうかを検証するコマンドです。
+
+## 使い方
+
+OpenCodeで次のコマンドを実行します。
+
+```txt
+/magi:validate
+```
