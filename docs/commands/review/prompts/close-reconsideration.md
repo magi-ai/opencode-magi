@@ -23,7 +23,3 @@ To customize this prompt, set `review.prompts.closeReconsideration` to the promp
 | `{pr}`      | Pull request number. |
 | `{owner}`   | Repository owner.    |
 | `{repo}`    | Repository name.     |
-
-## Tags
-
-This prompt does not receive additional context tags beyond the output contract.
