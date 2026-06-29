@@ -15,3 +15,9 @@ Run the following command in OpenCode.
 /magi:cancel 123
 /magi:cancel 123 124
 ```
+
+## Arguments
+
+| Argument  | Required | Description                                                                                                                             |
+| --------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `numbers` | No       | Pull request or issue numbers to cancel. You can specify multiple numbers. When omitted, all background runs in progress are cancelled. |
