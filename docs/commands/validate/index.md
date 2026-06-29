@@ -4,7 +4,7 @@
 
 # `magi:validate`
 
-Reads OpenCode Magi config files and validates the config content, GitHub authentication status, and model availability.
+Reads OpenCode Magi config files and validates the config content, authentication status, and model availability.
 
 ## Usage
 

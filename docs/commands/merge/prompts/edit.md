@@ -4,7 +4,7 @@
 
 # Edit
 
-[`edit`](/src/prompts/merge/edit/task.md) asks the editor agent to handle unresolved GitHub review threads.
+[`edit`](/src/prompts/merge/edit/task.md) asks the editor agent to handle unresolved review threads.
 
 The prompt asks the editor agent to act as the pull request author. For each unresolved thread, it can fix the issue, disagree with the request, or ask a concrete question.
 
