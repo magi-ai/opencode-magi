@@ -87,7 +87,7 @@ Add the following content to the configuration file.
 }
 ```
 
-By default, Magi uses single mode (`mode: "single"`). To use multi mode with multiple GitHub accounts, set `mode: "multi"` and configure an account for each reviewer.
+By default, Magi uses single mode (`mode: "single"`). To use multi mode with multiple accounts, set `mode: "multi"` and configure an account for each reviewer.
 
 ```json
 {
