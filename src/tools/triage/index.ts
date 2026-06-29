@@ -10,7 +10,7 @@ export const triage: Tool = function (magi) {
         sync: tool.schema.boolean().optional(),
       },
       description:
-        "Triage one or more GitHub issues with configured Magi triage voters.",
+        "Triage one or more issues with configured Magi triage voters.",
       async execute({
         dryRun: _dryRun = false,
         issues: _issues,

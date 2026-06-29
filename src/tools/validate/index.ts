@@ -16,7 +16,7 @@ export const validate: Tool = function (magi) {
     magi_validate: tool({
       args: {},
       description:
-        "Validate global and project Magi config presence, merged settings, reviewer rules, model IDs, and GitHub authentication.",
+        "Validate global and project Magi config presence, merged settings, reviewer rules, model IDs, and account authentication.",
       async execute() {
         try {
           const config = await getConfig(magi.input)

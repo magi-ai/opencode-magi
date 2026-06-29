@@ -22,7 +22,7 @@ export const commands: Config["command"] = {
     template: ["Call the `magi_review` tool.", "PR: $ARGUMENTS"].join("\n"),
   },
   "magi:triage": {
-    description: "Triage GitHub issues with Magi",
+    description: "Triage issues with Magi",
     template: ["Call the `magi_triage` tool.", "Issue: $ARGUMENTS"].join("\n"),
   },
   "magi:validate": {

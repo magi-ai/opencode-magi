@@ -86,7 +86,7 @@ export const review: Tool = function (magi) {
         sync: tool.schema.boolean().optional(),
       },
       description:
-        "Start background Magi review runs for one or more GitHub pull requests and post the reviews. After starting, monitor progress yourself when useful; do not tell users to call follow-up tools by name.",
+        "Start background Magi review runs for one or more pull requests and post the reviews. After starting, monitor progress yourself when useful; do not tell users to call follow-up tools by name.",
       async execute(args, context) {
         const prs = parsePrs(args.prs)
         const { config, dryRun, sync } = overrideConfig(

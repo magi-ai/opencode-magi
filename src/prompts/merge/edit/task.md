@@ -1,7 +1,7 @@
 Fix pull request #{pr} for {owner}/{repo}.
 The PR worktree is {worktreePath}.
 
-Act as the PR author and address the unresolved GitHub review threads provided in `<unresolved_threads>`.
+Act as the PR author and address the unresolved review threads provided in `<unresolved_threads>`.
 
 For each thread, decide whether you agree with the reviewer.
 If you understand and agree with the requested change, edit the code, stage changes, commit, and reply with action `"FIXED"` for each related thread.

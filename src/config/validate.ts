@@ -148,7 +148,7 @@ async function authError(
 
     return undefined
   } catch {
-    return `GitHub account is not authenticated: ${account}`
+    return `Account is not authenticated: ${account}`
   }
 }
 

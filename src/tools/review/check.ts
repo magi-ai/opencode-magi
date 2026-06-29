@@ -97,7 +97,7 @@ export async function checkPr(this: Review): Promise<void> {
     if (this.config.account === metadata.user.login)
       throw new MagiError(
         "blocked",
-        `Single mode account ${this.config.account} cannot review ${this.getLink()} because it opened the pull request. Configure account to a different GitHub user.`,
+        `Single mode account ${this.config.account} cannot review ${this.getLink()} because it opened the pull request. Configure account to a different account.`,
       )
   } else {
     const accounts = Object.values(this.state.reviewers ?? {})
@@ -107,7 +107,7 @@ export async function checkPr(this: Review): Promise<void> {
     if (accounts.length)
       throw new MagiError(
         "blocked",
-        `Multi mode accounts ${accounts.join(", ")} cannot review ${this.getLink()} because they opened the pull request. Configure accounts to different GitHub users.`,
+        `Multi mode accounts ${accounts.join(", ")} cannot review ${this.getLink()} because they opened the pull request. Configure accounts to different accounts.`,
       )
   }
 

@@ -79,28 +79,42 @@ touch ~/.config/opencode/magi.json
   },
   "review": {
     "reviewers": [
-      { "ref": "account-1" },
-      { "ref": "account-2" },
-      { "ref": "account-3" }
+      {
+        "ref": "account-1"
+      },
+      {
+        "ref": "account-2"
+      },
+      {
+        "ref": "account-3"
+      }
     ]
   }
 }
 ```
 
-デフォルトでは、シングルモード（`mode: "single"`）です。複数のGitHubアカウントを使用するマルチモードにする場合は、`mode: "multi"`を設定し、各レビュアーごとにアカウントを設定します。
+デフォルトでは、シングルモード（`mode: "single"`）です。複数のGitHubアカウントを使用するマルチモードにする場合は、`mode: "multi"`を設定し、各エージェントごとにアカウントを設定します。
 
 ```json
 {
   "mode": "multi",
   "review": {
     "reviewers": [
-      { "id": "general", "model": "openai/gpt-5.5", "account": "account-1" },
+      {
+        "id": "general",
+        "model": "openai/gpt-5.5",
+        "account": "account-1"
+      },
       {
         "id": "security",
         "model": "anthropic/claude-opus-4-7",
         "account": "account-2"
       },
-      { "id": "compat", "model": "opencode/kimi-k2-6", "account": "account-3" }
+      {
+        "id": "compat",
+        "model": "opencode/kimi-k2-6",
+        "account": "account-3"
+      }
     ]
   }
 }
@@ -148,19 +162,33 @@ touch .opencode/magi.json
   },
   "review": {
     "reviewers": [
-      { "ref": "account-1" },
-      { "ref": "account-2" },
-      { "ref": "account-3" }
+      {
+        "ref": "account-1"
+      },
+      {
+        "ref": "account-2"
+      },
+      {
+        "ref": "account-3"
+      }
     ]
   },
   "merge": {
-    "editor": { "ref": "account-4" }
+    "editor": {
+      "ref": "account-4"
+    }
   },
   "triage": {
     "voters": [
-      { "ref": "account-1" },
-      { "ref": "account-2" },
-      { "ref": "account-3" }
+      {
+        "ref": "account-1"
+      },
+      {
+        "ref": "account-2"
+      },
+      {
+        "ref": "account-3"
+      }
     ]
   }
 }
@@ -182,8 +210,14 @@ touch .opencode/magi.json
 ```json
 {
   "model": [
-    { "id": "anthropic/claude-opus-4-7", "variant": "high" },
-    { "id": "openai/gpt-5.5", "variant": "medium" }
+    {
+      "id": "anthropic/claude-opus-4-7",
+      "variant": "high"
+    },
+    {
+      "id": "openai/gpt-5.5",
+      "variant": "medium"
+    }
   ]
 }
 ```
