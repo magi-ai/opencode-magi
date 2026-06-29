@@ -63,7 +63,7 @@ function createEditorContent(this: Review): string[] {
       "- **Editor**:",
       ...this.state.editor.outputs.flatMap((output, index) => {
         const lines = [
-          `  - **Cycle ${index + 1}**: ${toTitleCase(output.mode)}`,
+          `  - **Cycle ${index + 1}**: ${toTitleCase(output.mode.toLocaleLowerCase())}`,
         ]
 
         if (output.commitSha)
@@ -90,7 +90,7 @@ function createEditorContent(this: Review): string[] {
               : commentId
 
             lines.push(
-              `      - **${toTitleCase(action)}** \`${prefix}\`: ${body}`,
+              `      - **${toTitleCase(action.toLocaleLowerCase())}** \`${prefix}\`: ${body}`,
             )
           }
         }

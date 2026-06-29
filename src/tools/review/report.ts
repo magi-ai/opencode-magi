@@ -58,11 +58,13 @@ export function createMetaContent(
     `- **Mode**: ${toTitleCase(this.config.mode)}`,
     `- **Dry run**: ${this.state.dryRun ? "Yes" : "No"}`,
     `- **Status**: ${toTitleCase(input.status)}`,
-    `- **Automation**: ${toTitleCase(this.state.pr?.automation ?? "NONE")}`,
+    `- **Automation**: ${toTitleCase(this.state.pr?.automation?.toLocaleLowerCase() ?? "NONE")}`,
   ]
 
   if (this.state.pr?.verdict)
-    rows.push(`- **Verdict**: ${this.state.pr.verdict}`)
+    rows.push(
+      `- **Verdict**: ${toTitleCase(this.state.pr.verdict.toLocaleLowerCase())}`,
+    )
 
   if (this.state.text) rows.push(`- **Last action**: ${this.state.text}`)
   if (input.error) rows.push(`- **Error**: ${input.error}`)
@@ -122,10 +124,10 @@ export function createReviewerContent(this: Review): string[] {
 
         const output = outputs.at(-1)!
         const url = posted ?? review?.html_url
-        const status = toTitleCase(output.verdict)
+        const status = toTitleCase(output.verdict.toLocaleLowerCase())
         const prevStatuses = outputs
           .slice(0, -1)
-          .map(({ verdict }) => toTitleCase(verdict))
+          .map(({ verdict }) => toTitleCase(verdict.toLocaleLowerCase()))
           .reduce<string[]>((prev, current) => {
             if (prev.at(-1) !== current) prev.push(current)
 
@@ -134,7 +136,9 @@ export function createReviewerContent(this: Review): string[] {
         const lines = [
           `  - **${id}**: ${[...prevStatuses, url ? `[${status}](${url})` : status].join(" -> ")}`,
           ...outputs.flatMap((output, index) => {
-            const lines = [`    - **Verdict**: ${toTitleCase(output.verdict)}`]
+            const lines = [
+              `    - **Verdict**: ${toTitleCase(output.verdict.toLocaleLowerCase())}`,
+            ]
             const latest = index === outputs.length - 1
             const findings = output.findings ?? output.newFindings ?? []
 
