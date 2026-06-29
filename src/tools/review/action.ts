@@ -402,9 +402,14 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
     }
   }
 
-  this.state = await this.magi.updateState(this.state.output, {
-    text: `${action === "merge" ? "Merging" : "Closing"} ${this.getLink()}.`,
-  })
+  if (action !== "merge" || this.config.review.merge.queue)
+    this.state = await this.magi.updateState(this.state.output, {
+      text: `${action === "merge" ? "Merging" : "Closing"} ${this.getLink()}.`,
+    })
+  else
+    this.state = await this.magi.updateState(this.state.output, {
+      text: `Waiting to merge ${this.getLink()}.`,
+    })
 
   if (action === "merge" && this.config.review.merge.queue) {
     const octokit = await this.magi.createOctokit(
@@ -491,6 +496,20 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
 
         if (state === "MERGED") return "MERGED"
         if (status === "DIRTY") return "CONFLICT"
+
+        if (status === "BEHIND") {
+          this.state = await this.magi.updateState(this.state.output, {
+            text: `Updating ${this.getLink()} with the base branch before merging.`,
+          })
+
+          await this.exec(
+            command(...prefix, "update-branch", ...suffix),
+            options,
+          )
+
+          return
+        }
+
         if (status === "BLOCKED" && hasFailedChecks(checks))
           throw new MagiError(
             "blocked",
@@ -505,6 +524,10 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
     }
     const runAutomation = async (): Promise<PullRequestAutomation | void> => {
       try {
+        this.state = await this.magi.updateState(this.state.output, {
+          text: `Merging ${this.getLink()}.`,
+        })
+
         await this.exec(command(...args), options)
 
         if (action === "merge" && this.config.review.merge.auto) {
@@ -587,15 +610,44 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
 function hasFailedChecks(checks: unknown): boolean {
   if (!isArray(checks)) return false
 
+  const latest = checks.reduce<Map<string, Dict>>((prev, check) => {
+    if (!isObject<Dict>(check)) return prev
+
+    const key = [check.workflowName, check.name, check.context]
+      .filter(isString)
+      .join("/")
+
+    if (!key) return prev
+
+    const current = prev.get(key)
+
+    if (!current || getCheckTime(check) >= getCheckTime(current))
+      prev.set(key, check)
+
+    return prev
+  }, new Map())
+
+  return [...latest.values()].some(isFailedCheck)
+}
+
+function isFailedCheck(check: Dict): boolean {
   const regexp = /failure|failed|error|cancelled|timed_out|action_required/i
 
-  return checks.some(
-    (check) =>
-      isObject<Dict>(check) &&
-      ["conclusion", "state", "status"].some(
-        (key) => isString(check[key]) && regexp.test(check[key]),
-      ),
+  return ["conclusion", "state", "status"].some(
+    (key) => isString(check[key]) && regexp.test(check[key]),
   )
+}
+
+function getCheckTime(check: Dict): number {
+  return ["startedAt", "completedAt", "updatedAt"].reduce((prev, key) => {
+    const value = check[key]
+
+    if (!isString(value)) return prev
+
+    const time = Date.parse(value)
+
+    return Number.isNaN(time) ? prev : Math.max(prev, time)
+  }, 0)
 }
 
 async function isConflict(this: Review): Promise<boolean> {
