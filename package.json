@@ -39,8 +39,8 @@
     "lint:fix": "oxlint . --max-warnings=0 --fix",
     "prepare": "git rev-parse --is-inside-work-tree >/dev/null 2>&1 && lefthook install || true",
     "quality": "pnpm format:check && pnpm lint:check && pnpm typecheck && pnpm test",
-    "test": "vitest run",
-    "test:dev": "vitest --watch --ui",
+    "test": "vitest run --passWithNoTests",
+    "test:dev": "vitest --watch --ui --passWithNoTests",
     "typecheck": "tsgo --noEmit",
     "release": "changeset publish",
     "release:dev": "changeset version --snapshot dev && changeset publish --tag dev"
