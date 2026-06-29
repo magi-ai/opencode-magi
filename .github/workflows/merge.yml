@@ -11,6 +11,7 @@ concurrency:
 
 jobs:
   check:
+    if: false
     name: Check
     runs-on: ubuntu-latest
     permissions:
@@ -63,7 +64,7 @@ jobs:
 
   merge:
     needs: check
-    if: ${{ needs.check.outputs.run == 'true' }}
+    if: false
     name: Merge
     runs-on: ubuntu-latest
     permissions:
