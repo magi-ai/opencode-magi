@@ -12,6 +12,7 @@ import { createReport } from "./report"
 
 interface MergeOptions {
   dryRun: boolean
+  sync: boolean
 }
 
 export class Merge extends Review {
@@ -22,6 +23,14 @@ export class Merge extends Review {
     context: ToolContext,
     options: MergeOptions,
   ): Promise<Merge> {
+    if (!options.sync) {
+      const controller = new AbortController()
+
+      context = { ...context, abort: controller.signal }
+
+      magi.registerBackground(number, controller)
+    }
+
     const url = `${config.github.url}/pull/${number}`
     const octokit = await magi.createOctokit(config, context.abort)
     const graphql = magi.createGraphql(octokit)

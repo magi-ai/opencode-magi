@@ -102,7 +102,10 @@ export const review: Tool = function (magi) {
         for (const pr of prs) {
           context.abort.throwIfAborted()
 
-          const run = await Review.init(pr, magi, config, context, { dryRun })
+          const run = await Review.init(pr, magi, config, context, {
+            dryRun,
+            sync,
+          })
 
           states.push(run.state)
 

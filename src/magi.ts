@@ -115,6 +115,7 @@ export interface State {
 }
 
 const active: Set<Status> = new Set(["preparing", "running"])
+const backgrounds = new Map<number, AbortController>()
 
 export class MagiError extends Error {
   constructor(
@@ -182,6 +183,49 @@ export class Magi {
     return graphql(<T, U>(document: DocumentNode, variables?: U) =>
       octokit.graphql<T>(print(document), variables as Dict),
     )
+  }
+
+  public registerBackground(number: number, controller: AbortController): void {
+    if (backgrounds.has(number)) this.cancelBackground(number)
+
+    backgrounds.set(number, controller)
+  }
+
+  public unregisterBackground(number: number, signal: AbortSignal): void {
+    if (backgrounds.get(number)?.signal === signal) backgrounds.delete(number)
+  }
+
+  public cancelBackgrounds(numbers?: number[]): {
+    cancelled: number[]
+    missing: number[]
+  } {
+    const results: { cancelled: number[]; missing: number[] } = {
+      cancelled: [],
+      missing: [],
+    }
+
+    if (!numbers?.length) numbers = [...backgrounds.keys()]
+
+    for (const number of numbers) {
+      const cancelled = this.cancelBackground(number)
+
+      results[cancelled ? "cancelled" : "missing"].push(number)
+    }
+
+    return results
+  }
+
+  public cancelBackground(number: number): boolean {
+    const controller = backgrounds.get(number)
+
+    if (controller) {
+      controller.abort()
+      backgrounds.delete(number)
+
+      return true
+    } else {
+      return false
+    }
   }
 
   public async notify(sessionID: string, text: string): Promise<void> {

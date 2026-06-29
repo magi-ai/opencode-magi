@@ -16,6 +16,7 @@ import { reconsiderClose, review, validateFindings } from "./reviewer"
 
 interface ReviewOptions {
   dryRun: boolean
+  sync: boolean
 }
 
 export class Review {
@@ -45,6 +46,14 @@ export class Review {
     context: ToolContext,
     options: ReviewOptions,
   ): Promise<Review> {
+    if (!options.sync) {
+      const controller = new AbortController()
+
+      context = { ...context, abort: controller.signal }
+
+      magi.registerBackground(number, controller)
+    }
+
     const url = `${config.github.url}/pull/${number}`
     const octokit = await magi.createOctokit(config, context.abort)
     const graphql = magi.createGraphql(octokit)
@@ -105,9 +114,10 @@ export class Review {
   public createReport = createReport
 
   public async cleanup(): Promise<void> {
-    if (!this.state.worktree?.path) return
+    if (this.state.worktree?.path)
+      await this.magi.deleteWorktree(this.state.worktree.path)
 
-    await this.magi.deleteWorktree(this.state.worktree.path)
+    this.magi.unregisterBackground(this.number, this.context.abort)
   }
 
   public getLink(): string {

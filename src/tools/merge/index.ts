@@ -156,6 +156,7 @@ export const merge: Tool = function (magi) {
 
           const run = await Merge.init(pr, magi, config, context, {
             dryRun,
+            sync,
           })
 
           states.push(run.state)
