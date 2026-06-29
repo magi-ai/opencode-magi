@@ -59,9 +59,7 @@ function findConnection(value: unknown): Connection | undefined {
   return undefined
 }
 
-export function graphql<T>(
-  requester: Requester<T>,
-): BoundSdk & {
+export function graphql<T>(requester: Requester<T>): BoundSdk & {
   paginate: <T extends PageableSdk>(
     req: T,
     params: PaginateParams<T>,
