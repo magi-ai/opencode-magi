@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "required": ["verdict", "resolves", "followUps", "newFindings"],
+  "required": ["verdict"],
   "additionalProperties": false,
   "properties": {
     "verdict": { "enum": ["APPROVED", "CHANGES_REQUESTED", "CLOSED"] },
@@ -42,7 +42,7 @@
         }
       }
     },
-    "comment": { "type": "string", "minLength": 1 }
+    "comment": { "type": "string" }
   },
   "allOf": [
     {
@@ -50,7 +50,8 @@
       "then": {
         "properties": {
           "followUps": { "type": "array", "maxItems": 0 },
-          "newFindings": { "type": "array", "maxItems": 0 }
+          "newFindings": { "type": "array", "maxItems": 0 },
+          "comment": { "const": "" }
         }
       }
     },
@@ -59,11 +60,16 @@
       "then": {
         "required": ["comment"],
         "anyOf": [
-          { "properties": { "followUps": { "type": "array", "minItems": 1 } } },
           {
+            "required": ["followUps"],
+            "properties": { "followUps": { "type": "array", "minItems": 1 } }
+          },
+          {
+            "required": ["newFindings"],
             "properties": { "newFindings": { "type": "array", "minItems": 1 } }
           }
-        ]
+        ],
+        "properties": { "comment": { "type": "string", "minLength": 1 } }
       }
     },
     {
@@ -72,7 +78,8 @@
         "required": ["comment"],
         "properties": {
           "followUps": { "type": "array", "maxItems": 0 },
-          "newFindings": { "type": "array", "maxItems": 0 }
+          "newFindings": { "type": "array", "maxItems": 0 },
+          "comment": { "type": "string", "minLength": 1 }
         }
       }
     }

@@ -1,6 +1,5 @@
 {
   "type": "object",
-  "required": ["signals"],
   "additionalProperties": false,
   "properties": {
     "signals": {

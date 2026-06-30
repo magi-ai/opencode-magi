@@ -16,4 +16,4 @@ The object must match this shape:
 Rules:
 
 - Return only configured signal IDs that apply.
-- Return an empty signals array when none apply.
+- Omit `"signals"` when none apply.
