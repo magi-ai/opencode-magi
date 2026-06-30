@@ -179,6 +179,39 @@ Set an `agents.refs` key as `ref` to expand that agent configuration. Fields set
 }
 ```
 
+## Permissions
+
+Set `agents.permissions` to configure permissions shared by all agents. Each agent's `permissions` overrides `agents.permissions`.
+
+```json
+{
+  "agents": {
+    "permissions": {
+      "read": "allow",
+      "edit": "deny",
+      "bash": {
+        "*": "deny",
+        "git status*": "allow",
+        "git diff*": "allow"
+      }
+    }
+  },
+  "review": {
+    "reviewers": [
+      {
+        "id": "security",
+        "model": "anthropic/claude-opus-4-7",
+        "permissions": {
+          "webfetch": "allow"
+        }
+      }
+    ]
+  }
+}
+```
+
+You can set `allow`, `ask`, or `deny`. A string applies to the entire target permission, while an object configures allow, ask, or deny per pattern.
+
 ## Multi Mode
 
 By default, Magi runs in single mode (`mode: "single"`). To use multiple GitHub accounts, set `mode: "multi"` and configure an account for each agent.

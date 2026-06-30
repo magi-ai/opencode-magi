@@ -179,6 +179,39 @@ Magiの設定ファイルは、OpenCodeではなくOpenCode Magiによってマ�
 }
 ```
 
+## パーミッション
+
+`agents.permissions`ですべてのエージェントに共通したパーミッションを設定できます。個々とエージェントの`permissions`は、`agents.permissions`をオーバーライドします。
+
+```json
+{
+  "agents": {
+    "permissions": {
+      "read": "allow",
+      "edit": "deny",
+      "bash": {
+        "*": "deny",
+        "git status*": "allow",
+        "git diff*": "allow"
+      }
+    }
+  },
+  "review": {
+    "reviewers": [
+      {
+        "id": "security",
+        "model": "anthropic/claude-opus-4-7",
+        "permissions": {
+          "webfetch": "allow"
+        }
+      }
+    ]
+  }
+}
+```
+
+`allow`、`ask`、`deny`を設定できます。文字列を指定すると対象権限全体に適用され、オブジェクトを指定するとパターンごとに許可・確認・拒否を設定できます。
+
 ## マルチモード
 
 デフォルトでは、シングルモード（`mode: "single"`）です。複数のGitHubアカウントを使用するマルチモードにする場合は、`mode: "multi"`を設定し、各エージェントごとにアカウントを設定します。
