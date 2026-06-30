@@ -230,7 +230,18 @@ export class Magi {
 
   public async notify(sessionID: string, text: string): Promise<void> {
     await this.input.client.session.promptAsync({
-      parts: [{ synthetic: true, text, type: "text" }],
+      parts: [
+        {
+          synthetic: true,
+          text: [
+            "Magi notification:",
+            text,
+            "",
+            "Relay this update to the user immediately.",
+          ].join("\n"),
+          type: "text",
+        },
+      ],
       sessionID,
     })
   }
