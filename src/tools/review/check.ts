@@ -65,7 +65,8 @@ export async function checkPr(this: Review): Promise<void> {
 
   if (this.config.review.safety.requiredLabels.length) {
     const missingLabels = this.config.review.safety.requiredLabels.filter(
-      (label) => !metadata.labels.some(({ name }) => name === label),
+      (label) =>
+        !metadata.labels.some(({ name }: { name: string }) => name === label),
     )
 
     if (missingLabels.length)
@@ -195,6 +196,9 @@ export async function classifyChecks(this: Review): Promise<void> {
               sessionId,
               count === 1 ? taskMessage : repairMessage,
             )
+
+            await this.createAgentFile("ci-classification", id, raw, count)
+
             const parsed = prompt.parse(raw)
 
             if (!prompt.validate<CiClassificationOutput>(parsed))
@@ -380,7 +384,10 @@ export async function getMetadata(
     }),
   ])
 
-  return { files: files.map(({ filename }) => filename), metadata: data }
+  return {
+    files: files.map(({ filename }: { filename: string }) => filename),
+    metadata: data,
+  }
 }
 
 async function getChecks(this: Review): Promise<PullRequestChecks> {

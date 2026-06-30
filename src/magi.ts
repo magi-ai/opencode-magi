@@ -35,6 +35,7 @@ import {
   createExec,
   filterEmpty,
   isArray,
+  isNumber,
   isObject,
   merge,
   quote,
@@ -376,6 +377,25 @@ export class Magi {
       join(state.output, "state.json"),
       `${JSON.stringify(state, null, 2)}\n`,
     )
+  }
+
+  public async createAgentFile(
+    output: string,
+    phase: string,
+    id: string,
+    content: string,
+    attempt = 1,
+    cycle?: number,
+  ): Promise<void> {
+    const segments = [output, "agents", phase, id]
+
+    if (isNumber(cycle)) segments.push(cycle.toString())
+    if (isNumber(attempt)) segments.push(attempt.toString())
+
+    const path = segments.join("/") + ".md"
+
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, content)
   }
 
   public async updateState(

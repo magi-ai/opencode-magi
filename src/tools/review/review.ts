@@ -128,6 +128,23 @@ export class Review {
     return `[#${this.state.pr!.number}](${this.state.pr!.url})`
   }
 
+  public async createAgentFile(
+    phase: string,
+    id: string,
+    content: string,
+    attempt?: number,
+    cycle?: number,
+  ): Promise<void> {
+    await this.magi.createAgentFile(
+      this.state.output,
+      phase,
+      id,
+      content,
+      attempt,
+      cycle,
+    )
+  }
+
   public async createSessions(): Promise<void> {
     this.context.abort.throwIfAborted()
 
