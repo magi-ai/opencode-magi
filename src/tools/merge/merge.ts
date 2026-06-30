@@ -56,8 +56,8 @@ export class Merge extends Review {
     const state = await magi.createState(
       join(config.review.output, number.toString()),
       {
+        ...options,
         command: "merge",
-        dryRun: options.dryRun,
         editor,
         operator,
         pr: { number, url },

@@ -17,7 +17,7 @@ export async function loop<T>(
 }
 
 export interface RetryOptions {
-  error?: (e: unknown, count: number) => void
+  error?: (e: unknown, count: number) => Promise<void> | void
   retries?: number
 }
 
@@ -31,7 +31,7 @@ export async function retry<T = void>(
     try {
       return await callback(count)
     } catch (e) {
-      error?.(e, count)
+      await error?.(e, count)
 
       count += 1
     }

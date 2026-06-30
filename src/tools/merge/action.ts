@@ -19,11 +19,10 @@ export async function editCycles(
       return verdict
     },
     {
-      error: (e, count) => {
+      error: async (e, count) => {
         if (e !== error) throw e
 
-        this.magi.notify(
-          this.state.sessionId,
+        await this.notify(
           `Attempt ${count} failed to edit cycles for ${this.getLink()}. Retrying...`,
         )
       },

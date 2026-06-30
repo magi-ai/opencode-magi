@@ -73,8 +73,8 @@ export class Review {
     const state = await magi.createState(
       join(config.review.output, number.toString()),
       {
+        ...options,
         command: "review",
-        dryRun: options.dryRun,
         operator,
         pr: { number, url },
         repo: quote(`${config.github.owner}/${config.github.repo}`),
@@ -112,6 +112,10 @@ export class Review {
   public postReviews = postReviews
   public automate = automate
   public createReport = createReport
+
+  public async notify(text: string): Promise<void> {
+    if (!this.state.sync) await this.magi.notify(this.state.sessionId, text)
+  }
 
   public async cleanup(): Promise<void> {
     if (this.state.worktree?.path)

@@ -185,8 +185,7 @@ export async function classifyChecks(this: Review): Promise<void> {
         if (!sessionId)
           throw new Error(`No session ID found for reviewer ${id}.`)
 
-        await this.magi.notify(
-          this.state.sessionId,
+        await this.notify(
           `Classifying CI checks for ${this.getLink()} with reviewer ${id}.`,
         )
 
@@ -205,8 +204,7 @@ export async function classifyChecks(this: Review): Promise<void> {
           },
           {
             error: (_, count) =>
-              this.magi.notify(
-                this.state.sessionId,
+              this.notify(
                 `Attempt ${count} failed to classify CI checks for ${this.getLink()} with reviewer ${id}. Retrying...`,
               ),
             retries: this.config.output.repairAttempts,
@@ -247,8 +245,7 @@ export async function classifyChecks(this: Review): Promise<void> {
           .map(([id, { comment }]) => `- ${id}: ${comment}`),
       }
 
-      await this.magi.notify(
-        this.state.sessionId,
+      await this.notify(
         filterEmpty([
           scope
             ? `Check ${name} for ${this.getLink()} was classified as in scope by majority vote.`
@@ -299,10 +296,7 @@ export async function rerunChecks(this: Review): Promise<void> {
   } else {
     await retry(
       async () => {
-        await this.magi.notify(
-          this.state.sessionId,
-          `Rerunning checks ${label} for ${this.getLink()}.`,
-        )
+        await this.notify(`Rerunning checks ${label} for ${this.getLink()}.`)
         await Promise.all(
           checks.failed
             .filter(({ scope }) => !scope)
@@ -341,8 +335,7 @@ export async function rerunChecks(this: Review): Promise<void> {
       },
       {
         error: (_, count) =>
-          this.magi.notify(
-            this.state.sessionId,
+          this.notify(
             `Attempt ${count} failed to rerun checks ${label} for ${this.getLink()}. Retrying...`,
           ),
         retries: this.config.review.checks.retryFailedJobs,
@@ -363,7 +356,7 @@ export async function rerunChecks(this: Review): Promise<void> {
       : undefined,
   ]).join("\n")
 
-  if (message) await this.magi.notify(this.state.sessionId, message)
+  if (message) await this.notify(message)
 
   this.state = await this.magi.updateState(this.state.output, {
     pr: { checks },

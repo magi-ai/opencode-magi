@@ -105,6 +105,7 @@ export interface State {
   reviewers?: { [key: string]: ReviewerState }
   sessionId: string
   status: Status
+  sync: boolean
   text?: string
   updatedAt: string
   voters?: { [key: string]: AgentState }
@@ -376,7 +377,8 @@ export class Magi {
     const state = merge<State>(prev, next)
     const values = [this.createStateFile(state)]
 
-    if (next.text) values.push(this.notify(prev.sessionId, next.text))
+    if (!state.sync && next.text)
+      values.push(this.notify(prev.sessionId, next.text))
 
     await Promise.all(values)
 
