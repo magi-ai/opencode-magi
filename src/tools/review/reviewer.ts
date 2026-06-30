@@ -49,8 +49,7 @@ export async function review(this: Review): Promise<void> {
             this.state.reviewers[id]!
 
           if (status === "skip") {
-            this.magi.notify(
-              this.state.sessionId,
+            await this.notify(
               `Skipping review for ${this.getLink()} with reviewer ${id}.`,
             )
 
@@ -70,8 +69,7 @@ export async function review(this: Review): Promise<void> {
             const rereview = status !== "initial"
             const label = rereview ? "rereview" : "review"
 
-            await this.magi.notify(
-              this.state.sessionId,
+            await this.notify(
               `Running ${label} for ${this.getLink()} with reviewer ${id}.`,
             )
 
@@ -194,8 +192,7 @@ export async function review(this: Review): Promise<void> {
               },
               {
                 error: (_, count) =>
-                  this.magi.notify(
-                    this.state.sessionId,
+                  this.notify(
                     `Attempt ${count} failed to ${label} for ${this.getLink()} with reviewer ${id}. Retrying...`,
                   ),
                 retries: this.config.output.repairAttempts,
@@ -337,8 +334,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
           )
           const repairMessage = await prompt.repair()
 
-          await this.magi.notify(
-            this.state.sessionId,
+          await this.notify(
             `Reconsidering close verdict for ${this.getLink()} with reviewer ${id}.`,
           )
 
@@ -365,8 +361,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
             },
             {
               error: (_, count) =>
-                this.magi.notify(
-                  this.state.sessionId,
+                this.notify(
                   `Attempt ${count} failed to reconsider close verdict for ${this.getLink()} with reviewer ${id}. Retrying...`,
                 ),
               retries: this.config.output.repairAttempts,
@@ -464,8 +459,7 @@ async function collectAcceptedFindings(
               `No session ID found for reviewer ${id}.`,
             )
 
-          await this.magi.notify(
-            this.state.sessionId,
+          await this.notify(
             `Validating review findings for ${this.getLink()} with reviewer ${id}.`,
           )
 
@@ -525,8 +519,7 @@ async function collectAcceptedFindings(
             },
             {
               error: (_, count) =>
-                this.magi.notify(
-                  this.state.sessionId,
+                this.notify(
                   `Attempt ${count} failed to validate review findings for ${this.getLink()} with reviewer ${id}. Retrying...`,
                 ),
               retries: this.config.output.repairAttempts,
@@ -571,8 +564,7 @@ async function collectAcceptedFindings(
 
       if (agrees >= threshold) accepted.add(key)
 
-      await this.magi.notify(
-        this.state.sessionId,
+      await this.notify(
         filterEmpty([
           `Finding ${reviewer} #${index + 1} for ${this.getLink()} was ${agrees >= threshold ? "accepted" : "rejected"} by majority vote.`,
           `Finding: ${finding.path}:${finding.line}\n${finding.body}`,
@@ -634,8 +626,7 @@ async function notifyVerdictChanges(
 
       if (!prevVerdict || !nextVerdict || prevVerdict === nextVerdict) return
 
-      await this.magi.notify(
-        this.state.sessionId,
+      await this.notify(
         `Reviewer ${id} verdict changed from ${prevVerdict} to ${nextVerdict} for ${this.getLink()} ${reason}.`,
       )
     }),

@@ -68,8 +68,7 @@ export async function edit(this: Merge): Promise<boolean> {
     },
     {
       error: (_, count) =>
-        this.magi.notify(
-          this.state.sessionId,
+        this.notify(
           `Attempt ${count} failed to edit ${this.getLink()}. Retrying...`,
         ),
       retries: this.config.output.repairAttempts,
@@ -83,8 +82,7 @@ export async function edit(this: Merge): Promise<boolean> {
     text: `Finished editing ${this.getLink()}.`,
   })
 
-  await this.magi.notify(
-    this.state.sessionId,
+  await this.notify(
     filterEmpty([
       `Editor ${output.mode === "EDITED" ? "edited" : "replied to"} ${this.getLink()}.`,
       output.commitSha
@@ -225,8 +223,7 @@ export async function resolveConflict(this: Merge): Promise<void> {
     },
     {
       error: (_, count) =>
-        this.magi.notify(
-          this.state.sessionId,
+        this.notify(
           `Attempt ${count} failed to resolve conflicts for ${this.getLink()}. Retrying...`,
         ),
       retries: this.config.output.repairAttempts,
