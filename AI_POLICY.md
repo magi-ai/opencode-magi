@@ -1,5 +1,5 @@
 <p align='center'>
-  English | <a href='./README.ja.md'>日本語</a>
+  English | <a href='AI_POLICY.ja.md'>日本語</a>
 </p>
 
 # AI Usage Policy
