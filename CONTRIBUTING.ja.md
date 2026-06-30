@@ -1,5 +1,5 @@
 <p align='center'>
-  <a href='./README.md'>English</a> | 日本語
+  <a href='CONTRIBUTING.md'>English</a> | 日本語
 </p>
 
 # OpenCode Magiへの貢献
