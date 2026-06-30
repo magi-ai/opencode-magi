@@ -181,7 +181,7 @@ Magiの設定ファイルは、OpenCodeではなくOpenCode Magiによってマ�
 
 ## パーミッション
 
-`agents.permissions`ですべてのエージェントに共通したパーミッションを設定できます。個々とエージェントの`permissions`は、`agents.permissions`をオーバーライドします。
+`agents.permissions`ですべてのエージェントに共通したパーミッションを設定できます。個々のエージェントの`permissions`は、`agents.permissions`をオーバーライドします。
 
 ```json
 {
