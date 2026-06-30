@@ -58,7 +58,7 @@ export function createMetaContent(
     `- **Mode**: ${toTitleCase(this.config.mode)}`,
     `- **Dry run**: ${this.state.dryRun ? "Yes" : "No"}`,
     `- **Status**: ${toTitleCase(input.status)}`,
-    `- **Automation**: ${toTitleCase(this.state.pr?.automation?.toLocaleLowerCase() ?? "NONE")}`,
+    `- **Automation**: ${this.state.pr?.automation ? toTitleCase(this.state.pr.automation.toLocaleLowerCase()) : "none"}`,
   ]
 
   if (this.state.pr?.verdict)
