@@ -109,7 +109,7 @@ export interface State {
   updatedAt: string
   voters?: { [key: string]: AgentState }
   worktree?: {
-    branch: string
+    branch?: string
     path: string
   }
 }
@@ -477,15 +477,16 @@ export class Magi {
     number: number,
     id: string,
     signal?: AbortSignal,
-  ): Promise<{ branch: string; path: string }> {
+  ): Promise<{ branch?: string; path: string }> {
     const path = this.getPath(join(dir, number.toString(), id))
 
     try {
       await mkdir(dirname(path), { recursive: true })
-      await this.exec(command("git", "worktree", "add", quote(path)), {
-        signal,
-      })
-      await this.exec(command("gh", "pr", "checkout", number), {
+      await this.exec(
+        command("git", "worktree", "add", "--detach", quote(path)),
+        { signal },
+      )
+      await this.exec(command("gh", "pr", "checkout", number, "--detach"), {
         cwd: path,
         signal,
       })
@@ -495,9 +496,7 @@ export class Magi {
         signal,
       })
 
-      if (!branch) throw new Error("Failed to determine worktree branch")
-
-      return { branch, path }
+      return { branch: branch || undefined, path }
     } catch (e) {
       try {
         await this.exec(
