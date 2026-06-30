@@ -239,19 +239,9 @@ export class Magi {
 
   public async notify(sessionID: string, text: string): Promise<void> {
     await this.input.client.session.promptAsync({
-      parts: [
-        {
-          synthetic: true,
-          text: [
-            "Magi notification:",
-            text,
-            "",
-            "Relay this update to the user immediately.",
-          ].join("\n"),
-          type: "text",
-        },
-      ],
+      parts: [{ synthetic: true, text, type: "text" }],
       sessionID,
+      system: "Report the update to the user immediately.",
     })
   }
 
@@ -372,8 +362,12 @@ export class Magi {
       updatedAt: createdAt,
       ...initialState,
     }
+    const values = [this.createStateFile(state)]
 
-    await this.createStateFile(state)
+    if (!state.sync && state.text)
+      values.push(this.notify(state.sessionId, state.text))
+
+    await Promise.all(values)
 
     return state
   }
