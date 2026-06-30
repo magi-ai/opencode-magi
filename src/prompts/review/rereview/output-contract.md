@@ -15,11 +15,12 @@ Rules:
 - `"verdict"` must be `"APPROVED"`, `"CHANGES_REQUESTED"`, or `"CLOSED"`.
 - `"resolves"` contains threads that should be resolved because the issue is fixed or the user's explanation is acceptable.
 - Each `"resolves"` item must use the exact `"commentId"` and `"threadId"` from `<unresolved_threads>`.
-- Use an empty `"resolves"` array when no thread should be resolved.
-- `"APPROVED"` requires empty `"followUps"` and `"newFindings"` arrays.
+- Omit `"resolves"` when no thread should be resolved.
+- `"APPROVED"` may omit `"followUps"` and `"newFindings"`. If present, they must be empty.
+- `"APPROVED"` may omit `"comment"`. If present, it must be an empty string.
 - `"CHANGES_REQUESTED"` requires `"comment"` and at least one `"followUp"` or `"newFinding"`.
 - `"comment"` for `"CHANGES_REQUESTED"` must be a concise prose review summary, not a bullet list of findings.
-- `"CLOSED"` requires `"comment"` and empty `"followUps"` and `"newFindings"` arrays.
+- `"CLOSED"` requires `"comment"` and may omit `"followUps"` and `"newFindings"`. If present, they must be empty.
 - `"line"` is required and must target a valid right-side line inside the latest PR diff hunk.
 - `"startLine"` is optional and must also target a valid right-side line inside the same latest PR diff hunk range.
 - Omit `"startLine"` for single-line findings.

@@ -22,6 +22,7 @@ Rules:
 - Use REPLIED when you only replied without code changes.
 - For EDITED, pullRequest.title and pullRequest.body must be non-empty and follow the repository's PR conventions.
 - Do not push or create the PR. The orchestrator pushes and creates the PR using pullRequest exactly as provided.
-- filesTouched must include every final changed file.
-- responses may be empty when no review threads were addressed.
-- REPLIED requires filesTouched to be empty and at least one DISAGREE or ASK response.
+- filesTouched is required for EDITED and must include every final changed file.
+- responses may be omitted when no review threads were addressed.
+- REPLIED may omit filesTouched. If present, it must be empty.
+- REPLIED requires at least one DISAGREE or ASK response.

@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "required": ["verdict", "findings"],
+  "required": ["verdict"],
   "additionalProperties": false,
   "properties": {
     "verdict": { "enum": ["APPROVED", "CHANGES_REQUESTED"] },
@@ -18,20 +18,26 @@
         }
       }
     },
-    "comment": { "type": "string", "minLength": 1 }
+    "comment": { "type": "string" }
   },
   "allOf": [
     {
       "if": { "properties": { "verdict": { "const": "APPROVED" } } },
       "then": {
-        "properties": { "findings": { "type": "array", "maxItems": 0 } }
+        "properties": {
+          "findings": { "type": "array", "maxItems": 0 },
+          "comment": { "const": "" }
+        }
       }
     },
     {
       "if": { "properties": { "verdict": { "const": "CHANGES_REQUESTED" } } },
       "then": {
-        "required": ["comment"],
-        "properties": { "findings": { "type": "array", "minItems": 1 } }
+        "required": ["comment", "findings"],
+        "properties": {
+          "findings": { "type": "array", "minItems": 1 },
+          "comment": { "type": "string", "minLength": 1 }
+        }
       }
     }
   ]

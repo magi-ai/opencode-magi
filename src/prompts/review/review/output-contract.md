@@ -11,10 +11,11 @@ Return exactly one JSON object and nothing else. Do not wrap it in markdown.
 Rules:
 
 - `"verdict"` must be `"APPROVED"`, `"CHANGES_REQUESTED"`, or `"CLOSED"`.
-- `"APPROVED"` requires an empty `"findings"` array.
+- `"APPROVED"` may omit `"findings"`. If present, it must be empty.
+- `"APPROVED"` may omit `"comment"`. If present, it must be an empty string.
 - `"CHANGES_REQUESTED"` requires `"comment"` and at least one `"finding"`.
 - `"comment"` for `"CHANGES_REQUESTED"` must be a concise prose review summary, not a bullet list of findings.
-- `"CLOSED"` requires `"comment"` and an empty `"findings"` array.
+- `"CLOSED"` requires `"comment"` and may omit `"findings"`. If present, `"findings"` must be empty.
 - `"path"` must be repository-relative.
 - `"line"` is required and must target a valid right-side line inside the PR diff hunk.
 - `"startLine"` is optional and must also target a valid right-side line inside the same PR diff hunk range.

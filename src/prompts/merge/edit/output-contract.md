@@ -19,6 +19,8 @@ Rules:
 - `"ASK"` means you need clarification and did not edit.
 - Do not make changes just because a reviewer requested them; edit only when you understand and agree.
 - Do not push. The orchestrator pushes after validating this envelope.
-- `filesTouched` must include every final changed file.
-- `responses` must include a reply for each thread you addressed.
-- `"REPLIED"` requires `filesTouched` to be empty and at least one `"DISAGREE"` or `"ASK"` response.
+- `filesTouched` is required for `"EDITED"` and must include every final changed file.
+- `responses` is required and must include a reply for each thread you addressed.
+- `"EDITED"` requires at least one response.
+- `"REPLIED"` may omit `filesTouched`. If present, it must be empty.
+- `"REPLIED"` requires at least one `"DISAGREE"` or `"ASK"` response.

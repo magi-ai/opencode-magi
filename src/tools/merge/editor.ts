@@ -9,6 +9,10 @@ import { Prompt } from "@/prompts"
 import { getMetadata } from "@/tools/review/check"
 import { command, filterDuplicates, filterEmpty, quote, retry } from "@/utils"
 
+type EditPromptOutput = Omit<EditOutput, "filesTouched"> & {
+  filesTouched?: string[]
+}
+
 export async function edit(this: Merge): Promise<boolean> {
   this.context.abort.throwIfAborted()
 
@@ -49,22 +53,27 @@ export async function edit(this: Merge): Promise<boolean> {
       )
       const parsed = prompt.parse(raw)
 
-      if (!prompt.validate<EditOutput>(parsed))
+      if (!prompt.validate<EditPromptOutput>(parsed))
         throw new Error("Invalid output for editor.")
 
-      if (parsed.mode === "EDITED") {
+      const output: EditOutput = {
+        ...parsed,
+        filesTouched: parsed.filesTouched ?? [],
+      }
+
+      if (output.mode === "EDITED") {
         const head = await this.exec(command("git", "rev-parse", "HEAD"), {
           cwd: this.state.worktree!.path,
           signal: this.context.abort,
         })
 
-        if (head !== parsed.commitSha)
+        if (head !== output.commitSha)
           throw new Error(
-            `Editor reported commit ${parsed.commitSha}, but worktree HEAD is ${head}.`,
+            `Editor reported commit ${output.commitSha}, but worktree HEAD is ${head}.`,
           )
       }
 
-      return parsed
+      return output
     },
     {
       error: (_, count) =>
