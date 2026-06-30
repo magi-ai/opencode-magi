@@ -19,6 +19,7 @@ import {
   omitNullish,
   quote,
   retry,
+  wait,
   Worker,
 } from "@/utils"
 
@@ -415,38 +416,7 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
       text: `Waiting for merge queue for ${this.getLink()}.`,
     })
 
-    const result = await loop<PullRequestAutomation>(async () => {
-      this.context.abort.throwIfAborted()
-
-      const { repository } = await this.graphql.mergeQueueStatus({
-        owner: this.config.github.owner,
-        pr: this.number,
-        repo: this.config.github.repo,
-      })
-
-      if (!repository?.pullRequest)
-        throw new MagiError("blocked", "Could not fetch merge queue status.")
-
-      const { isInMergeQueue, mergeQueueEntry, state } = repository.pullRequest
-
-      if (state === "MERGED") return "MERGED"
-
-      if (state === "OPEN" && !isInMergeQueue && !mergeQueueEntry) {
-        if (await isConflict.call(this)) {
-          this.state = await this.magi.updateState(this.state.output, {
-            pr: { automation: "CONFLICT" },
-            text: `Merge automation found conflicts for ${this.getLink()}.`,
-          })
-
-          return "CONFLICT"
-        }
-
-        throw new MagiError(
-          "blocked",
-          `PR left the merge queue before merging ${this.getLink()}.`,
-        )
-      }
-    }, 30_000)
+    const result = await waitMergeQueue.call(this)
 
     if (result === "CONFLICT") return result
   } else {
@@ -638,6 +608,49 @@ function getCheckTime(check: Dict): number {
 
     return Number.isNaN(time) ? prev : Math.max(prev, time)
   }, 0)
+}
+
+async function waitMergeQueue(
+  this: Review,
+  leftMergeQueue = false,
+): Promise<PullRequestAutomation> {
+  this.context.abort.throwIfAborted()
+
+  const { repository } = await this.graphql.mergeQueueStatus({
+    owner: this.config.github.owner,
+    pr: this.number,
+    repo: this.config.github.repo,
+  })
+
+  if (!repository?.pullRequest)
+    throw new MagiError("blocked", "Could not fetch merge queue status.")
+
+  const { isInMergeQueue, mergeQueueEntry, state } = repository.pullRequest
+
+  if (state === "MERGED") return "MERGED"
+
+  const nextLeftMergeQueue =
+    state === "OPEN" && !isInMergeQueue && !mergeQueueEntry
+
+  if (leftMergeQueue && nextLeftMergeQueue) {
+    if (await isConflict.call(this)) {
+      this.state = await this.magi.updateState(this.state.output, {
+        pr: { automation: "CONFLICT" },
+        text: `Merge automation found conflicts for ${this.getLink()}.`,
+      })
+
+      return "CONFLICT"
+    }
+
+    throw new MagiError(
+      "blocked",
+      `PR left the merge queue before merging ${this.getLink()}.`,
+    )
+  }
+
+  await wait(30_000)
+
+  return await waitMergeQueue.call(this, nextLeftMergeQueue)
 }
 
 async function isConflict(this: Review): Promise<boolean> {
