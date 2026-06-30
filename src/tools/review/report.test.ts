@@ -1,5 +1,5 @@
 import type { Review } from "./review"
-import { describe, expect, it } from "vitest"
+import { describe, expect, test } from "vitest"
 import { createMetaContent } from "./report"
 
 describe("createMetaContent", () => {
