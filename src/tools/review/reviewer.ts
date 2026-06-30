@@ -68,6 +68,7 @@ export async function review(this: Review): Promise<void> {
 
             const rereview = status !== "initial"
             const label = rereview ? "rereview" : "review"
+            const cycle = (outputs?.length ?? 0) + 1
 
             await this.notify(
               `Running ${label} for ${this.getLink()} with reviewer ${id}.`,
@@ -177,6 +178,15 @@ export async function review(this: Review): Promise<void> {
                   sessionId,
                   count === 1 ? taskMessage : repairMessage,
                 )
+
+                await this.createAgentFile(
+                  rereview ? "rereview" : "review",
+                  id,
+                  raw,
+                  count,
+                  cycle,
+                )
+
                 const parsed = prompt.parse(raw)
 
                 if (!prompt.validate<ReviewOutput>(parsed))
@@ -317,6 +327,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
               `Missing previous review commit for reviewer ${id}.`,
             )
 
+          const cycle = (outputs?.length ?? 0) + 1
           const sha =
             status === "initial"
               ? this.state.pr.metadata.base.sha
@@ -344,6 +355,15 @@ export async function reconsiderClose(this: Review): Promise<void> {
                 sessionId,
                 count === 1 ? taskMessage : repairMessage,
               )
+
+              await this.createAgentFile(
+                "close-reconsideration",
+                id,
+                raw,
+                count,
+                cycle,
+              )
+
               const parsed = prompt.parse(raw)
 
               if (!prompt.validate<ReviewOutput>(parsed))
@@ -488,6 +508,9 @@ async function collectAcceptedFindings(
                 sessionId,
                 count === 1 ? taskMessage : repairMessage,
               )
+
+              await this.createAgentFile("finding-validation", id, raw, count)
+
               const parsed = prompt.parse(raw)
 
               if (!prompt.validate<FindingValidationOutput>(parsed))

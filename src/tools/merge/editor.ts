@@ -30,6 +30,7 @@ export async function edit(this: Merge): Promise<boolean> {
   if (!threads.length)
     throw new MagiError("blocked", "No editable review threads found.")
 
+  const cycle = (this.state.editor!.outputs?.length ?? 0) + 1
   const prompt = await Prompt.init(this.magi, this.config, "merge/edit")
   const taskMessage = await prompt.create(
     this.config.merge.prompts?.edit,
@@ -51,6 +52,9 @@ export async function edit(this: Merge): Promise<boolean> {
         this.state.editor!.sessionId!,
         count === 1 ? taskMessage : repairMessage,
       )
+
+      await this.createAgentFile("edit", "editor", raw, count, cycle)
+
       const parsed = prompt.parse(raw)
 
       if (!prompt.validate<EditPromptOutput>(parsed))
@@ -168,6 +172,7 @@ export async function resolveConflict(this: Merge): Promise<void> {
   if (!conflictedFiles.length)
     throw new MagiError("blocked", "No merge conflicts found in worktree.")
 
+  const cycle = (this.state.editor!.outputs?.length ?? 0) + 1
   const prompt = await Prompt.init(this.magi, this.config, "merge/conflict")
   const taskMessage = await prompt.create(
     undefined,
@@ -189,6 +194,9 @@ export async function resolveConflict(this: Merge): Promise<void> {
         this.state.editor!.sessionId!,
         count === 1 ? taskMessage : repairMessage,
       )
+
+      await this.createAgentFile("conflict", "editor", raw, count, cycle)
+
       const parsed = prompt.parse(raw)
 
       if (!prompt.validate<{ [key: string]: never }>(parsed))

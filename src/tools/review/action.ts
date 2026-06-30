@@ -153,6 +153,9 @@ export async function postReviews(this: Review): Promise<void> {
             this.state.operator!.sessionId!,
             count === 1 ? taskMessage : repairMessage,
           )
+
+          await this.createAgentFile("comment", "operator", raw, count)
+
           const parsed = prompt.parse(raw)
 
           if (!prompt.validate<{ comment: string }>(parsed))
