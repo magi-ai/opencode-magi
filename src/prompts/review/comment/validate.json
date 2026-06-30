@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "required": ["comment"],
+  "additionalProperties": false,
+  "properties": {
+    "comment": { "type": "string", "minLength": 1 }
+  }
+}

@@ -7,6 +7,7 @@ export default defineConfig({
     "node_modules",
     "pnpm-lock.yaml",
     "coverage",
+    "*.generated.ts",
     "CHANGELOG.md",
     ".magi/runs",
     ".magi/worktrees",

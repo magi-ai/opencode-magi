@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "required": ["votes"],
+  "additionalProperties": false,
+  "properties": {
+    "votes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["reviewer", "index", "vote", "comment"],
+        "additionalProperties": false,
+        "properties": {
+          "reviewer": { "type": "string", "minLength": 1 },
+          "index": { "type": "integer", "minimum": 0 },
+          "vote": { "enum": ["AGREE", "DISAGREE"] },
+          "comment": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

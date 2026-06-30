@@ -33,14 +33,15 @@
       "additionalProperties": false,
       "properties": {
         "host": { "type": "string", "default": "github.com" },
-        "apiRetryAttempts": {
+        "retryApiAttempts": {
           "type": "integer",
           "minimum": 0,
           "default": 3,
           "description": "Number of retry attempts for GitHub CLI API calls that fail with rate limit errors."
         },
         "owner": { "type": "string", "minLength": 1 },
-        "repo": { "type": "string", "minLength": 1 }
+        "repo": { "type": "string", "minLength": 1 },
+        "url": { "type": "string" }
       }
     },
     "language": { "type": "string" },
@@ -170,7 +171,7 @@
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "options": { "type": "object", "additionalProperties": true }
+        "variant": { "type": "string" }
       }
     },
     "automation": {
@@ -379,6 +380,7 @@
         "automation": { "$ref": "#/$defs/automation" },
         "concurrency": { "$ref": "#/$defs/concurrency" },
         "merge": { "$ref": "#/$defs/reviewMerge" },
+        "operator": { "type": "string", "minLength": 1 },
         "output": { "type": "string" },
         "worktree": { "type": "string" }
       }
@@ -421,7 +423,7 @@
         "safety": { "$ref": "#/$defs/triageSafety" },
         "concurrency": { "$ref": "#/$defs/triageConcurrency" },
         "prompts": { "$ref": "#/$defs/triagePrompts" },
-        "reporter": { "type": "string", "minLength": 1 },
+        "operator": { "type": "string", "minLength": 1 },
         "output": { "type": "string" },
         "worktree": { "type": "string" }
       }

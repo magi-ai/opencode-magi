@@ -1,7 +1,0 @@
-Validate review findings for pull request #{pr} in {owner}/{repo}.
-Use the existing review session context.
-Vote on whether each listed finding is a valid reason to request changes.
-Do not edit files or perform write operations.
-
-Findings to validate:
-{findings}

@@ -1,0 +1,67 @@
+{
+  "type": "object",
+  "required": ["mode", "filesTouched", "responses"],
+  "additionalProperties": false,
+  "properties": {
+    "mode": { "enum": ["EDITED", "REPLIED"] },
+    "commitSha": { "type": "string", "minLength": 1 },
+    "commitMessage": { "type": "string", "minLength": 1 },
+    "filesTouched": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "pullRequest": {
+      "type": "object",
+      "required": ["title", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "body": { "type": "string", "minLength": 1 }
+      }
+    },
+    "responses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["commentId", "action", "body"],
+        "additionalProperties": false,
+        "properties": {
+          "commentId": { "type": "integer" },
+          "action": { "enum": ["FIXED", "DISAGREE", "ASK"] },
+          "body": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "mode": { "const": "EDITED" } } },
+      "then": {
+        "required": ["commitSha", "commitMessage", "pullRequest"],
+        "properties": { "filesTouched": { "type": "array", "minItems": 1 } }
+      }
+    },
+    {
+      "if": { "properties": { "mode": { "const": "REPLIED" } } },
+      "then": {
+        "not": {
+          "anyOf": [
+            { "required": ["commitSha"] },
+            { "required": ["commitMessage"] },
+            { "required": ["pullRequest"] }
+          ]
+        },
+        "properties": {
+          "filesTouched": { "type": "array", "maxItems": 0 },
+          "responses": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "properties": { "action": { "enum": ["DISAGREE", "ASK"] } }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

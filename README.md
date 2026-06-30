@@ -1,27 +1,29 @@
+<p align='center'>
+  English | <a href='./README.ja.md'>日本語</a>
+</p>
+
 # OpenCode Magi
 
 Multi-agent GitHub pull request review and merge orchestration for OpenCode.
 
 ## Why Magi?
 
-Magi is inspired by the three wise men: independent perspectives that reach a decision together.
+Magi is inspired by the three wise men: independent perspectives that gather and make decisions together.
 
-One AI model is still not enough to trust blindly. OpenCode Magi improves confidence by asking multiple models to inspect the same pull request from different perspectives, then requiring an odd-number majority before approving, requesting changes, or closing.
+One AI model is still not enough to trust blindly. OpenCode Magi improves confidence by asking multiple models to inspect the same pull request from different perspectives, then requiring a majority decision.
 
-The goal is not to treat a single AI answer as final, but to make AI review behave more like a real team: diverse viewpoints, explicit disagreement, and a final decision backed by consensus.
+Instead of treating one AI answer as the final judgment, the goal is to make AI review closer to a real team through diverse viewpoints, explicit disagreement, and final decisions backed by consensus.
 
 ## Features
 
-OpenCode Magi recreates the review cycle humans already run on GitHub: multiple reviewers inspect a pull request, request changes, verify fixes, resolve threads, and approve when the work is ready.
+OpenCode Magi recreates the review cycle humans already run on GitHub. Multiple reviewers inspect a pull request, request changes, verify fixes, resolve threads, and approve when the work is ready.
 
-- Multi-agent reviews with an odd-number majority of 3 or more reviewers.
-- Optional unanimous approval policy for merge automation when every reviewer must approve before a PR is merged.
-- Finding-level voting before posting change requests, so only findings accepted by reviewer majority are submitted.
-- Single-account identity mode by default, where one GitHub account posts consensus-backed review and triage results for multiple logical agents, plus multi-account mode for setups that need separate GitHub identities.
-- Re-review support for edited PRs: fixed threads are resolved, satisfied reviewers approve, and remaining issues are posted as additional comments.
-- Optional merge and close automation where an editor agent responds on behalf of the author, fixes changes it agrees with, pushes commits when needed, and repeats the reviewer/editor cycle until the PR can be approved, queued, merged, or closed.
-- Per-agent OpenCode permissions for reviewer, CI classifier, and editor child sessions.
-- Prompt customization that adds repository-specific guidance without replacing the fixed output contracts.
+- Multi-agent reviews with majority voting by 3 or more reviewers.
+- Majority voting before posting change requests, so only findings accepted by the majority are requested.
+- Single mode by default, plus multi mode for using multiple GitHub accounts. In multi mode, each reviewer can review from a different GitHub account, as if a team were reviewing together.
+- Re-review support for PRs with edits or thread replies. Fixed threads are resolved, reviewers approve based on fixes, and findings that still need changes are posted as additional comments.
+- Optional merge and close automation. An editor agent responds on behalf of the author, fixes requested findings, pushes commits when needed, and repeats the reviewer/editor cycle until the PR can be merged or closed.
+- Configure permissions, phase-specific prompts, and personas for each reviewer and editor.
 
 ## Quick Start
 
@@ -42,7 +44,7 @@ Restart OpenCode. Done.
 
 Configure global defaults in `~/.config/opencode/magi.json` and project overrides in `<project>/.opencode/magi.json`.
 
-Magi config files are merged by OpenCode Magi, not by OpenCode. Priority, lowest to highest.
+Magi config files are merged by OpenCode Magi, not by OpenCode. The project config file overrides the global config file.
 
 1. `~/.config/opencode/magi.json`
 2. `<project>/.opencode/magi.json`
@@ -85,9 +87,7 @@ Add the following content to the configuration file.
 }
 ```
 
-By default, `mode` is `"single"`. Magi uses one top-level `account` to post reviewer- and triage-originated GitHub mutations while still running multiple logical agents and preserving majority voting, finding validation, and close reconsideration. The account must be authenticated with `gh auth token --user <account>`.
-
-For advanced team setups that need GitHub to see separate review or triage identities, set top-level `mode: "multi"` and configure unique accounts for each reviewer or triage voter.
+By default, Magi uses single mode (`mode: "single"`). To use multi mode with multiple accounts, set `mode: "multi"` and configure an account for each reviewer.
 
 ```json
 {
@@ -108,7 +108,7 @@ For advanced team setups that need GitHub to see separate review or triage ident
 
 #### Set project config
 
-Global config is optional, but project config is required.
+At least one Magi config file is required. Use project config for project-specific settings.
 
 ```bash
 cd <project>
@@ -139,7 +139,6 @@ Add the following content to the configuration file.
       },
       "account-4": {
         "model": "openai/gpt-5.5",
-        "account": "account-4",
         "author": {
           "name": "account-4",
           "email": "your-email@example.com"
@@ -167,20 +166,27 @@ Add the following content to the configuration file.
 }
 ```
 
-Entries with `ref` are expanded from `agents.refs`. Fields set alongside `ref` override fields from the preset.
+Set an `agents.refs` key as `ref` to expand that agent's configuration. Fields set outside `ref` override that agent's configuration.
 
-`model` can be a single `provider/model` string, a single object with `id` and `options`, or an ordered candidate array. Candidate arrays are resolved during validation against OpenCode's model catalog; the first available model is selected. Put provider-specific options on model objects, not on the agent role.
+`model` can be a string (`provider/model`), an object with `id` and `variant`, or an array. Arrays are checked in order to find an available model, and the first available model is selected.
 
 ```json
 {
   "model": {
     "id": "openai/gpt-5.1",
-    "options": { "reasoningEffort": "high" }
+    "variant": "high"
   }
 }
 ```
 
-After `refs` are expanded, top-level `account` is the GitHub account used for reviewer- and triage-originated posts and mutations in `single` mode. In `multi` mode, `review.reviewers[].account` and `triage.voters[].account` are used instead and must be unique within their agent lists. `merge.editor.account` is still used by `/magi:merge` to push fixes, close PRs, and merge PRs.
+```json
+{
+  "model": [
+    { "id": "anthropic/claude-opus-4-7", "variant": "high" },
+    { "id": "openai/gpt-5.5", "variant": "medium" }
+  ]
+}
+```
 
 #### Validate config
 
@@ -196,19 +202,18 @@ Run commands from OpenCode.
 
 ```txt
 /magi:review 123 124
-/magi:review --dry-run 123
+/magi:review 123 --dry-run
 /magi:merge 123
-/magi:merge --dry-run 123
+/magi:merge 123 --dry-run
 /magi:triage 47 48
-/magi:triage --dry-run 47
+/magi:triage 47 --dry-run
 /magi:clear
 ```
 
 ## Docs
 
-- [Commands](docs/commands/index.md)
-- [Config](docs/config.md)
-- [Prompts](docs/prompts/index.md)
+- [Commands](docs/commands/index.en.md)
+- [Config](docs/config.en.md)
 
 ## Contributing
 

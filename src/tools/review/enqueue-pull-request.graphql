@@ -1,0 +1,7 @@
+mutation enqueuePullRequest($id: ID!) {
+  enqueuePullRequest(input: { pullRequestId: $id }) {
+    mergeQueueEntry {
+      id
+    }
+  }
+}

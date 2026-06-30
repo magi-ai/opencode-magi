@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "required": ["verdict", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "verdict": { "enum": ["APPROVED", "CHANGES_REQUESTED"] },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "line", "body"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "line": { "type": "integer" },
+          "startLine": { "type": "integer" },
+          "body": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "comment": { "type": "string", "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "verdict": { "const": "APPROVED" } } },
+      "then": {
+        "properties": { "findings": { "type": "array", "maxItems": 0 } }
+      }
+    },
+    {
+      "if": { "properties": { "verdict": { "const": "CHANGES_REQUESTED" } } },
+      "then": {
+        "required": ["comment"],
+        "properties": { "findings": { "type": "array", "minItems": 1 } }
+      }
+    }
+  ]
+}
