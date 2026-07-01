@@ -125,6 +125,10 @@ export interface State {
 
 const active: Set<Status> = new Set(["preparing", "running"])
 const backgrounds = new Map<number, AbortController>()
+const notifications = new Map<
+  string,
+  { callback?: NodeJS.Timeout; texts: string[] }
+>()
 
 export class MagiError extends Error {
   constructor(
@@ -237,12 +241,27 @@ export class Magi {
     }
   }
 
-  public async notify(sessionID: string, text: string): Promise<void> {
-    await this.input.client.session.promptAsync({
-      parts: [{ synthetic: true, text, type: "text" }],
-      sessionID,
-      system: "Report the update to the user immediately.",
-    })
+  public notify(sessionID: string, text: string): void {
+    const notification = notifications.get(sessionID) ?? { texts: [] }
+
+    notification.texts.push(text)
+    notifications.set(sessionID, notification)
+
+    notification.callback ??= setTimeout(async () => {
+      const { texts } = notifications.get(sessionID)!
+
+      if (!texts.length) return
+
+      notifications.delete(sessionID)
+
+      try {
+        await this.input.client.session.promptAsync({
+          parts: texts.map((text) => ({ synthetic: true, text, type: "text" })),
+          sessionID,
+          system: "Report the update to the user immediately.",
+        })
+      } catch {}
+    }, 3000)
   }
 
   public async clear(config: Config.Root): Promise<{
@@ -362,12 +381,10 @@ export class Magi {
       updatedAt: createdAt,
       ...initialState,
     }
-    const values = [this.createStateFile(state)]
 
-    if (!state.sync && state.text)
-      values.push(this.notify(state.sessionId, state.text))
+    await this.createStateFile(state)
 
-    await Promise.all(values)
+    if (!state.sync && state.text) this.notify(state.sessionId, state.text)
 
     return state
   }
@@ -407,12 +424,10 @@ export class Magi {
 
     const prev = await this.getState(dir)
     const state = merge<State>(prev, next)
-    const values = [this.createStateFile(state)]
 
-    if (!state.sync && next.text)
-      values.push(this.notify(prev.sessionId, next.text))
+    await this.createStateFile(state)
 
-    await Promise.all(values)
+    if (!state.sync && next.text) this.notify(prev.sessionId, next.text)
 
     return state
   }

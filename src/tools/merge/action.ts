@@ -19,10 +19,10 @@ export async function editCycles(
       return verdict
     },
     {
-      error: async (e, count) => {
+      error: (e, count) => {
         if (e !== error) throw e
 
-        await this.notify(
+        this.notify(
           `Attempt ${count} failed to edit cycles for ${this.getLink()}. Retrying...`,
         )
       },

@@ -186,7 +186,7 @@ export async function classifyChecks(this: Review): Promise<void> {
         if (!sessionId)
           throw new Error(`No session ID found for reviewer ${id}.`)
 
-        await this.notify(
+        this.notify(
           `Classifying CI checks for ${this.getLink()} with reviewer ${id}.`,
         )
 
@@ -238,32 +238,30 @@ export async function classifyChecks(this: Review): Promise<void> {
     return { ...check, classifieds, scope }
   })
 
-  await Promise.all(
-    failed.map(async ({ classifieds, name, scope }) => {
-      const reasons = {
-        in: Object.entries(classifieds)
-          .filter(([, { scope }]) => scope)
-          .map(([id, { comment }]) => `- ${id}: ${comment}`),
-        out: Object.entries(classifieds)
-          .filter(([, { scope }]) => !scope)
-          .map(([id, { comment }]) => `- ${id}: ${comment}`),
-      }
+  failed.forEach(({ classifieds, name, scope }) => {
+    const reasons = {
+      in: Object.entries(classifieds)
+        .filter(([, { scope }]) => scope)
+        .map(([id, { comment }]) => `- ${id}: ${comment}`),
+      out: Object.entries(classifieds)
+        .filter(([, { scope }]) => !scope)
+        .map(([id, { comment }]) => `- ${id}: ${comment}`),
+    }
 
-      await this.notify(
-        filterEmpty([
-          scope
-            ? `Check ${name} for ${this.getLink()} was classified as in scope by majority vote.`
-            : `Check ${name} for ${this.getLink()} was classified as out of scope by majority vote. Rerunning it.`,
-          reasons.in.length
-            ? `In scope reasons:\n${reasons.in.join("\n")}`
-            : undefined,
-          reasons.out.length
-            ? `Out of scope reasons:\n${reasons.out.join("\n")}`
-            : undefined,
-        ]).join("\n\n"),
-      )
-    }),
-  )
+    this.notify(
+      filterEmpty([
+        scope
+          ? `Check ${name} for ${this.getLink()} was classified as in scope by majority vote.`
+          : `Check ${name} for ${this.getLink()} was classified as out of scope by majority vote. Rerunning it.`,
+        reasons.in.length
+          ? `In scope reasons:\n${reasons.in.join("\n")}`
+          : undefined,
+        reasons.out.length
+          ? `Out of scope reasons:\n${reasons.out.join("\n")}`
+          : undefined,
+      ]).join("\n\n"),
+    )
+  })
 
   this.state = await this.magi.updateState(this.state.output, {
     pr: { checks: { failed } },
@@ -300,7 +298,7 @@ export async function rerunChecks(this: Review): Promise<void> {
   } else {
     await retry(
       async () => {
-        await this.notify(`Rerunning checks ${label} for ${this.getLink()}.`)
+        this.notify(`Rerunning checks ${label} for ${this.getLink()}.`)
         await Promise.all(
           checks.failed
             .filter(({ scope }) => !scope)
@@ -360,7 +358,7 @@ export async function rerunChecks(this: Review): Promise<void> {
       : undefined,
   ]).join("\n")
 
-  if (message) await this.notify(message)
+  if (message) this.notify(message)
 
   this.state = await this.magi.updateState(this.state.output, {
     pr: { checks },

@@ -49,7 +49,7 @@ export async function review(this: Review): Promise<void> {
             this.state.reviewers[id]!
 
           if (status === "skip") {
-            await this.notify(
+            this.notify(
               `Skipping review for ${this.getLink()} with reviewer ${id}.`,
             )
 
@@ -70,7 +70,7 @@ export async function review(this: Review): Promise<void> {
             const label = rereview ? "rereview" : "review"
             const cycle = (outputs?.length ?? 0) + 1
 
-            await this.notify(
+            this.notify(
               `Running ${label} for ${this.getLink()} with reviewer ${id}.`,
             )
 
@@ -267,7 +267,7 @@ export async function validateFindings(this: Review): Promise<void> {
     ]),
   )
 
-  await notifyVerdictChanges.call(
+  notifyVerdictChanges.call(
     this,
     this.state.reviewers ?? {},
     reviewers,
@@ -345,7 +345,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
           )
           const repairMessage = await prompt.repair()
 
-          await this.notify(
+          this.notify(
             `Reconsidering close verdict for ${this.getLink()} with reviewer ${id}.`,
           )
 
@@ -418,7 +418,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
     },
   )
 
-  await notifyVerdictChanges.call(
+  notifyVerdictChanges.call(
     this,
     this.state.reviewers ?? {},
     reviewers,
@@ -433,7 +433,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
     ]),
   )
 
-  await notifyVerdictChanges.call(
+  notifyVerdictChanges.call(
     this,
     reviewers,
     validatedReviewers,
@@ -479,7 +479,7 @@ async function collectAcceptedFindings(
               `No session ID found for reviewer ${id}.`,
             )
 
-          await this.notify(
+          this.notify(
             `Validating review findings for ${this.getLink()} with reviewer ${id}.`,
           )
 
@@ -562,45 +562,42 @@ async function collectAcceptedFindings(
   )
   const threshold = Math.floor(this.config.review.reviewers.length / 2) + 1
 
-  await Promise.all(
-    findings.map(async ({ finding, index, reviewer }) => {
-      const votes = Object.entries(validations).flatMap(
-        ([validator, validation]) => {
-          if (validator === reviewer) return []
+  findings.forEach(({ finding, index, reviewer }) => {
+    const votes = Object.entries(validations).flatMap(
+      ([validator, validation]) => {
+        if (validator === reviewer) return []
 
-          const vote = validation.votes.find(
-            (vote) => vote.reviewer === reviewer && vote.index === index,
-          )
+        const vote = validation.votes.find(
+          (vote) => vote.reviewer === reviewer && vote.index === index,
+        )
 
-          return vote ? [{ validator, vote }] : []
-        },
-      )
-      const agrees =
-        1 + votes.filter(({ vote }) => vote.vote === "AGREE").length
-      const key = `${reviewer}:${index}`
-      const acceptedComments = votes
-        .filter(({ vote }) => vote.vote === "AGREE")
-        .map(({ validator, vote }) => `- ${validator}: ${vote.comment}`)
-      const rejectedComments = votes
-        .filter(({ vote }) => vote.vote === "DISAGREE")
-        .map(({ validator, vote }) => `- ${validator}: ${vote.comment}`)
+        return vote ? [{ validator, vote }] : []
+      },
+    )
+    const agrees = 1 + votes.filter(({ vote }) => vote.vote === "AGREE").length
+    const key = `${reviewer}:${index}`
+    const acceptedComments = votes
+      .filter(({ vote }) => vote.vote === "AGREE")
+      .map(({ validator, vote }) => `- ${validator}: ${vote.comment}`)
+    const rejectedComments = votes
+      .filter(({ vote }) => vote.vote === "DISAGREE")
+      .map(({ validator, vote }) => `- ${validator}: ${vote.comment}`)
 
-      if (agrees >= threshold) accepted.add(key)
+    if (agrees >= threshold) accepted.add(key)
 
-      await this.notify(
-        filterEmpty([
-          `Finding ${reviewer} #${index + 1} for ${this.getLink()} was ${agrees >= threshold ? "accepted" : "rejected"} by majority vote.`,
-          `Finding: ${finding.path}:${finding.line}\n${finding.body}`,
-          acceptedComments.length
-            ? `Accepted by:\n${acceptedComments.join("\n")}`
-            : undefined,
-          rejectedComments.length
-            ? `Rejected by:\n${rejectedComments.join("\n")}`
-            : undefined,
-        ]).join("\n\n"),
-      )
-    }),
-  )
+    this.notify(
+      filterEmpty([
+        `Finding ${reviewer} #${index + 1} for ${this.getLink()} was ${agrees >= threshold ? "accepted" : "rejected"} by majority vote.`,
+        `Finding: ${finding.path}:${finding.line}\n${finding.body}`,
+        acceptedComments.length
+          ? `Accepted by:\n${acceptedComments.join("\n")}`
+          : undefined,
+        rejectedComments.length
+          ? `Rejected by:\n${rejectedComments.join("\n")}`
+          : undefined,
+      ]).join("\n\n"),
+    )
+  })
 
   return accepted
 }
@@ -636,24 +633,22 @@ function transformState(
   return { ...reviewer, outputs }
 }
 
-async function notifyVerdictChanges(
+function notifyVerdictChanges(
   this: Review,
   prev: { [key: string]: ReviewerState },
   next: { [key: string]: ReviewerState },
   reason: string,
-): Promise<void> {
-  await Promise.all(
-    Object.entries(next).map(async ([id, reviewer]) => {
-      const prevVerdict = prev[id]?.outputs?.at(-1)?.verdict
-      const nextVerdict = reviewer.outputs?.at(-1)?.verdict
+): void {
+  Object.entries(next).forEach(([id, reviewer]) => {
+    const prevVerdict = prev[id]?.outputs?.at(-1)?.verdict
+    const nextVerdict = reviewer.outputs?.at(-1)?.verdict
 
-      if (!prevVerdict || !nextVerdict || prevVerdict === nextVerdict) return
+    if (!prevVerdict || !nextVerdict || prevVerdict === nextVerdict) return
 
-      await this.notify(
-        `Reviewer ${id} verdict changed from ${prevVerdict} to ${nextVerdict} for ${this.getLink()} ${reason}.`,
-      )
-    }),
-  )
+    this.notify(
+      `Reviewer ${id} verdict changed from ${prevVerdict} to ${nextVerdict} for ${this.getLink()} ${reason}.`,
+    )
+  })
 }
 
 function validateInlineCommentTargets(

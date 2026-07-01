@@ -113,8 +113,8 @@ export class Review {
   public automate = automate
   public createReport = createReport
 
-  public async notify(text: string): Promise<void> {
-    if (!this.state.sync) await this.magi.notify(this.state.sessionId, text)
+  public notify(text: string): void {
+    if (!this.state.sync) this.magi.notify(this.state.sessionId, text)
   }
 
   public async cleanup(): Promise<void> {

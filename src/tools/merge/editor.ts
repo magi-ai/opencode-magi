@@ -95,7 +95,7 @@ export async function edit(this: Merge): Promise<boolean> {
     text: `Finished editing ${this.getLink()}.`,
   })
 
-  await this.notify(
+  this.notify(
     filterEmpty([
       `Editor ${output.mode === "EDITED" ? "edited" : "replied to"} ${this.getLink()}.`,
       output.commitSha

@@ -96,7 +96,7 @@ export async function postReviews(this: Review): Promise<void> {
       })
 
       if (!findings.length) {
-        await this.notify(`Finished posting reviews for ${this.getLink()}.`)
+        this.notify(`Finished posting reviews for ${this.getLink()}.`)
 
         return
       }
@@ -118,7 +118,7 @@ export async function postReviews(this: Review): Promise<void> {
       if (!this.state.operator?.sessionId)
         throw new MagiError("blocked", "Reporter session ID not found.")
 
-      await this.notify(`Generating comment for ${this.getLink()} by operator.`)
+      this.notify(`Generating comment for ${this.getLink()} by operator.`)
 
       const contents = JSON.stringify(
         reviewers.flatMap<PullRequestFinding | string>(([, { outputs }]) => {
@@ -175,7 +175,7 @@ export async function postReviews(this: Review): Promise<void> {
       if (!output)
         throw new MagiError("blocked", "Invalid output for operator.")
 
-      await this.notify(`Generated comment for ${this.getLink()} by operator.`)
+      this.notify(`Generated comment for ${this.getLink()} by operator.`)
 
       params.body = output
     }
