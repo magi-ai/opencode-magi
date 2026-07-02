@@ -241,7 +241,6 @@ export class Magi {
     await this.input.client.session.promptAsync({
       parts: [{ synthetic: true, text, type: "text" }],
       sessionID,
-      system: "Report the update to the user immediately.",
     })
   }
 
@@ -388,14 +387,13 @@ export class Magi {
     attempt = 1,
     cycle?: number,
   ): Promise<void> {
-    const segments = [output, "agents", phase, id]
+    const segments = [id, phase]
 
     if (isNumber(cycle)) segments.push(cycle.toString())
     if (isNumber(attempt)) segments.push(attempt.toString())
 
-    const path = segments.join("/") + ".md"
+    const path = join(output, segments.join("-") + ".md")
 
-    await mkdir(dirname(path), { recursive: true })
     await writeFile(path, content)
   }
 
