@@ -1,6 +1,7 @@
 export * from "./array"
 export * from "./assertion"
 export * from "./exec"
+export * from "./fs"
 export * from "./function"
 export * from "./github"
 export type * from "./index.type"
