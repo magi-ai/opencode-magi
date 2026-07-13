@@ -50,7 +50,7 @@ The project is intentionally small, so please keep contributions focused. If you
 - **`pnpm quality`**: runs formatting, rule checks, typechecking, and tests.
 - **`pnpm format:check`**: runs the formatting check.
 - **`pnpm lint:check`**: runs the rule check.
-- **`pnpm typecheck`**: runs typechecking.
+- **`pnpm type:check`**: runs typechecking.
 - **`pnpm release:dev`**: publishes the dev package.
 - **`pnpm release`**: publishes the package.
 

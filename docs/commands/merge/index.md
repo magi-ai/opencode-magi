@@ -27,7 +27,6 @@ Run the following command in OpenCode.
 | Option                                                    | Description                                                      |
 | --------------------------------------------------------- | ---------------------------------------------------------------- |
 | `--dry-run`                                               | Runs without posting review results, applying fixes, or merging. |
-| `--sync`                                                  | Waits for completion instead of running in the background.       |
 | `--retry-api-attempts <count>`                            | Overrides the API retry count.                                   |
 | `--language <language>`                                   | Overrides the output language for the run.                       |
 | `--merge`, `--no-merge`                                   | Overrides merge automation.                                      |

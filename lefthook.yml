@@ -1,7 +1,7 @@
 pre-commit:
   piped: true
   jobs:
-    - name: lint & typecheck
+    - name: lint & type
       glob: "*.{js,cjs,mjs,jsx,ts,cts,mts,tsx,d.ts}"
       run: pnpm oxlint {staged_files} --type-check --max-warnings=0 --fix --no-error-on-unmatched-pattern
       stage_fixed: true

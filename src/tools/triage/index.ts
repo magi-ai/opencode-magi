@@ -7,15 +7,10 @@ export const triage: Tool = function (magi) {
       args: {
         dryRun: tool.schema.boolean().optional(),
         issues: tool.schema.string(),
-        sync: tool.schema.boolean().optional(),
       },
       description:
         "Triage one or more issues with configured Magi triage voters.",
-      async execute({
-        dryRun: _dryRun = false,
-        issues: _issues,
-        sync: _sync = false,
-      }) {
+      async execute({ dryRun: _dryRun = false, issues: _issues }) {
         const _config = await magi.getConfig({ creator: true, voters: true })
 
         return ""

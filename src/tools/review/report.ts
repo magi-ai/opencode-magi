@@ -1,22 +1,22 @@
 import type { Review } from "./review"
-import type { State } from "@/magi"
 import { writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { MagiError } from "@/magi"
 import { filterEmpty, toTitleCase } from "@/utils"
 
-export async function createReport(this: Review, e?: unknown): Promise<State> {
+export async function createReport(this: Review, e?: unknown): Promise<string> {
   if (!e) {
     const status = "completed"
-    const text = createContent.call(this, { status })
+    const text = await createContent.call(this, { status })
 
     await writeFile(join(this.state.output, "report.md"), `${text}\n`)
 
-    return this.magi.updateState(this.state.output, {
+    await this.updateState({
       completedAt: new Date().toISOString(),
       status,
-      text,
     })
+
+    return text
   } else {
     const error = e instanceof Error ? e.message : "Unknown error"
     const status =
@@ -25,36 +25,38 @@ export async function createReport(this: Review, e?: unknown): Promise<State> {
         : this.context.abort.aborted
           ? "cancelled"
           : "failed"
-    const text = createContent.call(this, { error, status })
+    const text = await createContent.call(this, { error, status })
 
     await writeFile(join(this.state.output, "report.md"), `${text}\n`)
 
-    return this.magi.updateState(this.state.output, {
+    await this.updateState({
       completedAt: new Date().toISOString(),
-      error,
       status,
-      text: `${toTitleCase(status)} reviewing ${this.getLink()}.\n\n${text}`,
     })
+
+    return text
   }
 }
 
-function createContent(
+async function createContent(
   this: Review,
   input: { error?: string; status: string },
-): string {
+): Promise<string> {
   return filterEmpty([
-    ...createMetaContent.call(this, input),
+    ...(await createMetaContent.call(this, input)),
     ...createCheckContent.call(this),
     ...createReviewerContent.call(this),
   ]).join("\n")
 }
 
-export function createMetaContent(
+export async function createMetaContent(
   this: Review,
   input: { error?: string; status: string },
-): (null | string | undefined)[] {
+): Promise<(null | string | undefined)[]> {
+  const events = await this.getEvents()
+  const lastAction = events.at(-1)?.message
   const rows: (null | string | undefined)[] = [
-    `- **Pull Request:** ${this.getLink()}`,
+    `- **Pull Request:** [${this.state.pr!.number}](${this.state.pr!.url})`,
     `- **Mode**: ${toTitleCase(this.config.mode)}`,
     `- **Dry run**: ${this.state.dryRun ? "Yes" : "No"}`,
     `- **Status**: ${toTitleCase(input.status)}`,
@@ -66,7 +68,7 @@ export function createMetaContent(
       `- **Verdict**: ${toTitleCase(this.state.pr.verdict.toLocaleLowerCase())}`,
     )
 
-  if (this.state.text) rows.push(`- **Last action**: ${this.state.text}`)
+  if (lastAction) rows.push(`- **Last action**: ${lastAction}`)
   if (input.error) rows.push(`- **Error**: ${input.error}`)
 
   return rows

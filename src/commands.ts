@@ -1,12 +1,6 @@
 import type { Config } from "@opencode-ai/plugin"
 
 export const commands: Config["command"] = {
-  "magi:cancel": {
-    description: "Cancel active background Magi runs",
-    template: ["Call the `magi_cancel` tool.", "PR or Issue: $ARGUMENTS"].join(
-      "\n",
-    ),
-  },
   "magi:clear": {
     description: [
       "Clear inactive Magi runs, sessions, worktrees, and outputs",

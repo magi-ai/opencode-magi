@@ -35,9 +35,7 @@ export async function postReviews(this: Review): Promise<void> {
 
   if (this.state.dryRun) return
 
-  this.state = await this.magi.updateState(this.state.output, {
-    text: `Posting reviews for ${this.getLink()}.`,
-  })
+  await this.updateEvent(`Posting reviews.`)
 
   if (!this.config.review.reviewers?.length)
     throw new MagiError("blocked", "No reviewers configured.")
@@ -96,7 +94,7 @@ export async function postReviews(this: Review): Promise<void> {
       })
 
       if (!findings.length) {
-        await this.notify(`Finished posting reviews for ${this.getLink()}.`)
+        await this.updateEvent(`Finished posting reviews.`)
 
         return
       }
@@ -118,7 +116,7 @@ export async function postReviews(this: Review): Promise<void> {
       if (!this.state.operator?.sessionId)
         throw new MagiError("blocked", "Reporter session ID not found.")
 
-      await this.notify(`Generating comment for ${this.getLink()} by operator.`)
+      await this.updateEvent(`Generating comment by operator.`)
 
       const contents = JSON.stringify(
         reviewers.flatMap<PullRequestFinding | string>(([, { outputs }]) => {
@@ -165,8 +163,8 @@ export async function postReviews(this: Review): Promise<void> {
         },
         {
           error: (_, count) =>
-            this.notify(
-              `Attempt ${count} failed to post comment for ${this.getLink()} by operator. Retrying...`,
+            this.updateEvent(
+              `Attempt ${count} failed to post comment by operator. Retrying...`,
             ),
           retries: this.config.output.repairAttempts,
         },
@@ -175,7 +173,7 @@ export async function postReviews(this: Review): Promise<void> {
       if (!output)
         throw new MagiError("blocked", "Invalid output for operator.")
 
-      await this.notify(`Generated comment for ${this.getLink()} by operator.`)
+      await this.updateEvent(`Generated comment by operator.`)
 
       params.body = output
     }
@@ -207,12 +205,12 @@ export async function postReviews(this: Review): Promise<void> {
     const { data } = await octokit.rest.pulls.createReview(params)
     const posted = data.html_url
 
-    this.state = await this.magi.updateState(this.state.output, {
+    await this.updateState({
       reviewers: Object.fromEntries(
         Object.keys(this.state.reviewers).map((id) => [id, { posted }]),
       ),
-      text: `Finished posting reviews for ${this.getLink()}.`,
     })
+    await this.updateEvent(`Finished posting reviews.`)
   } else {
     const worker = new Worker<[string, ReviewerState]>(
       this.config.review.concurrency.reviewers,
@@ -294,10 +292,8 @@ export async function postReviews(this: Review): Promise<void> {
       ),
     )
 
-    this.state = await this.magi.updateState(this.state.output, {
-      reviewers,
-      text: `Finished posting reviews for ${this.getLink()}.`,
-    })
+    await this.updateState({ reviewers })
+    await this.updateEvent(`Finished posting reviews.`)
   }
 }
 
@@ -315,10 +311,8 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
   const action = this.state.pr.verdict === "APPROVED" ? "merge" : "close"
 
   if (!automation[action]) {
-    this.state = await this.magi.updateState(this.state.output, {
-      pr: { automation: "SKIPPED" },
-      text: `Skipped ${action} automation for ${this.getLink()}.`,
-    })
+    await this.updateState({ pr: { automation: "SKIPPED" } })
+    await this.updateEvent(`Skipped ${action} automation.`)
 
     return "SKIPPED"
   }
@@ -333,29 +327,25 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
     const pending = this.state.pr.checks.pending
 
     if (failed.length || pending.length) {
-      this.state = await this.magi.updateState(this.state.output, {
-        pr: { automation: "SKIPPED" },
-        text: `Skipped merge automation for ${this.getLink()} because unresolved CI checks remain.`,
-      })
+      await this.updateState({ pr: { automation: "SKIPPED" } })
+      await this.updateEvent(
+        `Skipped merge automation because unresolved CI checks remain.`,
+      )
 
       return "SKIPPED"
     }
 
     if (await isConflict.call(this)) {
-      this.state = await this.magi.updateState(this.state.output, {
-        pr: { automation: "CONFLICT" },
-        text: `Merge automation found conflicts for ${this.getLink()}.`,
-      })
+      await this.updateState({ pr: { automation: "CONFLICT" } })
+      await this.updateEvent(`Merge automation found conflicts.`)
 
       return "CONFLICT"
     }
   }
 
   if (this.state.dryRun) {
-    this.state = await this.magi.updateState(this.state.output, {
-      pr: { automation: "SKIPPED" },
-      text: `Skipped ${action} automation for ${this.getLink()} during dry run.`,
-    })
+    await this.updateState({ pr: { automation: "SKIPPED" } })
+    await this.updateEvent(`Skipped ${action} automation during dry run.`)
 
     return "SKIPPED"
   }
@@ -397,13 +387,8 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
   }
 
   if (action !== "merge" || this.config.review.merge.queue)
-    this.state = await this.magi.updateState(this.state.output, {
-      text: `${action === "merge" ? "Merging" : "Closing"} ${this.getLink()}.`,
-    })
-  else
-    this.state = await this.magi.updateState(this.state.output, {
-      text: `Waiting to merge ${this.getLink()}.`,
-    })
+    await this.updateEvent(`${action === "merge" ? "Merging" : "Closing"}.`)
+  else await this.updateEvent(`Waiting to merge.`)
 
   if (action === "merge" && this.config.review.merge.queue) {
     const octokit = await this.magi.createOctokit(
@@ -413,11 +398,9 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
     )
     const graphql = this.magi.createGraphql(octokit)
 
-    await graphql.enqueuePullRequest({ id: this.state.pr!.metadata.node_id })
+    await graphql.enqueuePullRequest({ id: this.state.pr.metadata.node_id })
 
-    this.state = await this.magi.updateState(this.state.output, {
-      text: `Waiting for merge queue for ${this.getLink()}.`,
-    })
+    await this.updateEvent(`Waiting for merge queue.`)
 
     const result = await waitMergeQueue.call(this)
 
@@ -461,9 +444,9 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
         if (status === "DIRTY") return "CONFLICT"
 
         if (status === "BEHIND") {
-          this.state = await this.magi.updateState(this.state.output, {
-            text: `Updating ${this.getLink()} with the base branch before merging.`,
-          })
+          await this.updateEvent(
+            `Updating with the base branch before merging.`,
+          )
 
           await this.exec(
             command(...prefix, "update-branch", ...suffix),
@@ -476,20 +459,15 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
         if (status === "BLOCKED" && hasFailedChecks(checks))
           throw new MagiError(
             "blocked",
-            `Required checks failed before merging ${this.getLink()}.`,
+            `Required checks failed before merging.`,
           )
         if (!auto && state === "OPEN")
-          throw new MagiError(
-            "blocked",
-            `Auto-merge is no longer enabled for ${this.getLink()}.`,
-          )
+          throw new MagiError("blocked", `Auto-merge is no longer enabled.`)
       }, 30_000)
     }
     const runAutomation = async (): Promise<PullRequestAutomation | void> => {
       try {
-        this.state = await this.magi.updateState(this.state.output, {
-          text: `Merging ${this.getLink()}.`,
-        })
+        await this.updateEvent(`Merging.`)
 
         await this.exec(command(...args), options)
 
@@ -497,10 +475,8 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
           const result = await waitMerge()
 
           if (result === "CONFLICT") {
-            this.state = await this.magi.updateState(this.state.output, {
-              pr: { automation: "CONFLICT" },
-              text: `Merge automation found conflicts for ${this.getLink()}.`,
-            })
+            await this.updateState({ pr: { automation: "CONFLICT" } })
+            await this.updateEvent(`Merge automation found conflicts.`)
 
             return "CONFLICT"
           }
@@ -514,19 +490,17 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
           case /\bconflicts?\b|merge commit cannot be cleanly created/i.test(
             message,
           ):
-            this.state = await this.magi.updateState(this.state.output, {
-              pr: { automation: "CONFLICT" },
-              text: `Merge automation found conflicts for ${this.getLink()}.`,
-            })
+            await this.updateState({ pr: { automation: "CONFLICT" } })
+            await this.updateEvent(`Merge automation found conflicts.`)
 
             return "CONFLICT"
 
           case /head (branch|ref) is (not up to date|out of date)/i.test(
             message,
           ):
-            this.state = await this.magi.updateState(this.state.output, {
-              text: `Updating ${this.getLink()} with the base branch before merging.`,
-            })
+            await this.updateEvent(
+              `Updating with the base branch before merging.`,
+            )
 
             await this.exec(
               command(...prefix, "update-branch", ...suffix),
@@ -538,10 +512,8 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
               const result = await waitMerge()
 
               if (result === "CONFLICT") {
-                this.state = await this.magi.updateState(this.state.output, {
-                  pr: { automation: "CONFLICT" },
-                  text: `Merge automation found conflicts for ${this.getLink()}.`,
-                })
+                await this.updateState({ pr: { automation: "CONFLICT" } })
+                await this.updateEvent(`Merge automation found conflicts.`)
 
                 return "CONFLICT"
               }
@@ -562,10 +534,10 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
     if (result) return result
   }
 
-  this.state = await this.magi.updateState(this.state.output, {
+  await this.updateState({
     pr: { automation: action === "merge" ? "MERGED" : "CLOSED" },
-    text: `Finished ${action} automation for ${this.getLink()}.`,
   })
+  await this.updateEvent(`Finished ${action} automation.`)
 
   return action === "merge" ? "MERGED" : "CLOSED"
 }
@@ -637,18 +609,13 @@ async function waitMergeQueue(
 
   if (leftMergeQueue && nextLeftMergeQueue) {
     if (await isConflict.call(this)) {
-      this.state = await this.magi.updateState(this.state.output, {
-        pr: { automation: "CONFLICT" },
-        text: `Merge automation found conflicts for ${this.getLink()}.`,
-      })
+      await this.updateState({ pr: { automation: "CONFLICT" } })
+      await this.updateEvent(`Merge automation found conflicts.`)
 
       return "CONFLICT"
     }
 
-    throw new MagiError(
-      "blocked",
-      `PR left the merge queue before merging ${this.getLink()}.`,
-    )
+    throw new MagiError("blocked", `PR left the merge queue before merging.`)
   }
 
   await wait(30_000)

@@ -46,10 +46,8 @@ const ci = {
 export async function checkPr(this: Review): Promise<void> {
   this.context.abort.throwIfAborted()
 
-  await this.magi.updateState(this.state.output, {
-    status: "running",
-    text: `Checking PR ${this.getLink()}.`,
-  })
+  await this.updateState({ status: "running" })
+  await this.updateEvent(`Checking PR.`)
 
   const { files, metadata } = await getMetadata.call(this)
 
@@ -98,7 +96,7 @@ export async function checkPr(this: Review): Promise<void> {
     if (this.config.account === metadata.user.login)
       throw new MagiError(
         "blocked",
-        `Single mode account ${this.config.account} cannot review ${this.getLink()} because it opened the pull request. Configure account to a different account.`,
+        `Single mode account ${this.config.account} cannot review because it opened the pull request. Configure account to a different account.`,
       )
   } else {
     const accounts = Object.values(this.state.reviewers ?? {})
@@ -108,14 +106,12 @@ export async function checkPr(this: Review): Promise<void> {
     if (accounts.length)
       throw new MagiError(
         "blocked",
-        `Multi mode accounts ${accounts.join(", ")} cannot review ${this.getLink()} because they opened the pull request. Configure accounts to different accounts.`,
+        `Multi mode accounts ${accounts.join(", ")} cannot review because they opened the pull request. Configure accounts to different accounts.`,
       )
   }
 
-  this.state = await this.magi.updateState(this.state.output, {
-    pr: { files, metadata },
-    text: `Finished checking PR ${this.getLink()}.`,
-  })
+  await this.updateState({ pr: { files, metadata } })
+  await this.updateEvent(`Finished checking PR.`)
 }
 
 export async function checkCi(
@@ -124,18 +120,14 @@ export async function checkCi(
 ): Promise<void> {
   this.context.abort.throwIfAborted()
 
-  this.state = await this.magi.updateState(this.state.output, {
-    text: `Checking CI for ${this.getLink()}.`,
-  })
+  await this.updateEvent(`Checking CI.`)
 
   if (wait) await watchChecks.call(this)
 
   const checks = await getChecks.call(this)
 
-  this.state = await this.magi.updateState(this.state.output, {
-    pr: { checks },
-    text: `Finished checking CI for ${this.getLink()}.`,
-  })
+  await this.updateState({ pr: { checks } })
+  await this.updateEvent(`Finished checking CI.`)
 }
 
 export async function classifyChecks(this: Review): Promise<void> {
@@ -143,9 +135,7 @@ export async function classifyChecks(this: Review): Promise<void> {
 
   if (!this.state.pr?.checks?.failed.length) return
 
-  await this.magi.updateState(this.state.output, {
-    text: `Classifying CI checks for ${this.getLink()}.`,
-  })
+  await this.updateEvent(`Classifying CI checks.`)
 
   if (!this.state.pr.metadata)
     throw new MagiError("blocked", "PR metadata not found.")
@@ -186,9 +176,7 @@ export async function classifyChecks(this: Review): Promise<void> {
         if (!sessionId)
           throw new Error(`No session ID found for reviewer ${id}.`)
 
-        await this.notify(
-          `Classifying CI checks for ${this.getLink()} with reviewer ${id}.`,
-        )
+        await this.updateEvent(`Classifying CI checks with reviewer ${id}.`)
 
         const output = await retry(
           async (count) => {
@@ -208,8 +196,8 @@ export async function classifyChecks(this: Review): Promise<void> {
           },
           {
             error: (_, count) =>
-              this.notify(
-                `Attempt ${count} failed to classify CI checks for ${this.getLink()} with reviewer ${id}. Retrying...`,
+              this.updateEvent(
+                `Attempt ${count} failed to classify CI checks with reviewer ${id}. Retrying...`,
               ),
             retries: this.config.output.repairAttempts,
           },
@@ -249,11 +237,11 @@ export async function classifyChecks(this: Review): Promise<void> {
           .map(([id, { comment }]) => `- ${id}: ${comment}`),
       }
 
-      await this.notify(
+      await this.updateEvent(
         filterEmpty([
           scope
-            ? `Check ${name} for ${this.getLink()} was classified as in scope by majority vote.`
-            : `Check ${name} for ${this.getLink()} was classified as out of scope by majority vote. Rerunning it.`,
+            ? `Check ${name} was classified as in scope by majority vote.`
+            : `Check ${name} was classified as out of scope by majority vote. Rerunning it.`,
           reasons.in.length
             ? `In scope reasons:\n${reasons.in.join("\n")}`
             : undefined,
@@ -265,10 +253,8 @@ export async function classifyChecks(this: Review): Promise<void> {
     }),
   )
 
-  this.state = await this.magi.updateState(this.state.output, {
-    pr: { checks: { failed } },
-    text: `Finished classifying CI checks for ${this.getLink()}.`,
-  })
+  await this.updateState({ pr: { checks: { failed } } })
+  await this.updateEvent(`Finished classifying CI checks.`)
 }
 
 export async function rerunChecks(this: Review): Promise<void> {
@@ -285,9 +271,7 @@ export async function rerunChecks(this: Review): Promise<void> {
 
   if (!failedChecks.length) return
 
-  await this.magi.updateState(this.state.output, {
-    text: `Rerunning CI checks for ${this.getLink()}.`,
-  })
+  await this.updateEvent(`Rerunning CI checks.`)
 
   let label = failedChecks.map(({ name }) => name).join(", ")
 
@@ -300,7 +284,7 @@ export async function rerunChecks(this: Review): Promise<void> {
   } else {
     await retry(
       async () => {
-        await this.notify(`Rerunning checks ${label} for ${this.getLink()}.`)
+        await this.updateEvent(`Rerunning checks ${label}.`)
         await Promise.all(
           checks.failed
             .filter(({ scope }) => !scope)
@@ -335,12 +319,12 @@ export async function rerunChecks(this: Review): Promise<void> {
 
         label = failedChecks.map(({ name }) => name).join(", ")
 
-        throw new Error(`Checks ${label} for ${this.getLink()} still failed.`)
+        throw new Error(`Checks ${label} still failed.`)
       },
       {
         error: (_, count) =>
-          this.notify(
-            `Attempt ${count} failed to rerun checks ${label} for ${this.getLink()}. Retrying...`,
+          this.updateEvent(
+            `Attempt ${count} failed to rerun checks ${label}. Retrying...`,
           ),
         retries: this.config.review.checks.retryFailedJobs,
       },
@@ -353,19 +337,17 @@ export async function rerunChecks(this: Review): Promise<void> {
   const failedChecksAfterRerun = checks.failed.filter(({ scope }) => !scope)
   const message = filterEmpty([
     passedChecksAfterRerun.length
-      ? `Reran checks ${passedChecksAfterRerun.map(({ name }) => name).join(", ")} for ${this.getLink()} passed.`
+      ? `Reran checks ${passedChecksAfterRerun.map(({ name }) => name).join(", ")} passed.`
       : undefined,
     failedChecksAfterRerun.length
-      ? `Reran checks ${failedChecksAfterRerun.map(({ name }) => name).join(", ")} for ${this.getLink()} failed.`
+      ? `Reran checks ${failedChecksAfterRerun.map(({ name }) => name).join(", ")} failed.`
       : undefined,
   ]).join("\n")
 
-  if (message) await this.notify(message)
+  if (message) await this.updateEvent(message)
 
-  this.state = await this.magi.updateState(this.state.output, {
-    pr: { checks },
-    text: `Finished rerunning checks for ${this.getLink()}.`,
-  })
+  await this.updateState({ pr: { checks } })
+  await this.updateEvent(`Finished rerunning checks.`)
 }
 
 export async function getMetadata(

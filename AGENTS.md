@@ -121,7 +121,7 @@ Use targeted commands when iterating:
 ```bash
 pnpm format:check
 pnpm lint:check
-pnpm typecheck
+pnpm type:check
 pnpm test
 ```
 

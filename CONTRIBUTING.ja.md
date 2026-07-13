@@ -50,7 +50,7 @@ OpenCode Magiは、OpenCodeのマルチエージェントによるGitHubのPRの
 - **`pnpm quality`**: フォーマットチェック、ルールチェック、型チェック、テストを実行します。
 - **`pnpm format:check`**: フォーマットのチェックを実行します。
 - **`pnpm lint:check`**: ルールのチェックを実行します。
-- **`pnpm typecheck`**: 型のチェックを実行します。
+- **`pnpm type:check`**: 型のチェックを実行します。
 - **`pnpm release:dev`**: 開発パッケージを公開します。
 - **`pnpm release`**: パッケージを公開します。
 

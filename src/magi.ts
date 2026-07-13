@@ -26,6 +26,7 @@ import { createOpencodeClient } from "@opencode-ai/sdk/v2"
 import { print } from "graphql"
 import { randomUUID } from "node:crypto"
 import {
+  appendFile,
   mkdir,
   readdir,
   readFile,
@@ -82,6 +83,11 @@ export interface EditorState extends AgentState {
   outputs?: EditOutput[]
 }
 
+export interface Event {
+  createdAt: string
+  message: string
+}
+
 export interface State {
   command: Command
   completedAt?: string
@@ -113,8 +119,6 @@ export interface State {
   reviewers?: { [key: string]: ReviewerState }
   sessionId: string
   status: Status
-  sync: boolean
-  text?: string
   updatedAt: string
   voters?: { [key: string]: AgentState }
   worktree?: {
@@ -124,7 +128,6 @@ export interface State {
 }
 
 const active: Set<Status> = new Set(["preparing", "running"])
-const backgrounds = new Map<number, AbortController>()
 
 export class MagiError extends Error {
   constructor(
@@ -192,56 +195,6 @@ export class Magi {
     return graphql(<T, U>(document: DocumentNode, variables?: U) =>
       octokit.graphql<T>(print(document), variables as Dict),
     )
-  }
-
-  public registerBackground(number: number, controller: AbortController): void {
-    if (backgrounds.has(number)) this.cancelBackground(number)
-
-    backgrounds.set(number, controller)
-  }
-
-  public unregisterBackground(number: number, signal: AbortSignal): void {
-    if (backgrounds.get(number)?.signal === signal) backgrounds.delete(number)
-  }
-
-  public cancelBackgrounds(numbers?: number[]): {
-    cancelled: number[]
-    missing: number[]
-  } {
-    const results: { cancelled: number[]; missing: number[] } = {
-      cancelled: [],
-      missing: [],
-    }
-
-    if (!numbers?.length) numbers = [...backgrounds.keys()]
-
-    for (const number of numbers) {
-      const cancelled = this.cancelBackground(number)
-
-      results[cancelled ? "cancelled" : "missing"].push(number)
-    }
-
-    return results
-  }
-
-  public cancelBackground(number: number): boolean {
-    const controller = backgrounds.get(number)
-
-    if (controller) {
-      controller.abort()
-      backgrounds.delete(number)
-
-      return true
-    } else {
-      return false
-    }
-  }
-
-  public async notify(sessionID: string, text: string): Promise<void> {
-    await this.input.client.session.promptAsync({
-      parts: [{ synthetic: true, text, type: "text" }],
-      sessionID,
-    })
   }
 
   public async clear(config: Config.Root): Promise<{
@@ -361,12 +314,8 @@ export class Magi {
       updatedAt: createdAt,
       ...initialState,
     }
-    const values = [this.createStateFile(state)]
 
-    if (!state.sync && state.text)
-      values.push(this.notify(state.sessionId, state.text))
-
-    await Promise.all(values)
+    await this.createStateFile(state)
 
     return state
   }
@@ -405,14 +354,34 @@ export class Magi {
 
     const prev = await this.getState(dir)
     const state = merge<State>(prev, next)
-    const values = [this.createStateFile(state)]
 
-    if (!state.sync && next.text)
-      values.push(this.notify(prev.sessionId, next.text))
-
-    await Promise.all(values)
+    await this.createStateFile(state)
 
     return state
+  }
+
+  public async updateEvent(output: string, message: string): Promise<void> {
+    const event: Event = {
+      createdAt: new Date().toISOString(),
+      message,
+    }
+
+    await appendFile(join(output, "events.jsonl"), `${JSON.stringify(event)}\n`)
+  }
+
+  public async getEvents(output: string): Promise<Event[]> {
+    try {
+      const content = await readFile(join(output, "events.jsonl"), "utf8")
+
+      return content
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as Event)
+    } catch (e) {
+      if (e instanceof Error && "code" in e && e.code === "ENOENT") return []
+
+      throw e
+    }
   }
 
   private getSessionIds(state: State): string[] {

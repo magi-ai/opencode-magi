@@ -16,9 +16,7 @@ import { command, filterEmpty, marker, quote } from "@/utils"
 export async function checkExistingReviews(this: Review): Promise<boolean> {
   this.context.abort.throwIfAborted()
 
-  this.state = await this.magi.updateState(this.state.output, {
-    text: `Fetching existing reviews for ${this.getLink()}.`,
-  })
+  await this.updateEvent(`Fetching existing reviews.`)
 
   if (!this.state.pr?.metadata)
     throw new MagiError("blocked", "PR metadata not found.")
@@ -31,9 +29,7 @@ export async function checkExistingReviews(this: Review): Promise<boolean> {
     getReviewThreads.call(this),
   ])
 
-  this.state = await this.magi.updateState(this.state.output, {
-    pr: { commits, reviews, threads },
-  })
+  await this.updateState({ pr: { commits, reviews, threads } })
 
   const latestNonMergeCommit = commits
     .toReversed()
@@ -138,10 +134,8 @@ export async function checkExistingReviews(this: Review): Promise<boolean> {
 
   const skip = Object.values(reviewers).every(({ status }) => status === "skip")
 
-  this.state = await this.magi.updateState(this.state.output, {
-    reviewers,
-    text: `Finished fetching existing reviews for ${this.getLink()}.`,
-  })
+  await this.updateState({ reviewers })
+  await this.updateEvent(`Finished fetching existing reviews.`)
 
   return skip
 }
@@ -149,9 +143,7 @@ export async function checkExistingReviews(this: Review): Promise<boolean> {
 export async function fetchReviewContext(this: Review): Promise<void> {
   this.context.abort.throwIfAborted()
 
-  this.state = await this.magi.updateState(this.state.output, {
-    text: `Fetching review context for ${this.getLink()}.`,
-  })
+  await this.updateEvent(`Fetching review context.`)
 
   const [comments, issues, threads] = await Promise.all([
     getComments.call(this),
@@ -160,10 +152,10 @@ export async function fetchReviewContext(this: Review): Promise<void> {
   ])
   const inlineCommentTargets = await getInlineCommentTargets.call(this)
 
-  this.state = await this.magi.updateState(this.state.output, {
+  await this.updateState({
     pr: { comments, inlineCommentTargets, issues, threads },
-    text: `Finished fetching review context for ${this.getLink()}.`,
   })
+  await this.updateEvent(`Finished fetching review context.`)
 }
 
 export async function getComments(this: Review): Promise<PullRequestComment[]> {
