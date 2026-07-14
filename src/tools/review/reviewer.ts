@@ -9,7 +9,14 @@ import type { ReviewerState } from "@/magi"
 import type { PromptTag } from "@/prompts"
 import { MagiError } from "@/magi"
 import { Prompt } from "@/prompts"
-import { filterEmpty, marker, omitNullish, retry, Worker } from "@/utils"
+import {
+  filterEmpty,
+  marker,
+  omitNullish,
+  retry,
+  toTitleCase,
+  Worker,
+} from "@/utils"
 
 interface Finding {
   finding: PullRequestFinding
@@ -190,6 +197,40 @@ export async function review(this: Review): Promise<void> {
                   status,
                   parsed,
                   inlineCommentTargets,
+                )
+
+                const findings = parsed.findings ?? parsed.newFindings ?? []
+
+                await this.updateEvent(
+                  filterEmpty([
+                    `Finished ${label} with reviewer ${id}.`,
+                    `Verdict: ${toTitleCase(parsed.verdict.toLocaleLowerCase())}.`,
+                    parsed.comment ? `Comment:\n${parsed.comment}` : undefined,
+                    findings.length
+                      ? `Findings:\n${findings
+                          .map(
+                            ({ body, line, path, startLine }) =>
+                              `- ${path}:${startLine != null ? `${startLine}-` : ""}${line}: ${body}`,
+                          )
+                          .join("\n")}`
+                      : undefined,
+                    parsed.followUps?.length
+                      ? `Follow-ups:\n${parsed.followUps
+                          .map(
+                            ({ body, commentId }) =>
+                              `- Comment ${commentId}: ${body}`,
+                          )
+                          .join("\n")}`
+                      : undefined,
+                    parsed.resolves?.length
+                      ? `Resolved threads:\n${parsed.resolves
+                          .map(
+                            ({ commentId, threadId }) =>
+                              `- Comment ${commentId} in thread ${threadId}`,
+                          )
+                          .join("\n")}`
+                      : undefined,
+                  ]).join("\n\n"),
                 )
 
                 return parsed
