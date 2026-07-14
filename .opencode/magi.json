@@ -60,14 +60,15 @@
     "merge": { "queue": true, "approvalPolicy": "unanimous" },
     "prompts": {
       "reviewGuidelines": ".agents/references/pr-review-guidelines.md"
-    }
+    },
+    "automation": { "merge": false }
   },
   "merge": {
     "editor": { "ref": "hirotomoyamada" },
     "prompts": {
       "editGuidelines": ".agents/references/pr-edit-guidelines.md"
     },
-    "automation": { "conflict": true }
+    "automation": { "conflict": true, "merge": false }
   },
   "triage": {
     "voters": [
