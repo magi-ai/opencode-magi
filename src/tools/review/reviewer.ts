@@ -20,9 +20,7 @@ interface Finding {
 export async function review(this: Review): Promise<void> {
   this.context.abort.throwIfAborted()
 
-  this.state = await this.magi.updateState(this.state.output, {
-    text: `Reviewing ${this.getLink()}.`,
-  })
+  await this.updateEvent(`Reviewing.`)
 
   if (!this.config.review.reviewers?.length)
     throw new MagiError("blocked", "No reviewers configured.")
@@ -49,9 +47,7 @@ export async function review(this: Review): Promise<void> {
             this.state.reviewers[id]!
 
           if (status === "skip") {
-            await this.notify(
-              `Skipping review for ${this.getLink()} with reviewer ${id}.`,
-            )
+            await this.updateEvent(`Skipping review with reviewer ${id}.`)
 
             return [id, {}]
           } else {
@@ -70,9 +66,7 @@ export async function review(this: Review): Promise<void> {
             const label = rereview ? "rereview" : "review"
             const cycle = (outputs?.length ?? 0) + 1
 
-            await this.notify(
-              `Running ${label} for ${this.getLink()} with reviewer ${id}.`,
-            )
+            await this.updateEvent(`Running ${label} with reviewer ${id}.`)
 
             const sha = rereview
               ? (review?.commit_id ?? this.state.pr.metadata.base.sha)
@@ -202,8 +196,8 @@ export async function review(this: Review): Promise<void> {
               },
               {
                 error: (_, count) =>
-                  this.notify(
-                    `Attempt ${count} failed to ${label} for ${this.getLink()} with reviewer ${id}. Retrying...`,
+                  this.updateEvent(
+                    `Attempt ${count} failed to ${label} with reviewer ${id}. Retrying...`,
                   ),
                 retries: this.config.output.repairAttempts,
               },
@@ -227,10 +221,8 @@ export async function review(this: Review): Promise<void> {
     ),
   )
 
-  this.state = await this.magi.updateState(this.state.output, {
-    reviewers,
-    text: `Finished reviewing ${this.getLink()}.`,
-  })
+  await this.updateState({ reviewers })
+  await this.updateEvent(`Finished reviewing.`)
 }
 
 export async function validateFindings(this: Review): Promise<void> {
@@ -255,9 +247,7 @@ export async function validateFindings(this: Review): Promise<void> {
 
   if (!findings.length) return
 
-  this.state = await this.magi.updateState(this.state.output, {
-    text: `Validating review findings for ${this.getLink()}.`,
-  })
+  await this.updateEvent(`Validating review findings.`)
 
   const accepted = await collectAcceptedFindings.call(this, findings)
   const reviewers = Object.fromEntries(
@@ -274,10 +264,8 @@ export async function validateFindings(this: Review): Promise<void> {
     "after majority finding validation",
   )
 
-  this.state = await this.magi.updateState(this.state.output, {
-    reviewers,
-    text: `Finished validating review findings for ${this.getLink()}.`,
-  })
+  await this.updateState({ reviewers })
+  await this.updateEvent(`Finished validating review findings.`)
 }
 
 export async function reconsiderClose(this: Review): Promise<void> {
@@ -298,9 +286,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
 
   if (!count || count >= threshold) return
 
-  this.state = await this.magi.updateState(this.state.output, {
-    text: `Reconsidering close verdicts for ${this.getLink()}.`,
-  })
+  await this.updateEvent(`Reconsidering close verdicts.`)
 
   const worker = new Worker<[string, ReviewerState]>(
     this.config.review.concurrency.reviewers,
@@ -345,8 +331,8 @@ export async function reconsiderClose(this: Review): Promise<void> {
           )
           const repairMessage = await prompt.repair()
 
-          await this.notify(
-            `Reconsidering close verdict for ${this.getLink()} with reviewer ${id}.`,
+          await this.updateEvent(
+            `Reconsidering close verdict with reviewer ${id}.`,
           )
 
           const output = await retry<ReviewOutput>(
@@ -381,8 +367,8 @@ export async function reconsiderClose(this: Review): Promise<void> {
             },
             {
               error: (_, count) =>
-                this.notify(
-                  `Attempt ${count} failed to reconsider close verdict for ${this.getLink()} with reviewer ${id}. Retrying...`,
+                this.updateEvent(
+                  `Attempt ${count} failed to reconsider close verdict with reviewer ${id}. Retrying...`,
                 ),
               retries: this.config.output.repairAttempts,
             },
@@ -440,10 +426,8 @@ export async function reconsiderClose(this: Review): Promise<void> {
     "after majority finding validation",
   )
 
-  this.state = await this.magi.updateState(this.state.output, {
-    reviewers: validatedReviewers,
-    text: `Finished reconsidering close verdicts for ${this.getLink()}.`,
-  })
+  await this.updateState({ reviewers: validatedReviewers })
+  await this.updateEvent(`Finished reconsidering close verdicts.`)
 }
 
 async function collectAcceptedFindings(
@@ -479,8 +463,8 @@ async function collectAcceptedFindings(
               `No session ID found for reviewer ${id}.`,
             )
 
-          await this.notify(
-            `Validating review findings for ${this.getLink()} with reviewer ${id}.`,
+          await this.updateEvent(
+            `Validating review findings with reviewer ${id}.`,
           )
 
           const targetFindings = findings.filter(
@@ -542,8 +526,8 @@ async function collectAcceptedFindings(
             },
             {
               error: (_, count) =>
-                this.notify(
-                  `Attempt ${count} failed to validate review findings for ${this.getLink()} with reviewer ${id}. Retrying...`,
+                this.updateEvent(
+                  `Attempt ${count} failed to validate review findings with reviewer ${id}. Retrying...`,
                 ),
               retries: this.config.output.repairAttempts,
             },
@@ -587,9 +571,9 @@ async function collectAcceptedFindings(
 
       if (agrees >= threshold) accepted.add(key)
 
-      await this.notify(
+      await this.updateEvent(
         filterEmpty([
-          `Finding ${reviewer} #${index + 1} for ${this.getLink()} was ${agrees >= threshold ? "accepted" : "rejected"} by majority vote.`,
+          `Finding ${reviewer} #${index + 1} was ${agrees >= threshold ? "accepted" : "rejected"} by majority vote.`,
           `Finding: ${finding.path}:${finding.line}\n${finding.body}`,
           acceptedComments.length
             ? `Accepted by:\n${acceptedComments.join("\n")}`
@@ -649,8 +633,8 @@ async function notifyVerdictChanges(
 
       if (!prevVerdict || !nextVerdict || prevVerdict === nextVerdict) return
 
-      await this.notify(
-        `Reviewer ${id} verdict changed from ${prevVerdict} to ${nextVerdict} for ${this.getLink()} ${reason}.`,
+      await this.updateEvent(
+        `Reviewer ${id} verdict changed from ${prevVerdict} to ${nextVerdict} ${reason}.`,
       )
     }),
   )

@@ -12,7 +12,6 @@ import { createReport } from "./report"
 
 interface MergeOptions {
   dryRun: boolean
-  sync: boolean
 }
 
 export class Merge extends Review {
@@ -23,14 +22,6 @@ export class Merge extends Review {
     context: ToolContext,
     options: MergeOptions,
   ): Promise<Merge> {
-    if (!options.sync) {
-      const controller = new AbortController()
-
-      context = { ...context, abort: controller.signal }
-
-      magi.registerBackground(number, controller)
-    }
-
     const url = `${config.github.url}/pull/${number}`
     const octokit = await magi.createOctokit(config, context.abort)
     const graphql = magi.createGraphql(octokit)
@@ -64,9 +55,11 @@ export class Merge extends Review {
         repo: quote(`${config.github.owner}/${config.github.repo}`),
         reviewers,
         sessionId: context.sessionID,
-        text: `Started merging [#${number}](${url}).`,
       },
     )
+
+    await magi.updateEvent(state.output, `Started merging.`)
+
     const exec = createExecWithGitHubApiRetry(
       magi.exec,
       config.github.retryApiAttempts,
@@ -97,24 +90,20 @@ export class Merge extends Review {
 
     if (!this.state.editor) throw new MagiError("blocked", "Editor not found.")
 
-    this.state = await this.magi.updateState(this.state.output, {
-      text: `Creating editor session for ${this.getLink()}.`,
-    })
+    await this.updateEvent(`Creating editor session.`)
 
     const editor = {
       sessionId: await this.magi.createSession(
         this.state.sessionId,
         `magi merge #${this.number} editor`,
         {
-          model: this.state.editor!.model,
-          permissions: this.state.editor!.permissions,
+          model: this.state.editor.model,
+          permissions: this.state.editor.permissions,
         },
       ),
     }
 
-    this.state = await this.magi.updateState(this.state.output, {
-      editor,
-      text: `Finished creating editor session for ${this.getLink()}.`,
-    })
+    await this.updateState({ editor })
+    await this.updateEvent(`Finished creating editor session.`)
   }
 }

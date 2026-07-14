@@ -16,9 +16,7 @@ type EditPromptOutput = Omit<EditOutput, "filesTouched"> & {
 export async function edit(this: Merge): Promise<boolean> {
   this.context.abort.throwIfAborted()
 
-  this.state = await this.magi.updateState(this.state.output, {
-    text: `Editing ${this.getLink()}.`,
-  })
+  await this.updateEvent(`Editing.`)
 
   await setAccount.call(this)
 
@@ -81,23 +79,21 @@ export async function edit(this: Merge): Promise<boolean> {
     },
     {
       error: (_, count) =>
-        this.notify(
-          `Attempt ${count} failed to edit ${this.getLink()}. Retrying...`,
-        ),
+        this.updateEvent(`Attempt ${count} failed to edit. Retrying...`),
       retries: this.config.output.repairAttempts,
     },
   )
 
   if (!output) throw new MagiError("blocked", "Invalid output for editor.")
 
-  this.state = await this.magi.updateState(this.state.output, {
+  await this.updateState({
     editor: { outputs: [...(this.state.editor!.outputs ?? []), output] },
-    text: `Finished editing ${this.getLink()}.`,
   })
+  await this.updateEvent(`Finished editing.`)
 
-  await this.notify(
+  await this.updateEvent(
     filterEmpty([
-      `Editor ${output.mode === "EDITED" ? "edited" : "replied to"} ${this.getLink()}.`,
+      `Editor ${output.mode.toLocaleLowerCase()}.`,
       output.commitSha
         ? `Commit: ${output.commitSha}${output.commitMessage ? ` ${output.commitMessage}` : ""}`
         : undefined,
@@ -117,7 +113,7 @@ export async function edit(this: Merge): Promise<boolean> {
 
   if (output.mode === "EDITED")
     if (this.state.dryRun) {
-      this.state = await this.magi.updateState(this.state.output, {
+      await this.updateState({
         pr: {
           files: filterDuplicates([
             ...(this.state.pr?.files ?? []),
@@ -125,19 +121,15 @@ export async function edit(this: Merge): Promise<boolean> {
           ]),
           metadata: { head: { sha: output.commitSha! } },
         },
-        text: `Skipped pushing editor changes for ${this.getLink()} during dry run.`,
       })
+      await this.updateEvent(`Skipped pushing editor changes during dry run.`)
     } else {
-      this.state = await this.magi.updateState(this.state.output, {
-        text: `Pushing editor changes for ${this.getLink()}.`,
-      })
+      await this.updateEvent(`Pushing editor changes.`)
 
       const pr = await push.call(this)
 
-      this.state = await this.magi.updateState(this.state.output, {
-        pr,
-        text: `Finished pushing editor changes for ${this.getLink()}.`,
-      })
+      await this.updateState({ pr })
+      await this.updateEvent(`Finished pushing editor changes.`)
     }
 
   return output.mode === "EDITED" && !this.state.dryRun
@@ -146,9 +138,7 @@ export async function edit(this: Merge): Promise<boolean> {
 export async function resolveConflict(this: Merge): Promise<void> {
   this.context.abort.throwIfAborted()
 
-  this.state = await this.magi.updateState(this.state.output, {
-    text: `Resolving merge conflicts for ${this.getLink()}.`,
-  })
+  await this.updateEvent(`Resolving merge conflicts.`)
 
   if (!this.state.pr?.metadata)
     throw new MagiError("blocked", "PR metadata not found.")
@@ -240,8 +230,8 @@ export async function resolveConflict(this: Merge): Promise<void> {
     },
     {
       error: (_, count) =>
-        this.notify(
-          `Attempt ${count} failed to resolve conflicts for ${this.getLink()}. Retrying...`,
+        this.updateEvent(
+          `Attempt ${count} failed to resolve conflicts. Retrying...`,
         ),
       retries: this.config.output.repairAttempts,
     },
@@ -250,33 +240,31 @@ export async function resolveConflict(this: Merge): Promise<void> {
   if (!output)
     throw new MagiError("blocked", "Invalid output for conflict editor.")
 
-  this.state = await this.magi.updateState(this.state.output, {
+  await this.updateState({
     editor: { outputs: [...(this.state.editor!.outputs ?? []), output] },
-    text: `Finished resolving merge conflicts for ${this.getLink()}.`,
   })
+  await this.updateEvent(`Finished resolving merge conflicts.`)
 
   if (this.state.dryRun) {
-    this.state = await this.magi.updateState(this.state.output, {
+    await this.updateState({
       pr: {
         files: filterDuplicates([
-          ...(this.state.pr?.files ?? []),
+          ...(this.state.pr.files ?? []),
           ...output.filesTouched,
         ]),
         metadata: { head: { sha: output.commitSha! } },
       },
-      text: `Skipped pushing conflict resolution for ${this.getLink()} during dry run.`,
     })
+    await this.updateEvent(
+      `Skipped pushing conflict resolution during dry run.`,
+    )
   } else {
-    this.state = await this.magi.updateState(this.state.output, {
-      text: `Pushing conflict resolution for ${this.getLink()}.`,
-    })
+    await this.updateEvent(`Pushing conflict resolution.`)
 
     const pr = await push.call(this)
 
-    this.state = await this.magi.updateState(this.state.output, {
-      pr,
-      text: `Finished pushing conflict resolution for ${this.getLink()}.`,
-    })
+    await this.updateState({ pr })
+    await this.updateEvent(`Finished pushing conflict resolution.`)
   }
 }
 

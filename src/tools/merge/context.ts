@@ -19,9 +19,7 @@ export async function fetchMergeContext(this: Merge): Promise<void> {
 
   if (!output) throw new MagiError("blocked", "Editor output not found.")
 
-  this.state = await this.magi.updateState(this.state.output, {
-    text: `Fetching merge context for ${this.getLink()}.`,
-  })
+  await this.updateEvent(`Fetching merge context.`)
 
   const [comments, issues, threads] = await Promise.all([
     getComments.call(this),
@@ -30,7 +28,7 @@ export async function fetchMergeContext(this: Merge): Promise<void> {
   ])
   const inlineCommentTargets = await getInlineCommentTargets.call(this)
 
-  this.state = await this.magi.updateState(this.state.output, {
+  await this.updateState({
     pr: {
       comments,
       inlineCommentTargets,
@@ -42,16 +40,14 @@ export async function fetchMergeContext(this: Merge): Promise<void> {
           ])
         : threads,
     },
-    text: `Finished fetching merge context for ${this.getLink()}.`,
   })
+  await this.updateEvent(`Finished fetching merge context.`)
 }
 
 export async function markRepliedReviewers(this: Merge): Promise<void> {
   this.context.abort.throwIfAborted()
 
-  this.state = await this.magi.updateState(this.state.output, {
-    text: `Marking replied reviewers for ${this.getLink()}.`,
-  })
+  await this.updateEvent(`Marking replied reviewers.`)
 
   const output = this.state.editor?.outputs?.at(-1)
 
@@ -90,10 +86,8 @@ export async function markRepliedReviewers(this: Merge): Promise<void> {
     ]),
   )
 
-  this.state = await this.magi.updateState(this.state.output, {
-    reviewers,
-    text: `Finished marking replied reviewers for ${this.getLink()}.`,
-  })
+  await this.updateState({ reviewers })
+  await this.updateEvent(`Finished marking replied reviewers.`)
 }
 
 function createSyntheticThreads(this: Merge): PullRequestReviewThread[] {

@@ -29,5 +29,5 @@ Use targeted automated tests to protect changed behavior. Keep tests determinist
 - Run the most specific affected test file first, for example `pnpm vitest run src/config/validate.test.ts`.
 - When a change spans an area, run the relevant area tests, for example `pnpm vitest run src/orchestrator/merge.test.ts src/orchestrator/ci.test.ts`.
 - Run `pnpm test` when the change crosses several areas or when targeted coverage does not give enough confidence.
-- Do not run format, lint, or typecheck unless explicitly requested; those are handled by lefthook and CI.
+- Do not run format, lint, or type check unless explicitly requested; those are handled by lefthook and CI.
 - For documentation-only changes, automated tests are not required unless the documentation change also modifies executable examples, schemas, or generated content.

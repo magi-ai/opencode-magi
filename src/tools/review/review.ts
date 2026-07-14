@@ -3,8 +3,8 @@ import type { Octokit } from "octokit"
 import type { PullRequestVerdict } from "."
 import type { Config } from "@/config"
 import type { Graphql } from "@/graphql"
-import type { Magi, State } from "@/magi"
-import type { Exec } from "@/utils"
+import type { Event, Magi, State } from "@/magi"
+import type { DeepPartial, Exec } from "@/utils"
 import { join } from "node:path"
 import { MagiError } from "@/magi"
 import { createExecWithGitHubApiRetry, quote } from "@/utils"
@@ -16,7 +16,6 @@ import { reconsiderClose, review, validateFindings } from "./reviewer"
 
 interface ReviewOptions {
   dryRun: boolean
-  sync: boolean
 }
 
 export class Review {
@@ -46,14 +45,6 @@ export class Review {
     context: ToolContext,
     options: ReviewOptions,
   ): Promise<Review> {
-    if (!options.sync) {
-      const controller = new AbortController()
-
-      context = { ...context, abort: controller.signal }
-
-      magi.registerBackground(number, controller)
-    }
-
     const url = `${config.github.url}/pull/${number}`
     const octokit = await magi.createOctokit(config, context.abort)
     const graphql = magi.createGraphql(octokit)
@@ -80,9 +71,11 @@ export class Review {
         repo: quote(`${config.github.owner}/${config.github.repo}`),
         reviewers,
         sessionId: context.sessionID,
-        text: `Started reviewing [#${number}](${url}).`,
       },
     )
+
+    await magi.updateEvent(state.output, `Started reviewing.`)
+
     const exec = createExecWithGitHubApiRetry(
       magi.exec,
       config.github.retryApiAttempts,
@@ -113,19 +106,21 @@ export class Review {
   public automate = automate
   public createReport = createReport
 
-  public async notify(text: string): Promise<void> {
-    if (!this.state.sync) await this.magi.notify(this.state.sessionId, text)
-  }
-
   public async cleanup(): Promise<void> {
     if (this.state.worktree?.path)
       await this.magi.deleteWorktree(this.state.worktree.path)
-
-    this.magi.unregisterBackground(this.number, this.context.abort)
   }
 
-  public getLink(): string {
-    return `[#${this.state.pr!.number}](${this.state.pr!.url})`
+  public async updateState(next: DeepPartial<State>): Promise<void> {
+    this.state = await this.magi.updateState(this.state.output, next)
+  }
+
+  public async updateEvent(message: string): Promise<void> {
+    await this.magi.updateEvent(this.state.output, message)
+  }
+
+  public async getEvents(): Promise<Event[]> {
+    return await this.magi.getEvents(this.state.output)
   }
 
   public async createAgentFile(
@@ -181,18 +176,13 @@ export class Review {
       ),
     }
 
-    this.state = await this.magi.updateState(this.state.output, {
-      operator,
-      reviewers,
-    })
+    await this.updateState({ operator, reviewers })
   }
 
   public async createWorktree(): Promise<void> {
     this.context.abort.throwIfAborted()
 
-    this.state = await this.magi.updateState(this.state.output, {
-      text: `Creating worktree for ${this.getLink()}.`,
-    })
+    await this.updateEvent(`Creating worktree.`)
 
     const worktree = await this.magi.createWorktree(
       this.config.review.worktree,
@@ -201,10 +191,8 @@ export class Review {
       this.context.abort,
     )
 
-    this.state = await this.magi.updateState(this.state.output, {
-      text: `Finished creating worktree for ${this.getLink()}.`,
-      worktree,
-    })
+    await this.updateState({ worktree })
+    await this.updateEvent(`Finished creating worktree.`)
   }
 
   public async resolveVerdict(): Promise<PullRequestVerdict> {
@@ -241,10 +229,8 @@ export class Review {
           ? "APPROVED"
           : "CHANGES_REQUESTED"
 
-    this.state = await this.magi.updateState(this.state.output, {
-      pr: { verdict },
-      text: `Final verdict for ${this.getLink()} is ${verdict}.`,
-    })
+    await this.updateState({ pr: { verdict } })
+    await this.updateEvent(`Final verdict is ${verdict}.`)
 
     return verdict
   }

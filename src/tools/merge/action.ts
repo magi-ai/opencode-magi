@@ -22,8 +22,8 @@ export async function editCycles(
       error: async (e, count) => {
         if (e !== error) throw e
 
-        await this.notify(
-          `Attempt ${count} failed to edit cycles for ${this.getLink()}. Retrying...`,
+        await this.updateEvent(
+          `Attempt ${count} failed to edit cycles. Retrying...`,
         )
       },
       retries: this.config.merge.maxThreadResolutionCycles,
@@ -31,10 +31,7 @@ export async function editCycles(
   )
 
   if (!verdict || verdict === "CHANGES_REQUESTED")
-    throw new MagiError(
-      "blocked",
-      `Reached maximum edit cycles for ${this.getLink()}.`,
-    )
+    throw new MagiError("blocked", `Reached maximum edit cycles.`)
 }
 
 export async function postReplies(this: Merge): Promise<void> {
@@ -48,9 +45,7 @@ export async function postReplies(this: Merge): Promise<void> {
 
   if (!output.responses.length) return
 
-  this.state = await this.magi.updateState(this.state.output, {
-    text: `Posting editor replies for ${this.getLink()}.`,
-  })
+  await this.updateEvent(`Posting editor replies.`)
 
   if (!this.state.editor?.account)
     throw new MagiError("blocked", "Editor account not found.")
@@ -76,7 +71,5 @@ export async function postReplies(this: Merge): Promise<void> {
     ),
   )
 
-  this.state = await this.magi.updateState(this.state.output, {
-    text: `Finished posting editor replies for ${this.getLink()}.`,
-  })
+  await this.updateEvent(`Finished posting editor replies.`)
 }
