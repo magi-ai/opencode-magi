@@ -89,11 +89,11 @@ export async function edit(this: Merge): Promise<boolean> {
   await this.updateState({
     editor: { outputs: [...(this.state.editor!.outputs ?? []), output] },
   })
-  await this.updateEvent(`Finished editing.`)
 
   await this.updateEvent(
     filterEmpty([
-      `Editor ${output.mode.toLocaleLowerCase()}.`,
+      `Finished editing.`,
+      `Result: ${output.mode.toLocaleLowerCase()}.`,
       output.commitSha
         ? `Commit: ${output.commitSha}${output.commitMessage ? ` ${output.commitMessage}` : ""}`
         : undefined,
