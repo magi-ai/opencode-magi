@@ -126,7 +126,6 @@ jobs:
     needs:
       [check-merge-commit, check-label, check-actor, check-draft, check-command]
     if: >-
-      false &&
       needs.check-merge-commit.outputs.result == 'true' &&
       needs.check-label.outputs.result == 'true' &&
       needs.check-actor.outputs.result == 'true' &&
