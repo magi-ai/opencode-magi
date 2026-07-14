@@ -215,7 +215,7 @@ export async function review(this: Review): Promise<void> {
                           .join("\n")}`
                       : undefined,
                     parsed.followUps?.length
-                      ? `Follow-ups:\n${parsed.followUps
+                      ? `FollowUps:\n${parsed.followUps
                           .map(
                             ({ body, commentId }) =>
                               `- Comment ${commentId}: ${body}`,
