@@ -675,7 +675,7 @@ async function notifyVerdictChanges(
       if (!prevVerdict || !nextVerdict || prevVerdict === nextVerdict) return
 
       await this.updateEvent(
-        `Reviewer ${id} verdict changed from ${prevVerdict} to ${nextVerdict} ${reason}.`,
+        `Reviewer ${id} verdict changed from ${toTitleCase(prevVerdict.toLocaleLowerCase())} to ${toTitleCase(nextVerdict.toLocaleLowerCase())} ${reason}.`,
       )
     }),
   )
