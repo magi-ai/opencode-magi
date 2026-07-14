@@ -30,11 +30,9 @@ import {
   mkdir,
   readdir,
   readFile,
-  rm,
-  rmdir,
   writeFile,
 } from "node:fs/promises"
-import { dirname, isAbsolute, join, relative } from "node:path"
+import { dirname, isAbsolute, join } from "node:path"
 import { Octokit } from "octokit"
 import { getConfig, resolvePermissions, validateConfig } from "@/config"
 import { graphql } from "@/graphql"
@@ -47,6 +45,7 @@ import {
   isObject,
   merge,
   quote,
+  rm,
 } from "@/utils"
 
 export interface Tool {
@@ -506,7 +505,11 @@ export class Magi {
       await this.exec(
         command("git", "worktree", "remove", "--force", quote(path)),
       )
-      await rm(path, { force: true, recursive: true })
+      await rm(path, {
+        force: true,
+        prune: this.input.directory,
+        recursive: true,
+      })
 
       return 1
     } catch {
@@ -528,25 +531,11 @@ export class Magi {
     try {
       const resolvedPath = this.getPath(path)
 
-      await rm(resolvedPath, { force: true, recursive: true })
-
-      let dir = dirname(resolvedPath)
-
-      while (dir !== this.input.directory) {
-        const value = relative(this.input.directory, dir)
-
-        if (!value || value.startsWith("..") || isAbsolute(value)) break
-
-        try {
-          if ((await readdir(dir)).length) break
-
-          await rmdir(dir)
-        } catch {
-          break
-        }
-
-        dir = dirname(dir)
-      }
+      await rm(resolvedPath, {
+        force: true,
+        prune: this.input.directory,
+        recursive: true,
+      })
 
       return 1
     } catch {
