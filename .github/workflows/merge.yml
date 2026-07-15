@@ -171,6 +171,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh pr edit "${{ github.event.pull_request.number || github.event.issue.number }}" --add-label "magi:merge"
 
+      - name: Verify OpenCode Go
+        env:
+          OPENCODE_AUTH_CONTENT: ${{ secrets.OPENCODE_AUTH_CONTENT }}
+        run: opencode run --dir "$GITHUB_WORKSPACE" --model "opencode-go/qwen3.7-plus" "Reply only with ok."
+
       - name: Merge pull request
         env:
           OPENCODE_AUTH_CONTENT: ${{ secrets.OPENCODE_AUTH_CONTENT }}
