@@ -175,19 +175,13 @@ jobs:
         run: |
           set -o pipefail
 
-          output="$RUNNER_TEMP/opencode.jsonl"
           opencode run --dir "$GITHUB_WORKSPACE" --model "openai/gpt-5.5-fast" --format json --command "magi:merge" "${{ github.event.pull_request.number || github.event.issue.number }}" \
-            | tee "$output" \
             | jq --unbuffered -r '
-                if .type == "text" then .part.text
-                elif .type == "tool_use" and .part.state.status == "error" then .part.state.error
-                else empty
+                if .part.tool == "magi_merge" and .part.state.status == "error" then
+                  .part.state.error + "\n" | halt_error(1)
+                else .part.text // empty
                 end
               '
-
-          if jq -e -s 'any(.[]; .type == "tool_use" and .part.tool == "magi_merge" and .part.state.status == "error")' "$output" > /dev/null; then
-            exit 1
-          fi
 
       - name: Remove label
         if: ${{ always() }}
