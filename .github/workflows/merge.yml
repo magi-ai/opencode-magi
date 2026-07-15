@@ -177,7 +177,7 @@ jobs:
         run: |
           set -o pipefail
 
-          opencode run --dir "$GITHUB_WORKSPACE" --model "openai/gpt-5.5-fast" --format json --command "magi:merge" "${{ github.event.pull_request.number || github.event.issue.number }}" \
+          opencode run --dir "$GITHUB_WORKSPACE" --model "openai/gpt-5.6-luna-fast" --format json --command "magi:merge" "${{ github.event.pull_request.number || github.event.issue.number }}" \
             | jq --unbuffered -r '
                 if .part.tool == "magi_merge" and .part.state.status == "error" then
                   .part.state.error + "\n" | halt_error(1)
