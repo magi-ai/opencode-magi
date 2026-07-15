@@ -452,7 +452,7 @@ export class Magi {
 
     if (result.error) {
       throw new Error(
-        `Failed to create ${id}${variant ? ` (${variant})` : ""} session: ${getClientErrorMessage(result)}`,
+        `Failed to create ${id}${variant ? ` (${variant})` : ""} session at ${this.input.serverUrl.toString()}: ${getClientErrorMessage(result)}`,
       )
     } else {
       const id = result.data.id
