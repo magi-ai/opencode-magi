@@ -9,10 +9,10 @@ importers:
   .:
     dependencies:
       '@opencode-ai/plugin':
-        specifier: 1.18.1
+        specifier: ^1.18.1
         version: 1.18.1
       '@opencode-ai/sdk':
-        specifier: 1.18.1
+        specifier: ^1.18.1
         version: 1.18.1
       ajv:
         specifier: ^8.20.0

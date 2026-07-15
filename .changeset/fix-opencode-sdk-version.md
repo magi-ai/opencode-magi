@@ -2,4 +2,4 @@
 "opencode-magi": patch
 ---
 
-Resolve configured model fallbacks with the matching OpenCode runtime.
+Fail configuration loading when OpenCode returns no available models.

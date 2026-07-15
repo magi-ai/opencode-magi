@@ -82,15 +82,14 @@ function resolveModel(
   model: Config.Model | undefined,
 ): Config.ModelWithOptions | undefined {
   if (isArray(model))
-    model =
-      model.find((model) =>
-        isString(model) ? models.includes(model) : models.includes(model.id),
-      ) ?? model[0]
+    model = model.find((model) =>
+      isString(model) ? models.includes(model) : models.includes(model.id),
+    )
 
   if (!model) return undefined
 
-  if (isString(model)) return { id: model }
-  else return model
+  if (isString(model)) return models.includes(model) ? { id: model } : undefined
+  else return models.includes(model.id) ? model : undefined
 }
 
 async function readConfig(path: string): Promise<Config.Root | undefined> {
@@ -116,6 +115,8 @@ export async function getConfig(input: PluginInput): Promise<Config.Root> {
     readConfig(projectPath),
   ])
   const results = filterEmpty(data)
+
+  if (!models.length) throw new Error("No OpenCode models found.")
 
   if (!results.length)
     throw new Error(
