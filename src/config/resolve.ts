@@ -82,14 +82,15 @@ function resolveModel(
   model: Config.Model | undefined,
 ): Config.ModelWithOptions | undefined {
   if (isArray(model))
-    model = model.find((model) =>
-      isString(model) ? models.includes(model) : models.includes(model.id),
-    )
+    model =
+      model.find((model) =>
+        isString(model) ? models.includes(model) : models.includes(model.id),
+      ) ?? model[0]
 
   if (!model) return undefined
 
-  if (isString(model)) return models.includes(model) ? { id: model } : undefined
-  else return models.includes(model.id) ? model : undefined
+  if (isString(model)) return { id: model }
+  else return model
 }
 
 async function readConfig(path: string): Promise<Config.Root | undefined> {

@@ -2,4 +2,4 @@
 "opencode-magi": patch
 ---
 
-Align OpenCode SDK dependencies with the CLI runtime.
+Resolve configured model fallbacks with the matching OpenCode runtime.
