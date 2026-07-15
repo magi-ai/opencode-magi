@@ -146,7 +146,7 @@ jobs:
         uses: ./.github/composite-actions/setup
 
       - name: Install opencode
-        run: pnpm install -g opencode-ai --dangerously-allow-all-builds
+        run: pnpm install -g opencode-ai@1.18.1 --dangerously-allow-all-builds
 
       - name: Setup git worktree config
         run: git config extensions.worktreeConfig true
@@ -165,14 +165,6 @@ jobs:
 
       - name: Build
         run: pnpm build
-
-      - name: Validate OpenCode authentication
-        env:
-          OPENCODE_AUTH_CONTENT: ${{ secrets.OPENCODE_AUTH_CONTENT }}
-        run: |
-          node -e 'const auth = JSON.parse(process.env.OPENCODE_AUTH_CONTENT); for (const id of ["openai", "opencode-go"]) console.log(`${id}: ${auth[id]?.type ?? "missing"}`)'
-          opencode models openai
-          opencode models opencode-go
 
       - name: Add label
         env:
