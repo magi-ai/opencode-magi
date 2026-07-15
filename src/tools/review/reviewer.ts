@@ -178,6 +178,7 @@ export async function review(this: Review): Promise<void> {
                 const raw = await this.magi.promptSession(
                   sessionId,
                   count === 1 ? taskMessage : repairMessage,
+                  this.context.abort,
                 )
 
                 await this.createAgentFile(
@@ -241,6 +242,7 @@ export async function review(this: Review): Promise<void> {
                     `Attempt ${count} failed to ${label} with reviewer ${id}. Retrying...`,
                   ),
                 retries: this.config.output.repairAttempts,
+                signal: this.context.abort,
               },
             )
 
@@ -381,6 +383,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
               const raw = await this.magi.promptSession(
                 sessionId,
                 count === 1 ? taskMessage : repairMessage,
+                this.context.abort,
               )
 
               await this.createAgentFile(
@@ -412,6 +415,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
                   `Attempt ${count} failed to reconsider close verdict with reviewer ${id}. Retrying...`,
                 ),
               retries: this.config.output.repairAttempts,
+              signal: this.context.abort,
             },
           )
 
@@ -532,6 +536,7 @@ async function collectAcceptedFindings(
               const raw = await this.magi.promptSession(
                 sessionId,
                 count === 1 ? taskMessage : repairMessage,
+                this.context.abort,
               )
 
               await this.createAgentFile("finding-validation", id, raw, count)
@@ -571,6 +576,7 @@ async function collectAcceptedFindings(
                   `Attempt ${count} failed to validate review findings with reviewer ${id}. Retrying...`,
                 ),
               retries: this.config.output.repairAttempts,
+              signal: this.context.abort,
             },
           )
 

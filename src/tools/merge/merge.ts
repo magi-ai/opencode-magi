@@ -4,7 +4,6 @@ import type { Magi } from "@/magi"
 import { join } from "node:path"
 import { MagiError } from "@/magi"
 import { Review } from "@/tools/review/review"
-import { createExecWithGitHubApiRetry, quote } from "@/utils"
 import { editCycles, postReplies } from "./action"
 import { fetchMergeContext, markRepliedReviewers } from "./context"
 import { edit, resolveConflict } from "./editor"
@@ -22,22 +21,12 @@ export class Merge extends Review {
     context: ToolContext,
     options: MergeOptions,
   ): Promise<Merge> {
-    const url = `${config.github.url}/pull/${number}`
-    const octokit = await magi.createOctokit(config, context.abort)
-    const graphql = magi.createGraphql(octokit)
-    const reviewers = Object.fromEntries(
-      config.review.reviewers!.map(
-        ({ account, id, model, permissions }) =>
-          [id, { account, model, permissions }] as const,
-      ),
+    const { exec, graphql, octokit, ...rest } = await this.setup(
+      number,
+      magi,
+      config,
+      context,
     )
-    const operator = config.review.operator
-      ? config.review.reviewers!.find(
-          ({ id }) => id === config.review.operator,
-        )!
-      : config.review.reviewers![
-          Math.abs(number) % config.review.reviewers!.length
-        ]!
     const editor = {
       account: config.merge.editor.account,
       author: config.merge.editor.author,
@@ -46,24 +35,10 @@ export class Merge extends Review {
     }
     const state = await magi.createState(
       join(config.review.output, number.toString()),
-      {
-        ...options,
-        command: "merge",
-        editor,
-        operator,
-        pr: { number, url },
-        repo: quote(`${config.github.owner}/${config.github.repo}`),
-        reviewers,
-        sessionId: context.sessionID,
-      },
+      { ...options, ...rest, command: "merge", editor },
     )
 
     await magi.updateEvent(state.output, `Started merging.`)
-
-    const exec = createExecWithGitHubApiRetry(
-      magi.exec,
-      config.github.retryApiAttempts,
-    )
 
     return new Merge(
       number,
@@ -100,6 +75,7 @@ export class Merge extends Review {
           model: this.state.editor.model,
           permissions: this.state.editor.permissions,
         },
+        this.context.abort,
       ),
     }
 

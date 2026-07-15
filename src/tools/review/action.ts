@@ -150,6 +150,7 @@ export async function postReviews(this: Review): Promise<void> {
           const raw = await this.magi.promptSession(
             this.state.operator!.sessionId!,
             count === 1 ? taskMessage : repairMessage,
+            this.context.abort,
           )
 
           await this.createAgentFile("comment", "operator", raw, count)
@@ -167,6 +168,7 @@ export async function postReviews(this: Review): Promise<void> {
               `Attempt ${count} failed to post comment by operator. Retrying...`,
             ),
           retries: this.config.output.repairAttempts,
+          signal: this.context.abort,
         },
       )
 
@@ -350,7 +352,7 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
     return "SKIPPED"
   }
 
-  const token = await this.magi.getGhToken(account)
+  const token = await this.magi.getGhToken(account, this.context.abort)
 
   if (action === "merge" && !this.config.review.merge.queue) {
     const rules = JSON.parse(
@@ -618,7 +620,7 @@ async function waitMergeQueue(
     throw new MagiError("blocked", `PR left the merge queue before merging.`)
   }
 
-  await wait(30_000)
+  await wait(30_000, this.context.abort)
 
   return await waitMergeQueue.call(this, nextLeftMergeQueue)
 }

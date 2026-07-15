@@ -172,7 +172,7 @@ export class Magi {
     signal?: AbortSignal,
     account?: string,
   ): Promise<Octokit> {
-    const auth = await this.getGhToken(account)
+    const auth = await this.getGhToken(account, signal)
     const retries = config.github.retryApiAttempts
 
     return new Octokit({
@@ -400,21 +400,25 @@ export class Magi {
       model: Config.Model | undefined
       permissions?: Config.Permissions
     },
+    signal?: AbortSignal,
   ): Promise<string> {
     if (isArray(model) || !isObject(model)) throw new Error()
 
     const { id, variant } = model
     const [providerId, modelId] = id.split("/")
-    const result = await this.input.client.session.create({
-      model: {
-        id: modelId!,
-        providerID: providerId!,
-        variant,
+    const result = await this.input.client.session.create(
+      {
+        model: {
+          id: modelId!,
+          providerID: providerId!,
+          variant,
+        },
+        parentID,
+        permission: resolvePermissions(permissions),
+        title,
       },
-      parentID,
-      permission: resolvePermissions(permissions),
-      title,
-    })
+      { signal },
+    )
 
     if (result.error) {
       throw new Error(result.response.statusText)
@@ -425,11 +429,18 @@ export class Magi {
     }
   }
 
-  public async promptSession(sessionID: string, text: string): Promise<string> {
-    const result = await this.input.client.session.prompt({
-      parts: [{ text, type: "text" }],
-      sessionID,
-    })
+  public async promptSession(
+    sessionID: string,
+    text: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    const result = await this.input.client.session.prompt(
+      {
+        parts: [{ text, type: "text" }],
+        sessionID,
+      },
+      { signal },
+    )
 
     if (result.error) {
       throw new Error(result.response.statusText)
