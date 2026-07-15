@@ -212,8 +212,8 @@ Run commands from OpenCode.
 
 ## Docs
 
-- [Commands](docs/commands/index.en.md)
-- [Config](docs/config.en.md)
+- [Commands](docs/commands/index.md)
+- [Config](docs/config.md)
 
 ## Contributing
 

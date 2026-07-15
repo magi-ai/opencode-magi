@@ -3,7 +3,7 @@ import type { Octokit } from "octokit"
 import type { PullRequestVerdict } from "."
 import type { Config } from "@/config"
 import type { Graphql } from "@/graphql"
-import type { Event, Magi, State } from "@/magi"
+import type { AgentState, Event, Magi, ReviewerState, State } from "@/magi"
 import type { DeepPartial, Exec } from "@/utils"
 import { join } from "node:path"
 import { MagiError } from "@/magi"
@@ -45,6 +45,46 @@ export class Review {
     context: ToolContext,
     options: ReviewOptions,
   ): Promise<Review> {
+    const { exec, graphql, octokit, ...rest } = await this.setup(
+      number,
+      magi,
+      config,
+      context,
+    )
+    const state = await magi.createState(
+      join(config.review.output, number.toString()),
+      { ...options, ...rest, command: "review" },
+    )
+
+    await magi.updateEvent(state.output, `Started reviewing.`)
+
+    return new Review(
+      number,
+      magi,
+      config,
+      context,
+      octokit,
+      graphql,
+      exec,
+      state,
+    )
+  }
+
+  protected static async setup(
+    number: number,
+    magi: Magi,
+    config: Config.Root,
+    context: ToolContext,
+  ): Promise<{
+    exec: Exec
+    graphql: Graphql
+    octokit: Octokit
+    operator: AgentState
+    pr: { number: number; url: string }
+    repo: string
+    reviewers: { [key: string]: ReviewerState }
+    sessionId: string
+  }> {
     const url = `${config.github.url}/pull/${number}`
     const octokit = await magi.createOctokit(config, context.abort)
     const graphql = magi.createGraphql(octokit)
@@ -61,36 +101,21 @@ export class Review {
       : config.review.reviewers![
           Math.abs(number) % config.review.reviewers!.length
         ]!
-    const state = await magi.createState(
-      join(config.review.output, number.toString()),
-      {
-        ...options,
-        command: "review",
-        operator,
-        pr: { number, url },
-        repo: quote(`${config.github.owner}/${config.github.repo}`),
-        reviewers,
-        sessionId: context.sessionID,
-      },
-    )
-
-    await magi.updateEvent(state.output, `Started reviewing.`)
-
     const exec = createExecWithGitHubApiRetry(
       magi.exec,
       config.github.retryApiAttempts,
     )
 
-    return new Review(
-      number,
-      magi,
-      config,
-      context,
-      octokit,
-      graphql,
+    return {
       exec,
-      state,
-    )
+      graphql,
+      octokit,
+      operator,
+      pr: { number, url },
+      repo: quote(`${config.github.owner}/${config.github.repo}`),
+      reviewers,
+      sessionId: context.sessionID,
+    }
   }
 
   public checkPr = checkPr
@@ -107,6 +132,15 @@ export class Review {
   public createReport = createReport
 
   public async cleanup(): Promise<void> {
+    if (
+      this.context.abort.aborted &&
+      ["preparing", "running"].includes(this.state.status)
+    )
+      await this.updateState({
+        completedAt: new Date().toISOString(),
+        status: "cancelled",
+      })
+
     if (this.state.worktree?.path)
       await this.magi.deleteWorktree(this.state.worktree.path)
   }
@@ -159,6 +193,7 @@ export class Review {
                   this.state.sessionId,
                   `magi review #${this.number} ${id}`,
                   { model, permissions },
+                  this.context.abort,
                 ),
               },
             ] as const,
@@ -173,6 +208,7 @@ export class Review {
           model: this.state.operator.model,
           permissions: this.state.operator.permissions,
         },
+        this.context.abort,
       ),
     }
 

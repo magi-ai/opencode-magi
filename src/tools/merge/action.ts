@@ -27,6 +27,7 @@ export async function editCycles(
         )
       },
       retries: this.config.merge.maxThreadResolutionCycles,
+      signal: this.context.abort,
     },
   )
 

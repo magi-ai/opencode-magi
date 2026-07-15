@@ -183,6 +183,7 @@ export async function classifyChecks(this: Review): Promise<void> {
             const raw = await this.magi.promptSession(
               sessionId,
               count === 1 ? taskMessage : repairMessage,
+              this.context.abort,
             )
 
             await this.createAgentFile("ci-classification", id, raw, count)
@@ -200,6 +201,7 @@ export async function classifyChecks(this: Review): Promise<void> {
                 `Attempt ${count} failed to classify CI checks with reviewer ${id}. Retrying...`,
               ),
             retries: this.config.output.repairAttempts,
+            signal: this.context.abort,
           },
         )
 
@@ -327,6 +329,7 @@ export async function rerunChecks(this: Review): Promise<void> {
             `Attempt ${count} failed to rerun checks ${label}. Retrying...`,
           ),
         retries: this.config.review.checks.retryFailedJobs,
+        signal: this.context.abort,
       },
     )
   }
