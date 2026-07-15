@@ -166,6 +166,14 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Validate OpenCode authentication
+        env:
+          OPENCODE_AUTH_CONTENT: ${{ secrets.OPENCODE_AUTH_CONTENT }}
+        run: |
+          node -e 'const auth = JSON.parse(process.env.OPENCODE_AUTH_CONTENT); for (const id of ["openai", "opencode-go"]) console.log(`${id}: ${auth[id]?.type ?? "missing"}`)'
+          opencode models openai | rg 'gpt-5\.5-fast'
+          opencode models opencode-go | rg '^opencode-go/(deepseek-v4-pro|minimax-m2\.7|qwen3\.6-plus)$'
+
       - name: Add label
         env:
           GH_TOKEN: ${{ github.token }}
