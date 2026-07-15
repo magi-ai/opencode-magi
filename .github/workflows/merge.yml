@@ -185,6 +185,23 @@ jobs:
                 end
               '
 
+      - name: Show events
+        if: ${{ always() }}
+        run: |
+          node --input-type=module -e '
+            import { readdir, readFile } from "node:fs/promises"
+
+            const paths = await readdir(".magi", { recursive: true }).catch(() => [])
+
+            for (const path of paths.filter((path) => path.endsWith("events.jsonl"))) {
+              const file = `.magi/${path}`
+
+              console.log(`::group::${file}`)
+              console.log(await readFile(file, "utf8"))
+              console.log("::endgroup::")
+            }
+          '
+
       - name: Remove label
         if: ${{ always() }}
         env:

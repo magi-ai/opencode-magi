@@ -10,7 +10,7 @@
         "account": "melchior-magi",
         "model": [
           {
-            "id": "opencode-go/minimax-m2.7",
+            "id": "opencode-go/minimax-m3",
             "variant": "high"
           }
         ]
@@ -20,7 +20,7 @@
         "account": "balthasar-magi",
         "model": [
           {
-            "id": "opencode-go/deepseek-v4-pro",
+            "id": "opencode-go/mimo-v2.5-pro",
             "variant": "high"
           }
         ]
@@ -30,7 +30,7 @@
         "account": "caspar-magi",
         "model": [
           {
-            "id": "opencode-go/qwen3.6-plus",
+            "id": "opencode-go/qwen3.7-plus",
             "variant": "high"
           }
         ]
@@ -60,8 +60,7 @@
     "merge": { "queue": true, "approvalPolicy": "unanimous" },
     "prompts": {
       "reviewGuidelines": ".agents/references/pr-review-guidelines.md"
-    },
-    "automation": { "merge": false }
+    }
   },
   "merge": {
     "editor": { "ref": "hirotomoyamada" },
