@@ -2,4 +2,4 @@
 "opencode-magi": patch
 ---
 
-Fail configuration loading when OpenCode returns no available models.
+Use the OpenCode CLI to resolve models when the server API returns none.
