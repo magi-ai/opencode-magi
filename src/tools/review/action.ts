@@ -168,6 +168,7 @@ export async function postReviews(this: Review): Promise<void> {
               `Attempt ${count} failed to post comment by operator. Retrying...`,
             ),
           retries: this.config.output.repairAttempts,
+          signal: this.context.abort,
         },
       )
 

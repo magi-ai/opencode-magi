@@ -201,6 +201,7 @@ export async function classifyChecks(this: Review): Promise<void> {
                 `Attempt ${count} failed to classify CI checks with reviewer ${id}. Retrying...`,
               ),
             retries: this.config.output.repairAttempts,
+            signal: this.context.abort,
           },
         )
 
@@ -328,6 +329,7 @@ export async function rerunChecks(this: Review): Promise<void> {
             `Attempt ${count} failed to rerun checks ${label}. Retrying...`,
           ),
         retries: this.config.review.checks.retryFailedJobs,
+        signal: this.context.abort,
       },
     )
   }

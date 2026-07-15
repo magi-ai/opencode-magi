@@ -82,6 +82,7 @@ export async function edit(this: Merge): Promise<boolean> {
       error: (_, count) =>
         this.updateEvent(`Attempt ${count} failed to edit. Retrying...`),
       retries: this.config.output.repairAttempts,
+      signal: this.context.abort,
     },
   )
 
@@ -236,6 +237,7 @@ export async function resolveConflict(this: Merge): Promise<void> {
           `Attempt ${count} failed to resolve conflicts. Retrying...`,
         ),
       retries: this.config.output.repairAttempts,
+      signal: this.context.abort,
     },
   )
 

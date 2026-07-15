@@ -242,6 +242,7 @@ export async function review(this: Review): Promise<void> {
                     `Attempt ${count} failed to ${label} with reviewer ${id}. Retrying...`,
                   ),
                 retries: this.config.output.repairAttempts,
+                signal: this.context.abort,
               },
             )
 
@@ -414,6 +415,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
                   `Attempt ${count} failed to reconsider close verdict with reviewer ${id}. Retrying...`,
                 ),
               retries: this.config.output.repairAttempts,
+              signal: this.context.abort,
             },
           )
 
@@ -574,6 +576,7 @@ async function collectAcceptedFindings(
                   `Attempt ${count} failed to validate review findings with reviewer ${id}. Retrying...`,
                 ),
               retries: this.config.output.repairAttempts,
+              signal: this.context.abort,
             },
           )
 
