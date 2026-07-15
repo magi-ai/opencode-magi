@@ -174,8 +174,12 @@ export class Magi {
   public exec: Exec
 
   constructor(input: OriginalPluginInput, options?: PluginOptions) {
+    const serverUrl = new URL(input.serverUrl)
+
+    if (serverUrl.hostname === "localhost") serverUrl.hostname = "127.0.0.1"
+
     const client = createOpencodeClient({
-      baseUrl: input.serverUrl.toString(),
+      baseUrl: serverUrl.toString(),
       directory: input.directory,
     })
 
@@ -452,7 +456,7 @@ export class Magi {
 
     if (result.error) {
       throw new Error(
-        `Failed to create ${id}${variant ? ` (${variant})` : ""} session at ${this.input.serverUrl.toString()}: ${getClientErrorMessage(result)}`,
+        `Failed to create ${id}${variant ? ` (${variant})` : ""} session: ${getClientErrorMessage(result)}`,
       )
     } else {
       const id = result.data.id
