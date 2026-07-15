@@ -34,19 +34,29 @@ function requiredErrors(
     voters = false,
   }: ConfigValidationOptions["require"] = {},
 ): string[] {
+  creator ||= !!config.triage.creator
+  github ||= !!config.github
+  editor ||= !!config.merge.editor
+  reviewers ||= !!config.review.reviewers
+  voters ||= !!config.triage.voters
+
   const errors = [
     required(github, config.github.owner, "github.owner"),
     required(github, config.github.repo, "github.repo"),
     required(reviewers, config.review.reviewers, "review.reviewers"),
     ...(config.review.reviewers ?? []).map((reviewer, index) =>
-      required(reviewers, reviewer.model, `review.reviewers[${index}].model`),
+      required(
+        reviewers || !!reviewer,
+        reviewer.model,
+        `review.reviewers[${index}].model`,
+      ),
     ),
     required(editor, config.merge.editor, "merge.editor"),
     required(editor, config.merge.editor.model, "merge.editor.model"),
     required(editor, config.merge.editor.author, "merge.editor.author"),
     required(voters, config.triage.voters, "triage.voters"),
     ...(config.triage.voters ?? []).map((voter, index) =>
-      required(voters, voter.model, `triage.voters[${index}].model`),
+      required(voters || !!voter, voter.model, `triage.voters[${index}].model`),
     ),
     required(creator, config.triage.creator, "triage.creator"),
     required(creator, config.triage.creator.model, "triage.creator.model"),
