@@ -1,7 +1,19 @@
-export const wait = async (ms = 0): Promise<void> =>
-  new Promise<void>((resolve) => {
-    setTimeout(resolve, ms)
+export function wait(ms = 0, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted()
+
+  return new Promise<void>((resolve, reject) => {
+    const abort = (): void => {
+      clearTimeout(timeout)
+      reject(signal?.reason)
+    }
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", abort)
+      resolve()
+    }, ms)
+
+    signal?.addEventListener("abort", abort, { once: true })
   })
+}
 
 export async function loop<T>(
   callback: () => Promise<T | void> | T | void,

@@ -49,6 +49,7 @@ export async function edit(this: Merge): Promise<boolean> {
       const raw = await this.magi.promptSession(
         this.state.editor!.sessionId!,
         count === 1 ? taskMessage : repairMessage,
+        this.context.abort,
       )
 
       await this.createAgentFile("edit", "editor", raw, count, cycle)
@@ -183,6 +184,7 @@ export async function resolveConflict(this: Merge): Promise<void> {
       const raw = await this.magi.promptSession(
         this.state.editor!.sessionId!,
         count === 1 ? taskMessage : repairMessage,
+        this.context.abort,
       )
 
       await this.createAgentFile("conflict", "editor", raw, count, cycle)
@@ -303,7 +305,10 @@ async function push(
   if (!this.state.worktree)
     throw new MagiError("blocked", "PR worktree not found.")
 
-  const token = await this.magi.getGhToken(this.state.editor.account)
+  const token = await this.magi.getGhToken(
+    this.state.editor.account,
+    this.context.abort,
+  )
   const url = `https://${this.config.github.host}/${this.state.pr.metadata.head.repo.owner.login}/${this.state.pr.metadata.head.repo.name}.git`
   const ref = `HEAD:refs/heads/${this.state.pr.metadata.head.ref}`
 

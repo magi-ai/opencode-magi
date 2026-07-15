@@ -183,6 +183,7 @@ export async function classifyChecks(this: Review): Promise<void> {
             const raw = await this.magi.promptSession(
               sessionId,
               count === 1 ? taskMessage : repairMessage,
+              this.context.abort,
             )
 
             await this.createAgentFile("ci-classification", id, raw, count)

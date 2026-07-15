@@ -178,6 +178,7 @@ export async function review(this: Review): Promise<void> {
                 const raw = await this.magi.promptSession(
                   sessionId,
                   count === 1 ? taskMessage : repairMessage,
+                  this.context.abort,
                 )
 
                 await this.createAgentFile(
@@ -381,6 +382,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
               const raw = await this.magi.promptSession(
                 sessionId,
                 count === 1 ? taskMessage : repairMessage,
+                this.context.abort,
               )
 
               await this.createAgentFile(
@@ -532,6 +534,7 @@ async function collectAcceptedFindings(
               const raw = await this.magi.promptSession(
                 sessionId,
                 count === 1 ? taskMessage : repairMessage,
+                this.context.abort,
               )
 
               await this.createAgentFile("finding-validation", id, raw, count)
