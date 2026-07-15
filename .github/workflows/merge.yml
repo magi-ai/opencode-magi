@@ -185,7 +185,7 @@ jobs:
                 end
               '
 
-      - name: Show events
+      - name: Display events
         if: ${{ always() }}
         run: |
           node --input-type=module -e '
