@@ -22,8 +22,12 @@ export async function getModels(input: PluginInput): Promise<string[]> {
     : []
 
   if (models.length) return models
+  else
+    try {
+      const output = await createExec(input.directory)("opencode models")
 
-  return createExec(input.directory)("opencode models")
-    .then((output) => output.split("\n").filter((model) => model.includes("/")))
-    .catch(() => [])
+      return output.split("\n").filter((model) => model.includes("/"))
+    } catch {
+      return []
+    }
 }

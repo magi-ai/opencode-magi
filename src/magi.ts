@@ -128,36 +128,6 @@ export interface State {
 
 const active: Set<Status> = new Set(["preparing", "running"])
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    const cause = "cause" in error ? getErrorMessage(error.cause) : undefined
-
-    return cause ? `${error.message}: ${cause}` : error.message
-  } else if (typeof error === "string") {
-    return error
-  }
-
-  try {
-    return JSON.stringify(error)
-  } catch {
-    return String(error)
-  }
-}
-
-function getClientErrorMessage(result: { error: unknown }): string {
-  const response = Reflect.get(result, "response")
-
-  if (
-    typeof response === "object" &&
-    response &&
-    "statusText" in response &&
-    typeof response.statusText === "string"
-  )
-    return response.statusText
-
-  return getErrorMessage(result.error)
-}
-
 export class MagiError extends Error {
   constructor(
     public status: Status,
@@ -174,12 +144,8 @@ export class Magi {
   public exec: Exec
 
   constructor(input: OriginalPluginInput, options?: PluginOptions) {
-    const serverUrl = new URL(input.serverUrl)
-
-    if (serverUrl.hostname === "localhost") serverUrl.hostname = "127.0.0.1"
-
     const client = createOpencodeClient({
-      baseUrl: serverUrl.toString(),
+      baseUrl: input.serverUrl.toString(),
       directory: input.directory,
     })
 
@@ -455,9 +421,11 @@ export class Magi {
     )
 
     if (result.error) {
-      throw new Error(
-        `Failed to create ${id}${variant ? ` (${variant})` : ""} session: ${getClientErrorMessage(result)}`,
-      )
+      if (result.response.statusText)
+        throw new Error(result.response.statusText)
+      else if (result.error instanceof Error)
+        throw new Error(result.error.message)
+      else throw new Error(JSON.stringify(result.error))
     } else {
       const id = result.data.id
 
@@ -479,7 +447,11 @@ export class Magi {
     )
 
     if (result.error) {
-      throw new Error(getClientErrorMessage(result))
+      if (result.response.statusText)
+        throw new Error(result.response.statusText)
+      else if (result.error instanceof Error)
+        throw new Error(result.error.message)
+      else throw new Error(JSON.stringify(result.error))
     } else {
       const output = result.data.parts
         .filter((part) => part.type === "text")
