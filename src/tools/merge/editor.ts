@@ -322,7 +322,7 @@ async function push(
       GIT_CONFIG_KEY_1: "credential.helper",
       GIT_CONFIG_VALUE_0: "",
       GIT_CONFIG_VALUE_1:
-        "!f() { echo username=x-access-token; echo password=$GIT_PASSWORD; }; f",
+        "!f() { echo username=git; echo password=$GIT_PASSWORD; }; f",
       GIT_PASSWORD: token,
       GIT_TERMINAL_PROMPT: "0",
     },
