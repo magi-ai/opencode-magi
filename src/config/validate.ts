@@ -35,7 +35,6 @@ function requiredErrors(
   }: ConfigValidationOptions["require"] = {},
 ): string[] {
   creator ||= !!config.triage.creator
-  github ||= !!config.github
   editor ||= !!config.merge.editor
   reviewers ||= !!config.review.reviewers
   voters ||= !!config.triage.voters
@@ -168,20 +167,23 @@ async function authErrors(config: Config.Root, exec: Exec): Promise<string[]> {
   } else {
     const accounts = {
       ...Object.fromEntries(
-        config.review.reviewers!.map(({ account }, index) => [
+        config.review.reviewers?.map(({ account }, index) => [
           account!,
           `review.reviewers[${index}]`,
-        ]),
+        ]) ?? [],
       ),
-      [config.merge.editor!.account!]: "merge.editor",
       ...Object.fromEntries(
-        config.triage.voters!.map(({ account }, index) => [
+        config.triage.voters?.map(({ account }, index) => [
           account!,
           `triage.voters[${index}]`,
-        ]),
+        ]) ?? [],
       ),
-      [config.triage.creator!.account!]: "triage.creator",
     }
+
+    if (config.merge.editor)
+      accounts[config.merge.editor.account!] = "merge.editor"
+    if (config.triage.creator)
+      accounts[config.triage.creator.account!] = "triage.creator"
 
     return filterEmpty([
       ...duplicateErrors(
