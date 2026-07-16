@@ -421,7 +421,7 @@ export class Magi {
     )
 
     if (result.error) {
-      if (result.response.statusText)
+      if ("response" in result && result.response.statusText)
         throw new Error(result.response.statusText)
       else if (result.error instanceof Error)
         throw new Error(result.error.message)
@@ -447,7 +447,7 @@ export class Magi {
     )
 
     if (result.error) {
-      if (result.response.statusText)
+      if ("response" in result && result.response.statusText)
         throw new Error(result.response.statusText)
       else if (result.error instanceof Error)
         throw new Error(result.error.message)
