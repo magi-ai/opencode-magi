@@ -43,6 +43,7 @@ import {
   isArray,
   isNumber,
   isObject,
+  isUndefined,
   merge,
   quote,
   rm,
@@ -421,7 +422,7 @@ export class Magi {
     )
 
     if (result.error) {
-      if ("response" in result && result.response.statusText)
+      if (!isUndefined(result.response) && result.response.statusText)
         throw new Error(result.response.statusText)
       else if (result.error instanceof Error)
         throw new Error(result.error.message)
@@ -447,7 +448,7 @@ export class Magi {
     )
 
     if (result.error) {
-      if ("response" in result && result.response.statusText)
+      if (!isUndefined(result.response) && result.response.statusText)
         throw new Error(result.response.statusText)
       else if (result.error instanceof Error)
         throw new Error(result.error.message)
