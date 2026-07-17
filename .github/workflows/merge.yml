@@ -10,61 +10,127 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}
 
 jobs:
-  check:
-    if: false
-    name: Check
+  check-merge-commit:
+    name: Check merge commit
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      GH_TOKEN: ${{ github.token }}
     outputs:
-      run: ${{ steps.check.outputs.run }}
+      result: ${{ steps.check.outputs.result }}
     steps:
       - name: Check
         id: check
-        run: |
-          run=false
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          result-encoding: string
+          script: |
+            if (context.eventName !== "pull_request" || context.payload.action !== "synchronize") return true;
 
-          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.action }}" == "synchronize" ]]; then
-            parent_count=$(gh api "repos/$GITHUB_REPOSITORY/commits/${{ github.event.pull_request.head.sha }}" --jq '.parents | length')
+            const { data: commit } = await github.rest.repos.getCommit({
+              ...context.repo,
+              ref: context.payload.pull_request.head.sha,
+            });
 
-            if [[ "$parent_count" -gt 1 ]]; then
-              printf 'run=false\n' >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
+            return commit.parents.length <= 1;
 
-          if [[ "${{ github.actor }}" == "hirotomoyamada" ]]; then
-            case "${{ github.event_name }}" in
-              pull_request)
-                author=$(jq -r '.pull_request.user.login' "$GITHUB_EVENT_PATH")
-                draft=$(jq -r '.pull_request.draft' "$GITHUB_EVENT_PATH")
-                has_merge_label=$(jq -r '.pull_request.labels | any(.name == "magi:merge")' "$GITHUB_EVENT_PATH")
+  check-label:
+    name: Check label
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      result: ${{ steps.check.outputs.result }}
+    steps:
+      - name: Check
+        id: check
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          result-encoding: string
+          script: |
+            if (context.eventName === "pull_request") return !context.payload.pull_request.labels.some((label) => label.name === "magi:merge");
+            if (context.eventName === "issue_comment") return !context.payload.issue.labels.some((label) => label.name === "magi:merge");
 
-                if [[ "$author" == "hirotomoyamada" && "$draft" == "false" && "$has_merge_label" == "false" ]]; then
-                  run=true
-                fi
-                ;;
-              issue_comment)
-                is_pull_request=$(jq -r '.issue | has("pull_request")' "$GITHUB_EVENT_PATH")
-                author=$(jq -r '.issue.user.login' "$GITHUB_EVENT_PATH")
-                commenter=$(jq -r '.comment.user.login' "$GITHUB_EVENT_PATH")
-                comment_body=$(jq -r '.comment.body' "$GITHUB_EVENT_PATH")
-                has_merge_label=$(jq -r '.issue.labels | any(.name == "magi:merge")' "$GITHUB_EVENT_PATH")
+            return false;
 
-                if [[ "$is_pull_request" == "true" && "$author" == "hirotomoyamada" && "$commenter" == "hirotomoyamada" && "$comment_body" == "/merge" && "$has_merge_label" == "false" ]]; then
-                  run=true
-                fi
-                ;;
-            esac
-          fi
+  check-actor:
+    name: Check actor
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      result: ${{ steps.check.outputs.result }}
+    steps:
+      - name: Check
+        id: check
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          result-encoding: string
+          script: |
+            const usernames = new Set([context.actor]);
 
-          printf 'run=%s\n' "$run" >> "$GITHUB_OUTPUT"
+            if (context.eventName === "pull_request") {
+              usernames.add(context.payload.pull_request.user.login);
+            } else if (context.eventName === "issue_comment") {
+              usernames.add(context.payload.issue.user.login);
+              usernames.add(context.payload.comment.user.login);
+            } else {
+              return false;
+            }
+
+            const users = await Promise.all(
+              [...usernames].map((username) => github.rest.users.getByUsername({ username })),
+            );
+            const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+
+            return users.every(({ data: user }) => new Date(user.created_at).getTime() <= thirtyDaysAgo);
+
+  check-draft:
+    name: Check draft
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      result: ${{ steps.check.outputs.result }}
+    steps:
+      - name: Check
+        id: check
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          result-encoding: string
+          script: |
+            if (context.eventName === "pull_request") return !context.payload.pull_request.draft;
+            if (context.eventName === "issue_comment") return true;
+
+            return false;
+
+  check-command:
+    name: Check command
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      result: ${{ steps.check.outputs.result }}
+    steps:
+      - name: Check
+        id: check
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          result-encoding: string
+          script: |
+            if (context.eventName === "pull_request") return true;
+            if (context.eventName === "issue_comment") return Boolean(context.payload.issue.pull_request) && context.payload.comment.body === "/merge";
+
+            return false;
 
   merge:
-    needs: check
-    if: false
+    needs:
+      [check-merge-commit, check-label, check-actor, check-draft, check-command]
+    if: >-
+      needs.check-merge-commit.outputs.result == 'true' &&
+      needs.check-label.outputs.result == 'true' &&
+      needs.check-actor.outputs.result == 'true' &&
+      needs.check-draft.outputs.result == 'true' &&
+      needs.check-command.outputs.result == 'true'
     name: Merge
     runs-on: ubuntu-latest
     permissions:
@@ -101,14 +167,43 @@ jobs:
         run: pnpm build
 
       - name: Add label
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: gh pr edit "${{ github.event.pull_request.number || github.event.issue.number }}" --add-label "magi:merge"
 
       - name: Merge pull request
         env:
           OPENCODE_AUTH_CONTENT: ${{ secrets.OPENCODE_AUTH_CONTENT }}
         run: |
-          opencode run --dir "$GITHUB_WORKSPACE" --model "openai/gpt-5.5-fast" --command "magi:merge" "${{ github.event.pull_request.number || github.event.issue.number }}"
+          set -o pipefail
+
+          opencode run --dir "$GITHUB_WORKSPACE" --model "openai/gpt-5.6-luna-fast" --format json --command "magi:merge" "${{ github.event.pull_request.number || github.event.issue.number }}" \
+            | jq --unbuffered -r '
+                if .part.tool == "magi_merge" and .part.state.status == "error" then
+                  .part.state.error + "\n" | halt_error(1)
+                else .part.text // empty
+                end
+              '
+
+      - name: Display events
+        if: ${{ always() }}
+        run: |
+          node --input-type=module -e '
+            import { readdir, readFile } from "node:fs/promises"
+
+            const paths = await readdir(".magi", { recursive: true }).catch(() => [])
+
+            for (const path of paths.filter((path) => path.endsWith("events.jsonl"))) {
+              const file = `.magi/${path}`
+
+              console.log(`::group::${file}`)
+              console.log(await readFile(file, "utf8"))
+              console.log("::endgroup::")
+            }
+          '
 
       - name: Remove label
         if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: gh pr edit "${{ github.event.pull_request.number || github.event.issue.number }}" --remove-label "magi:merge"
