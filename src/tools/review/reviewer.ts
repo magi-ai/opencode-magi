@@ -2,6 +2,7 @@ import type {
   FindingValidationOutput,
   PullRequestFinding,
   PullRequestReviewMarker,
+  PullRequestReviewThread,
   ReviewOutput,
 } from "./index.type"
 import type { Review } from "./review"
@@ -194,6 +195,7 @@ export async function review(this: Review): Promise<void> {
                 if (!prompt.validate<ReviewOutput>(parsed))
                   throw new Error(`Invalid output for reviewer ${id}.`)
 
+                validateThreadTargets(parsed, unresolvedThreads)
                 validateInlineCommentTargets(
                   status,
                   parsed,
@@ -727,4 +729,31 @@ function validateInlineCommentTargets(
           )
     }
   }
+}
+
+function validateThreadTargets(
+  { followUps, resolves }: ReviewOutput,
+  threads: PullRequestReviewThread[],
+): void {
+  const targets = new Map(
+    threads.flatMap(({ comments, id }) =>
+      comments.flatMap(({ databaseId }) =>
+        databaseId == null ? [] : [[databaseId, id] as const],
+      ),
+    ),
+  )
+
+  if (followUps)
+    for (const [index, { commentId }] of followUps.entries())
+      if (!targets.has(commentId))
+        throw new Error(
+          `followUps[${index}].commentId must target an unresolved thread owned by the reviewer.`,
+        )
+
+  if (resolves)
+    for (const [index, { commentId, threadId }] of resolves.entries())
+      if (targets.get(commentId) !== threadId)
+        throw new Error(
+          `resolves[${index}] must target an unresolved thread owned by the reviewer.`,
+        )
 }
