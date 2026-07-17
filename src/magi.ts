@@ -128,6 +128,16 @@ export interface State {
 
 const active: Set<Status> = new Set(["preparing", "running"])
 
+function getSessionError(
+  error: unknown,
+  response?: { statusText?: string },
+): Error {
+  if (response?.statusText) return new Error(response.statusText)
+  if (error instanceof Error) return new Error(error.message)
+
+  return new Error(JSON.stringify(error))
+}
+
 export class MagiError extends Error {
   constructor(
     public status: Status,
@@ -147,6 +157,11 @@ export class Magi {
     const client = createOpencodeClient({
       baseUrl: input.serverUrl.toString(),
       directory: input.directory,
+      fetch: (
+        input.client.session as unknown as {
+          _client: { getConfig(): { fetch?: typeof fetch } }
+        }
+      )._client.getConfig().fetch,
     })
 
     this.input = { ...input, client }
@@ -421,7 +436,7 @@ export class Magi {
     )
 
     if (result.error) {
-      throw new Error(result.response.statusText)
+      throw getSessionError(result.error, result.response)
     } else {
       const id = result.data.id
 
@@ -443,7 +458,7 @@ export class Magi {
     )
 
     if (result.error) {
-      throw new Error(result.response.statusText)
+      throw getSessionError(result.error, result.response)
     } else {
       const output = result.data.parts
         .filter((part) => part.type === "text")
