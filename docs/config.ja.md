@@ -120,6 +120,8 @@ Magiの設定ファイルは、OpenCodeではなくOpenCode Magiによってマ�
 }
 ```
 
+`merge.editor`は`/magi:merge`でのみ、`triage.creator`は`/magi:triage`でのみ必須です。設定したeditorとcreatorには、既定の編集権限が付与されます。
+
 ## リファレンス
 
 `agents.refs`のキーを`ref`に設定すると、そのエージェントの設定が展開されます。`ref`以外でフィールドを設定した場合は、そのエージェントの設定をオーバーライドします。

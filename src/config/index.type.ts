@@ -128,7 +128,7 @@ export interface Merge {
   checks: {
     wait: boolean
   }
-  editor: Editor
+  editor?: Editor
   maxThreadResolutionCycles: number
   prompts?: {
     ciClassification?: string
@@ -175,7 +175,7 @@ export interface Triage {
   concurrency: {
     runs: number
   }
-  creator: Creator
+  creator?: Creator
   operator?: string
   output: string
   prompts?: {

@@ -3,6 +3,7 @@ import type { PluginInput } from "@/utils"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { CONFIG_PATH, DEFAULT_CONFIG } from "@/constant"
+import editPermissions from "@/permissions/editor.json" with { type: "json" }
 import {
   filterEmpty,
   getModels,
@@ -139,8 +140,14 @@ export async function getConfig(input: PluginInput): Promise<Config.Root> {
       }
     })
 
-  config.merge.editor = mergeAgent(config, config.merge.editor)
-  config.merge.editor.model = resolveModel(models, config.merge.editor.model)
+  if (config.merge.editor) {
+    config.merge.editor.permissions = mergePermissions(
+      editPermissions as Config.Permissions,
+      config.merge.editor.permissions,
+    )
+    config.merge.editor = mergeAgent(config, config.merge.editor)
+    config.merge.editor.model = resolveModel(models, config.merge.editor.model)
+  }
 
   if (config.triage.voters)
     config.triage.voters = config.triage.voters.map((agent, index) => {
@@ -153,11 +160,17 @@ export async function getConfig(input: PluginInput): Promise<Config.Root> {
       }
     })
 
-  config.triage.creator = mergeAgent(config, config.triage.creator)
-  config.triage.creator.model = resolveModel(
-    models,
-    config.triage.creator.model,
-  )
+  if (config.triage.creator) {
+    config.triage.creator.permissions = mergePermissions(
+      editPermissions as Config.Permissions,
+      config.triage.creator.permissions,
+    )
+    config.triage.creator = mergeAgent(config, config.triage.creator)
+    config.triage.creator.model = resolveModel(
+      models,
+      config.triage.creator.model,
+    )
+  }
 
   return config
 }

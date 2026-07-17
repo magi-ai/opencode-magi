@@ -2,7 +2,6 @@ import type { Config } from "./config"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import commonPermissions from "./permissions/common.json" with { type: "json" }
-import editPermissions from "./permissions/editor.json" with { type: "json" }
 
 export const CONFIG_PATH = {
   GLOBAL: join(homedir(), ".config", "opencode", "magi.json"),
@@ -34,9 +33,6 @@ export const DEFAULT_CONFIG: Config.Root = {
     },
     checks: {
       wait: true,
-    },
-    editor: {
-      permissions: editPermissions as Config.Permissions,
     },
     maxThreadResolutionCycles: 5,
   },
@@ -127,9 +123,6 @@ export const DEFAULT_CONFIG: Config.Root = {
     ],
     concurrency: {
       runs: 3,
-    },
-    creator: {
-      permissions: editPermissions as Config.Permissions,
     },
     output: ".magi/runs/issue",
     safety: {
