@@ -43,6 +43,7 @@ import {
   isArray,
   isNumber,
   isObject,
+  isUndefined,
   merge,
   quote,
   rm,
@@ -127,16 +128,6 @@ export interface State {
 }
 
 const active: Set<Status> = new Set(["preparing", "running"])
-
-function getSessionError(
-  error: unknown,
-  response?: { statusText?: string },
-): Error {
-  if (response?.statusText) return new Error(response.statusText)
-  if (error instanceof Error) return new Error(error.message)
-
-  return new Error(JSON.stringify(error))
-}
 
 export class MagiError extends Error {
   constructor(
@@ -436,7 +427,11 @@ export class Magi {
     )
 
     if (result.error) {
-      throw getSessionError(result.error, result.response)
+      if (!isUndefined(result.response) && result.response.statusText)
+        throw new Error(result.response.statusText)
+      else if (result.error instanceof Error)
+        throw new Error(result.error.message)
+      else throw new Error(JSON.stringify(result.error))
     } else {
       const id = result.data.id
 
@@ -458,7 +453,11 @@ export class Magi {
     )
 
     if (result.error) {
-      throw getSessionError(result.error, result.response)
+      if (!isUndefined(result.response) && result.response.statusText)
+        throw new Error(result.response.statusText)
+      else if (result.error instanceof Error)
+        throw new Error(result.error.message)
+      else throw new Error(JSON.stringify(result.error))
     } else {
       const output = result.data.parts
         .filter((part) => part.type === "text")
