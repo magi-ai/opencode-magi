@@ -117,6 +117,8 @@ export async function getConfig(input: PluginInput): Promise<Config.Root> {
   ])
   const results = filterEmpty(data)
 
+  if (!models.length) throw new Error("No OpenCode models found.")
+
   if (!results.length)
     throw new Error(
       `No Magi config found. Expected ${CONFIG_PATH.GLOBAL} or ${projectPath}.`,
@@ -141,10 +143,13 @@ export async function getConfig(input: PluginInput): Promise<Config.Root> {
     })
 
   if (config.merge.editor) {
-    config.merge.editor.permissions = mergePermissions(
-      editPermissions as Config.Permissions,
-      config.merge.editor.permissions,
-    )
+    if (config.merge.editor.permissions)
+      config.merge.editor.permissions = mergePermissions(
+        editPermissions as Config.Permissions,
+        config.merge.editor.permissions,
+      )
+    else config.merge.editor.permissions = editPermissions as Config.Permissions
+
     config.merge.editor = mergeAgent(config, config.merge.editor)
     config.merge.editor.model = resolveModel(models, config.merge.editor.model)
   }
@@ -161,10 +166,14 @@ export async function getConfig(input: PluginInput): Promise<Config.Root> {
     })
 
   if (config.triage.creator) {
-    config.triage.creator.permissions = mergePermissions(
-      editPermissions as Config.Permissions,
-      config.triage.creator.permissions,
-    )
+    if (config.triage.creator.permissions)
+      config.triage.creator.permissions = mergePermissions(
+        editPermissions as Config.Permissions,
+        config.triage.creator.permissions,
+      )
+    else
+      config.triage.creator.permissions = editPermissions as Config.Permissions
+
     config.triage.creator = mergeAgent(config, config.triage.creator)
     config.triage.creator.model = resolveModel(
       models,

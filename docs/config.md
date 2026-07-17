@@ -120,8 +120,6 @@ Run `/magi:validate` in OpenCode to validate config content, authentication stat
 }
 ```
 
-`merge.editor` is required only for `/magi:merge`, and `triage.creator` is required only for `/magi:triage`. Configured editors and creators receive the default editing permissions.
-
 ## Reference
 
 Set an `agents.refs` key as `ref` to expand that agent configuration. Fields set alongside `ref` override the referenced agent configuration.
