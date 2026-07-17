@@ -87,7 +87,9 @@ export const review: Tool = function (magi) {
           split(args.prs),
           args.dryRun,
         )
-        const worker = new Worker<string>(config.review.concurrency.runs)
+        const worker = new Worker<{ error: boolean; report: string }>(
+          config.review.concurrency.runs,
+        )
         const reports = await Promise.all(
           prs.map(async (pr) => {
             context.abort.throwIfAborted()
@@ -121,17 +123,21 @@ export const review: Tool = function (magi) {
 
                 await run.automate()
 
-                return await run.createReport()
+                return { error: false, report: await run.createReport() }
               } catch (e) {
-                return await run.createReport(e)
+                return { error: true, report: await run.createReport(e) }
               } finally {
                 await run.cleanup()
               }
             })
           }),
         )
+        const errors = reports.filter(({ error }) => error)
 
-        return reports.join("\n\n")
+        if (errors.length)
+          throw new Error(errors.map(({ report }) => report).join("\n\n"))
+
+        return reports.map(({ report }) => report).join("\n\n")
       },
     }),
   }
