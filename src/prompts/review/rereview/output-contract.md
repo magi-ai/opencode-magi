@@ -15,6 +15,7 @@ Rules:
 - `"verdict"` must be `"APPROVED"`, `"CHANGES_REQUESTED"`, or `"CLOSED"`.
 - `"resolves"` contains threads that should be resolved because the issue is fixed or the user's explanation is acceptable.
 - Each `"resolves"` item must use the exact `"commentId"` and `"threadId"` from `<unresolved_threads>`.
+- Each `"followUps"` item must use a `"commentId"` from `<unresolved_threads>`.
 - Omit `"resolves"` when no thread should be resolved.
 - `"APPROVED"` may omit `"followUps"` and `"newFindings"`. If present, they must be empty.
 - `"APPROVED"` may omit `"comment"`. If present, it must be an empty string.
