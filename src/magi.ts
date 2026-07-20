@@ -147,6 +147,11 @@ export class Magi {
     const client = createOpencodeClient({
       baseUrl: input.serverUrl.toString(),
       directory: input.directory,
+      fetch: (
+        input.client.session as unknown as {
+          _client: { getConfig(): { fetch?: typeof fetch } }
+        }
+      )._client.getConfig().fetch,
     })
 
     this.input = { ...input, client }
