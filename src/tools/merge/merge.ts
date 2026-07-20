@@ -28,10 +28,10 @@ export class Merge extends Review {
       context,
     )
     const editor = {
-      account: config.merge.editor.account,
-      author: config.merge.editor.author,
-      model: config.merge.editor.model,
-      permissions: config.merge.editor.permissions,
+      account: config.merge.editor!.account,
+      author: config.merge.editor!.author,
+      model: config.merge.editor!.model,
+      permissions: config.merge.editor!.permissions,
     }
     const state = await magi.createState(
       join(config.review.output, number.toString()),
