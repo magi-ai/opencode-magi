@@ -74,7 +74,7 @@ export async function checkExistingReviews(this: Review): Promise<boolean> {
       )
 
       if (!targetReviews.length) {
-        return [id, { status: "initial" }]
+        return [id, { account, status: "initial" }]
       } else {
         const latestReviews = targetReviews.filter(
           ({ submitted_at }) =>
@@ -86,8 +86,9 @@ export async function checkExistingReviews(this: Review): Promise<boolean> {
         )
         const review = targetReviews.at(-1)
 
-        if (latestReviews.length) return [id, { review, status: "skip" }]
-        else return [id, { review, status: "rereview" }]
+        if (latestReviews.length)
+          return [id, { account, review, status: "skip" }]
+        else return [id, { account, review, status: "rereview" }]
       }
     }),
   )
