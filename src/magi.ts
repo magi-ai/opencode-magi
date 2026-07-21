@@ -43,6 +43,7 @@ import {
   isArray,
   isNumber,
   isObject,
+  isUndefined,
   merge,
   quote,
   rm,
@@ -426,7 +427,11 @@ export class Magi {
     )
 
     if (result.error) {
-      throw new Error(result.response.statusText)
+      if (!isUndefined(result.response) && result.response.statusText)
+        throw new Error(result.response.statusText)
+      else if (result.error instanceof Error)
+        throw new Error(result.error.message)
+      else throw new Error(JSON.stringify(result.error))
     } else {
       const id = result.data.id
 
@@ -448,7 +453,11 @@ export class Magi {
     )
 
     if (result.error) {
-      throw new Error(result.response.statusText)
+      if (!isUndefined(result.response) && result.response.statusText)
+        throw new Error(result.response.statusText)
+      else if (result.error instanceof Error)
+        throw new Error(result.error.message)
+      else throw new Error(JSON.stringify(result.error))
     } else {
       const output = result.data.parts
         .filter((part) => part.type === "text")
