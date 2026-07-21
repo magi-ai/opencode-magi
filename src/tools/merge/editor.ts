@@ -43,12 +43,11 @@ export async function edit(this: Merge): Promise<boolean> {
       worktreePath: this.state.worktree!.path,
     },
   )
-  const repairMessage = await prompt.repair()
   const output = await retry<EditOutput>(
-    async (count) => {
+    async (count, e) => {
       const raw = await this.magi.promptSession(
         this.state.editor!.sessionId!,
-        count === 1 ? taskMessage : repairMessage,
+        count === 1 ? taskMessage : await prompt.repair(e),
         this.context.abort,
       )
 
@@ -179,12 +178,11 @@ export async function resolveConflict(this: Merge): Promise<void> {
       worktreePath: this.state.worktree!.path,
     },
   )
-  const repairMessage = await prompt.repair()
   const output = await retry<EditOutput>(
-    async (count) => {
+    async (count, e) => {
       const raw = await this.magi.promptSession(
         this.state.editor!.sessionId!,
-        count === 1 ? taskMessage : repairMessage,
+        count === 1 ? taskMessage : await prompt.repair(e),
         this.context.abort,
       )
 

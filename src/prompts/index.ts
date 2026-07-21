@@ -4,7 +4,7 @@ import type { Dict } from "@/utils"
 import Ajv from "ajv"
 import { readFile } from "fs/promises"
 import { join } from "path"
-import { isString } from "@/utils"
+import { isString, isUndefined } from "@/utils"
 
 export type PromptTag = [string, string] | string
 
@@ -67,11 +67,16 @@ export class Prompt {
     )
   }
 
-  public async repair(): Promise<string> {
+  public async repair(e?: unknown): Promise<string> {
     const instructions = [
-      "Your previous output did not match the required schema. Regenerate the result.",
+      "Your previous output failed validation. Regenerate the result.",
+      !isUndefined(e)
+        ? `Validation error: ${e instanceof Error ? e.message : "Invalid output."}`
+        : undefined,
       "Return only a JSON object matching the output contract below. Do not include analysis, explanation, apologies, markdown, or any text before or after the JSON object.",
-    ].join("\n\n")
+    ]
+      .filter((instruction) => !isUndefined(instruction))
+      .join("\n\n")
 
     try {
       const outputContract = await readFile(

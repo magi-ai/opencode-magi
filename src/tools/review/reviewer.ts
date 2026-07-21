@@ -133,15 +133,10 @@ export async function review(this: Review): Promise<void> {
               tags.push(["previous_review", previousReviewContext])
             }
 
-            if (unresolvedThreads.length) {
-              const unresolvedThreadsContext = JSON.stringify(
-                unresolvedThreads,
-                null,
-                2,
-              )
-
-              tags.push(["unresolved_threads", unresolvedThreadsContext])
-            }
+            tags.push([
+              "unresolved_threads",
+              JSON.stringify(unresolvedThreads, null, 2),
+            ])
 
             if (failedChecks.length) {
               const ciFailureContext = JSON.stringify(failedChecks, null, 2)
@@ -173,12 +168,11 @@ export async function review(this: Review): Promise<void> {
                 worktreePath: this.state.worktree.path,
               }),
             )
-            const repairMessage = await prompt.repair()
             const output = await retry<ReviewOutput>(
-              async (count) => {
+              async (count, e) => {
                 const raw = await this.magi.promptSession(
                   sessionId,
-                  count === 1 ? taskMessage : repairMessage,
+                  count === 1 ? taskMessage : await prompt.repair(e),
                   this.context.abort,
                 )
 
@@ -374,17 +368,16 @@ export async function reconsiderClose(this: Review): Promise<void> {
               repo: this.config.github.repo,
             },
           )
-          const repairMessage = await prompt.repair()
 
           await this.updateEvent(
             `Reconsidering close verdict with reviewer ${id}.`,
           )
 
           const output = await retry<ReviewOutput>(
-            async (count) => {
+            async (count, e) => {
               const raw = await this.magi.promptSession(
                 sessionId,
-                count === 1 ? taskMessage : repairMessage,
+                count === 1 ? taskMessage : await prompt.repair(e),
                 this.context.abort,
               )
 
@@ -532,12 +525,11 @@ async function collectAcceptedFindings(
               repo: this.config.github.repo,
             },
           )
-          const repairMessage = await prompt.repair()
           const output = await retry<FindingValidationOutput>(
-            async (count) => {
+            async (count, e) => {
               const raw = await this.magi.promptSession(
                 sessionId,
-                count === 1 ? taskMessage : repairMessage,
+                count === 1 ? taskMessage : await prompt.repair(e),
                 this.context.abort,
               )
 
@@ -742,18 +734,22 @@ function validateThreadTargets(
       ),
     ),
   )
+  const allowedTargets =
+    [...targets.entries()]
+      .map(([commentId, threadId]) => `- ${commentId}:${threadId}`)
+      .join("\n") || "none"
 
   if (followUps)
     for (const [index, { commentId }] of followUps.entries())
       if (!targets.has(commentId))
         throw new Error(
-          `followUps[${index}].commentId must target an unresolved thread owned by the reviewer.`,
+          `followUps[${index}].commentId must target an unresolved thread owned by the reviewer.\n\nAllowed targets:\n${allowedTargets}`,
         )
 
   if (resolves)
     for (const [index, { commentId, threadId }] of resolves.entries())
       if (targets.get(commentId) !== threadId)
         throw new Error(
-          `resolves[${index}] must target an unresolved thread owned by the reviewer.`,
+          `resolves[${index}] must target an unresolved thread owned by the reviewer.\n\nAllowed targets:\n${allowedTargets}`,
         )
 }

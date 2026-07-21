@@ -144,12 +144,11 @@ export async function postReviews(this: Review): Promise<void> {
           verdict: this.state.pr.verdict,
         },
       )
-      const repairMessage = await prompt.repair()
       const output = await retry(
-        async (count) => {
+        async (count, e) => {
           const raw = await this.magi.promptSession(
             this.state.operator!.sessionId!,
-            count === 1 ? taskMessage : repairMessage,
+            count === 1 ? taskMessage : await prompt.repair(e),
             this.context.abort,
           )
 
