@@ -4,6 +4,7 @@ import type {
   PluginOptions,
   ToolDefinition,
 } from "@opencode-ai/plugin"
+import type { Event as OpenCodeEvent } from "@opencode-ai/sdk/v2"
 import type { DocumentNode } from "graphql"
 import type { EditOutput } from "./tools/merge"
 import type { Config, ConfigValidationOptions } from "@/config"
@@ -444,31 +445,90 @@ export class Magi {
     text: string,
     signal?: AbortSignal,
   ): Promise<string> {
-    const result = await this.input.client.session.prompt(
-      {
-        parts: [{ text, type: "text" }],
-        sessionID,
-      },
-      { signal },
-    )
+    const controller = new AbortController()
+    const events = await this.input.client.event.subscribe(undefined, {
+      signal: controller.signal,
+    })
 
-    if (result.error) {
-      if (!isUndefined(result.response) && result.response.statusText)
-        throw new Error(result.response.statusText)
-      else if (result.error instanceof Error)
-        throw new Error(result.error.message)
-      else throw new Error(JSON.stringify(result.error))
-    } else {
-      const output = result.data.parts
-        .filter((part) => part.type === "text")
-        .map((part) => part.text)
-        .join("\n")
+    try {
+      const result = await Promise.race([
+        this.input.client.session.prompt(
+          {
+            parts: [{ text, type: "text" }],
+            sessionID,
+          },
+          { signal },
+        ),
+        this.monitorSession(sessionID, events.stream),
+      ])
 
-      if (!output)
-        throw new Error("OpenCode session.prompt did not return text output.")
+      if (result.error) {
+        if (!isUndefined(result.response) && result.response.statusText)
+          throw new Error(result.response.statusText)
+        else if (result.error instanceof Error)
+          throw new Error(result.error.message)
+        else throw new Error(JSON.stringify(result.error))
+      } else {
+        const output = result.data.parts
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("\n")
 
-      return output
+        if (!output)
+          throw new Error("OpenCode session.prompt did not return text output.")
+
+        return output
+      }
+    } catch (e) {
+      if (e instanceof MagiError)
+        await this.input.client.session.abort({ sessionID })
+
+      throw e
+    } finally {
+      controller.abort()
     }
+  }
+
+  private async monitorSession(
+    sessionID: string,
+    events: AsyncIterable<OpenCodeEvent>,
+  ): Promise<never> {
+    for await (const ev of events) {
+      if (
+        ev.type === "permission.asked" &&
+        ev.properties.sessionID === sessionID
+      ) {
+        const { id, patterns, permission } = ev.properties
+        const result = await this.input.client.permission.reply({
+          reply: "reject",
+          requestID: id,
+        })
+
+        if (result.error)
+          throw new MagiError("blocked", "Could not reject permission request.")
+
+        throw new MagiError(
+          "blocked",
+          `OpenCode session requested ${permission} permission for ${patterns.join(", ")}.`,
+        )
+      }
+
+      if (
+        ev.type === "question.asked" &&
+        ev.properties.sessionID === sessionID
+      ) {
+        const result = await this.input.client.question.reject({
+          requestID: ev.properties.id,
+        })
+
+        if (result.error)
+          throw new MagiError("blocked", "Could not reject user question.")
+
+        throw new MagiError("blocked", "OpenCode session requested user input.")
+      }
+    }
+
+    return new Promise<never>(() => {})
   }
 
   private async deleteSessions(state: State): Promise<number> {

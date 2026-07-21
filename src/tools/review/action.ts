@@ -162,10 +162,13 @@ export async function postReviews(this: Review): Promise<void> {
           return parsed.comment
         },
         {
-          error: (_, count) =>
-            this.updateEvent(
+          error: async (e, count) => {
+            if (e instanceof MagiError) throw e
+
+            await this.updateEvent(
               `Attempt ${count} failed to post comment by operator. Retrying...`,
-            ),
+            )
+          },
           retries: this.config.output.repairAttempts,
           signal: this.context.abort,
         },

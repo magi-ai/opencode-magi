@@ -78,8 +78,11 @@ export async function edit(this: Merge): Promise<boolean> {
       return output
     },
     {
-      error: (_, count) =>
-        this.updateEvent(`Attempt ${count} failed to edit. Retrying...`),
+      error: async (e, count) => {
+        if (e instanceof MagiError) throw e
+
+        await this.updateEvent(`Attempt ${count} failed to edit. Retrying...`)
+      },
       retries: this.config.output.repairAttempts,
       signal: this.context.abort,
     },
@@ -230,10 +233,13 @@ export async function resolveConflict(this: Merge): Promise<void> {
       }
     },
     {
-      error: (_, count) =>
-        this.updateEvent(
+      error: async (e, count) => {
+        if (e instanceof MagiError) throw e
+
+        await this.updateEvent(
           `Attempt ${count} failed to resolve conflicts. Retrying...`,
-        ),
+        )
+      },
       retries: this.config.output.repairAttempts,
       signal: this.context.abort,
     },

@@ -195,10 +195,13 @@ export async function classifyChecks(this: Review): Promise<void> {
             return parsed
           },
           {
-            error: (_, count) =>
-              this.updateEvent(
+            error: async (e, count) => {
+              if (e instanceof MagiError) throw e
+
+              await this.updateEvent(
                 `Attempt ${count} failed to classify CI checks with reviewer ${id}. Retrying...`,
-              ),
+              )
+            },
             retries: this.config.output.repairAttempts,
             signal: this.context.abort,
           },
