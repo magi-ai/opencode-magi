@@ -56,7 +56,10 @@ export type MergeQueueStatusQueryVariables = Exact<{
 }>;
 
 
-export type MergeQueueStatusQuery = { repository: { pullRequest: { state: PullRequestState, isInMergeQueue: boolean, mergeQueueEntry: { id: string } | null } | null } | null };
+export type MergeQueueStatusQuery = { repository: { pullRequest: { state: PullRequestState, isInMergeQueue: boolean, mergeQueueEntry: { id: string } | null, timelineItems: { nodes: Array<
+          | { createdAt: string, reason: string | null }
+          | Record<PropertyKey, never>
+         | null> | null } } | null } | null };
 
 export type ResolveReviewThreadMutationVariables = Exact<{
   threadId: string | number;
@@ -134,6 +137,14 @@ export const MergeQueueStatusDocument = gql`
       isInMergeQueue
       mergeQueueEntry {
         id
+      }
+      timelineItems(last: 1, itemTypes: REMOVED_FROM_MERGE_QUEUE_EVENT) {
+        nodes {
+          ... on RemovedFromMergeQueueEvent {
+            createdAt
+            reason
+          }
+        }
       }
     }
   }

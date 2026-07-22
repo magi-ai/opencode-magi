@@ -398,12 +398,12 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
       account,
     )
     const graphql = this.magi.createGraphql(octokit)
+    const enqueuedAt = new Date().toISOString()
 
     await graphql.enqueuePullRequest({ id: this.state.pr.metadata.node_id })
-
     await this.updateEvent(`Waiting for merge queue.`)
 
-    const result = await waitMergeQueue.call(this)
+    const result = await waitMergeQueue.call(this, enqueuedAt)
 
     if (result === "CONFLICT") return result
   } else {
@@ -588,9 +588,14 @@ function getCheckTime(check: Dict): number {
 
 async function waitMergeQueue(
   this: Review,
+  enqueuedAt: string,
   leftMergeQueue = false,
+  retries = 0,
 ): Promise<PullRequestAutomation> {
   this.context.abort.throwIfAborted()
+
+  if (!this.state.pr?.metadata)
+    throw new MagiError("blocked", "PR metadata not found.")
 
   const { repository } = await this.graphql.mergeQueueStatus({
     owner: this.config.github.owner,
@@ -601,7 +606,8 @@ async function waitMergeQueue(
   if (!repository?.pullRequest)
     throw new MagiError("blocked", "Could not fetch merge queue status.")
 
-  const { isInMergeQueue, mergeQueueEntry, state } = repository.pullRequest
+  const { isInMergeQueue, mergeQueueEntry, state, timelineItems } =
+    repository.pullRequest
 
   if (state === "MERGED") return "MERGED"
 
@@ -611,9 +617,34 @@ async function waitMergeQueue(
   if (leftMergeQueue && nextLeftMergeQueue) {
     if (await isConflict.call(this)) {
       await this.updateState({ pr: { automation: "CONFLICT" } })
-      await this.updateEvent(`Merge automation found conflicts.`)
+      await this.updateEvent("Merge automation found conflicts.")
 
       return "CONFLICT"
+    }
+
+    const removedFromQueue = timelineItems.nodes?.at(-1)
+
+    if (
+      removedFromQueue?.reason === "failed_checks" &&
+      Date.parse(removedFromQueue.createdAt) >= Date.parse(enqueuedAt)
+    ) {
+      if (retries >= this.config.review.checks.retryFailedJobs)
+        throw new MagiError(
+          "blocked",
+          `PR left the merge queue after failed checks exceeded ${retries} retries.`,
+        )
+
+      const attempt = retries + 1
+      const nextEnqueuedAt = new Date().toISOString()
+
+      await this.updateEvent(
+        `Attempt ${attempt} failed to merge from the merge queue. Retrying...`,
+      )
+      await this.graphql.enqueuePullRequest({
+        id: this.state.pr.metadata.node_id,
+      })
+
+      return await waitMergeQueue.call(this, nextEnqueuedAt, false, attempt)
     }
 
     throw new MagiError("blocked", `PR left the merge queue before merging.`)
@@ -621,7 +652,12 @@ async function waitMergeQueue(
 
   await wait(30_000, this.context.abort)
 
-  return await waitMergeQueue.call(this, nextLeftMergeQueue)
+  return await waitMergeQueue.call(
+    this,
+    enqueuedAt,
+    nextLeftMergeQueue,
+    retries,
+  )
 }
 
 async function isConflict(this: Review): Promise<boolean> {
