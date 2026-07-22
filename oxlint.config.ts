@@ -209,7 +209,10 @@ export default defineConfig({
     "vitest/no-large-snapshots": "error",
     "vitest/no-mocks-import": "error",
     "vitest/no-restricted-matchers": "error",
-    "vitest/no-standalone-expect": "error",
+    "vitest/no-standalone-expect": [
+      "error",
+      { additionalTestBlockFunctions: ["test"] },
+    ],
     "vitest/no-test-prefixes": "error",
     "vitest/no-test-return-statement": "error",
     "vitest/prefer-called-exactly-once-with": "error",
