@@ -6,7 +6,7 @@
     "lib": ["ESNext"],
     "declaration": false,
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": ".",
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -17,8 +17,9 @@
     "resolveJsonModule": true,
     "types": ["node", "vitest/globals"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "#/*": ["./test/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.json", "strict/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.json", "strict/**/*.ts", "test/**/*.ts"]
 }
