@@ -5,14 +5,14 @@ import { retry } from "@/utils"
 
 export async function editCycles(
   this: Merge,
-  callback: (cycle: number) => Promise<PullRequestVerdict>,
+  cb: (cycle: number) => Promise<PullRequestVerdict>,
 ): Promise<void> {
   this.context.abort.throwIfAborted()
 
   const error = new Error("Continue edit cycle.")
   const verdict = await retry<PullRequestVerdict>(
     async (cycle) => {
-      const verdict = await callback(cycle)
+      const verdict = await cb(cycle)
 
       if (verdict === "CHANGES_REQUESTED") throw error
 

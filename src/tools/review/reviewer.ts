@@ -2,6 +2,7 @@ import type {
   FindingValidationOutput,
   PullRequestFinding,
   PullRequestReviewMarker,
+  PullRequestReviewThread,
   ReviewOutput,
 } from "./index.type"
 import type { Review } from "./review"
@@ -132,15 +133,10 @@ export async function review(this: Review): Promise<void> {
               tags.push(["previous_review", previousReviewContext])
             }
 
-            if (unresolvedThreads.length) {
-              const unresolvedThreadsContext = JSON.stringify(
-                unresolvedThreads,
-                null,
-                2,
-              )
-
-              tags.push(["unresolved_threads", unresolvedThreadsContext])
-            }
+            tags.push([
+              "unresolved_threads",
+              JSON.stringify(unresolvedThreads, null, 2),
+            ])
 
             if (failedChecks.length) {
               const ciFailureContext = JSON.stringify(failedChecks, null, 2)
@@ -172,12 +168,11 @@ export async function review(this: Review): Promise<void> {
                 worktreePath: this.state.worktree.path,
               }),
             )
-            const repairMessage = await prompt.repair()
             const output = await retry<ReviewOutput>(
-              async (count) => {
+              async (count, e) => {
                 const raw = await this.magi.promptSession(
                   sessionId,
-                  count === 1 ? taskMessage : repairMessage,
+                  count === 1 ? taskMessage : await prompt.repair(e),
                   this.context.abort,
                 )
 
@@ -194,6 +189,7 @@ export async function review(this: Review): Promise<void> {
                 if (!prompt.validate<ReviewOutput>(parsed))
                   throw new Error(`Invalid output for reviewer ${id}.`)
 
+                validateThreadTargets(parsed, unresolvedThreads)
                 validateInlineCommentTargets(
                   status,
                   parsed,
@@ -237,10 +233,13 @@ export async function review(this: Review): Promise<void> {
                 return parsed
               },
               {
-                error: (_, count) =>
-                  this.updateEvent(
+                error: async (e, count) => {
+                  if (e instanceof MagiError) throw e
+
+                  await this.updateEvent(
                     `Attempt ${count} failed to ${label} with reviewer ${id}. Retrying...`,
-                  ),
+                  )
+                },
                 retries: this.config.output.repairAttempts,
                 signal: this.context.abort,
               },
@@ -372,17 +371,16 @@ export async function reconsiderClose(this: Review): Promise<void> {
               repo: this.config.github.repo,
             },
           )
-          const repairMessage = await prompt.repair()
 
           await this.updateEvent(
             `Reconsidering close verdict with reviewer ${id}.`,
           )
 
           const output = await retry<ReviewOutput>(
-            async (count) => {
+            async (count, e) => {
               const raw = await this.magi.promptSession(
                 sessionId,
-                count === 1 ? taskMessage : repairMessage,
+                count === 1 ? taskMessage : await prompt.repair(e),
                 this.context.abort,
               )
 
@@ -410,10 +408,13 @@ export async function reconsiderClose(this: Review): Promise<void> {
               return parsed
             },
             {
-              error: (_, count) =>
-                this.updateEvent(
+              error: async (e, count) => {
+                if (e instanceof MagiError) throw e
+
+                await this.updateEvent(
                   `Attempt ${count} failed to reconsider close verdict with reviewer ${id}. Retrying...`,
-                ),
+                )
+              },
               retries: this.config.output.repairAttempts,
               signal: this.context.abort,
             },
@@ -530,12 +531,11 @@ async function collectAcceptedFindings(
               repo: this.config.github.repo,
             },
           )
-          const repairMessage = await prompt.repair()
           const output = await retry<FindingValidationOutput>(
-            async (count) => {
+            async (count, e) => {
               const raw = await this.magi.promptSession(
                 sessionId,
-                count === 1 ? taskMessage : repairMessage,
+                count === 1 ? taskMessage : await prompt.repair(e),
                 this.context.abort,
               )
 
@@ -571,10 +571,13 @@ async function collectAcceptedFindings(
               return parsed
             },
             {
-              error: (_, count) =>
-                this.updateEvent(
+              error: async (e, count) => {
+                if (e instanceof MagiError) throw e
+
+                await this.updateEvent(
                   `Attempt ${count} failed to validate review findings with reviewer ${id}. Retrying...`,
-                ),
+                )
+              },
               retries: this.config.output.repairAttempts,
               signal: this.context.abort,
             },
@@ -727,4 +730,35 @@ function validateInlineCommentTargets(
           )
     }
   }
+}
+
+function validateThreadTargets(
+  { followUps, resolves }: ReviewOutput,
+  threads: PullRequestReviewThread[],
+): void {
+  const targets = new Map(
+    threads.flatMap(({ comments, id }) =>
+      comments.flatMap(({ databaseId }) =>
+        databaseId == null ? [] : [[databaseId, id] as const],
+      ),
+    ),
+  )
+  const allowedTargets =
+    [...targets.entries()]
+      .map(([commentId, threadId]) => `- ${commentId}:${threadId}`)
+      .join("\n") || "none"
+
+  if (followUps)
+    for (const [index, { commentId }] of followUps.entries())
+      if (!targets.has(commentId))
+        throw new Error(
+          `followUps[${index}].commentId must target an unresolved thread owned by the reviewer.\n\nAllowed targets:\n${allowedTargets}`,
+        )
+
+  if (resolves)
+    for (const [index, { commentId, threadId }] of resolves.entries())
+      if (targets.get(commentId) !== threadId)
+        throw new Error(
+          `resolves[${index}] must target an unresolved thread owned by the reviewer.\n\nAllowed targets:\n${allowedTargets}`,
+        )
 }

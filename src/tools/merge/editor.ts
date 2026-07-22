@@ -43,12 +43,11 @@ export async function edit(this: Merge): Promise<boolean> {
       worktreePath: this.state.worktree!.path,
     },
   )
-  const repairMessage = await prompt.repair()
   const output = await retry<EditOutput>(
-    async (count) => {
+    async (count, e) => {
       const raw = await this.magi.promptSession(
         this.state.editor!.sessionId!,
-        count === 1 ? taskMessage : repairMessage,
+        count === 1 ? taskMessage : await prompt.repair(e),
         this.context.abort,
       )
 
@@ -79,8 +78,11 @@ export async function edit(this: Merge): Promise<boolean> {
       return output
     },
     {
-      error: (_, count) =>
-        this.updateEvent(`Attempt ${count} failed to edit. Retrying...`),
+      error: async (e, count) => {
+        if (e instanceof MagiError) throw e
+
+        await this.updateEvent(`Attempt ${count} failed to edit. Retrying...`)
+      },
       retries: this.config.output.repairAttempts,
       signal: this.context.abort,
     },
@@ -179,12 +181,11 @@ export async function resolveConflict(this: Merge): Promise<void> {
       worktreePath: this.state.worktree!.path,
     },
   )
-  const repairMessage = await prompt.repair()
   const output = await retry<EditOutput>(
-    async (count) => {
+    async (count, e) => {
       const raw = await this.magi.promptSession(
         this.state.editor!.sessionId!,
-        count === 1 ? taskMessage : repairMessage,
+        count === 1 ? taskMessage : await prompt.repair(e),
         this.context.abort,
       )
 
@@ -232,10 +233,13 @@ export async function resolveConflict(this: Merge): Promise<void> {
       }
     },
     {
-      error: (_, count) =>
-        this.updateEvent(
+      error: async (e, count) => {
+        if (e instanceof MagiError) throw e
+
+        await this.updateEvent(
           `Attempt ${count} failed to resolve conflicts. Retrying...`,
-        ),
+        )
+      },
       retries: this.config.output.repairAttempts,
       signal: this.context.abort,
     },
@@ -322,7 +326,7 @@ async function push(
       GIT_CONFIG_KEY_1: "credential.helper",
       GIT_CONFIG_VALUE_0: "",
       GIT_CONFIG_VALUE_1:
-        "!f() { echo username=x-access-token; echo password=$GIT_PASSWORD; }; f",
+        "!f() { echo username=git; echo password=$GIT_PASSWORD; }; f",
       GIT_PASSWORD: token,
       GIT_TERMINAL_PROMPT: "0",
     },

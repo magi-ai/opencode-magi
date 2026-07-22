@@ -16,11 +16,11 @@ export function wait(ms = 0, signal?: AbortSignal): Promise<void> {
 }
 
 export async function loop<T>(
-  callback: () => Promise<T | void> | T | void,
+  cb: () => Promise<T | void> | T | void,
   ms = 0,
 ): Promise<T> {
   for (;;) {
-    const value = await callback()
+    const value = await cb()
 
     if (value != null) return value
 
@@ -35,21 +35,23 @@ export interface RetryOptions {
 }
 
 export async function retry<T = void>(
-  callback: (count: number) => Promise<T | void> | T | void,
-  { error, retries = 1, signal }: RetryOptions,
+  cb: (count: number, error: unknown) => Promise<T | void> | T | void,
+  { error: errorCb, retries = 1, signal }: RetryOptions,
 ): Promise<T | void> {
   let count = 1
+  let error: unknown
 
   while (count <= retries)
     try {
       signal?.throwIfAborted()
 
-      return await callback(count)
+      return await cb(count, error)
     } catch (e) {
       signal?.throwIfAborted()
 
-      await error?.(e, count)
+      await errorCb?.(e, count)
 
+      error = e
       count += 1
     }
 }

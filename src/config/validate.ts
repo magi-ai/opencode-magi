@@ -34,23 +34,32 @@ function requiredErrors(
     voters = false,
   }: ConfigValidationOptions["require"] = {},
 ): string[] {
+  creator ||= !!config.triage.creator
+  editor ||= !!config.merge.editor
+  reviewers ||= !!config.review.reviewers
+  voters ||= !!config.triage.voters
+
   const errors = [
     required(github, config.github.owner, "github.owner"),
     required(github, config.github.repo, "github.repo"),
     required(reviewers, config.review.reviewers, "review.reviewers"),
     ...(config.review.reviewers ?? []).map((reviewer, index) =>
-      required(reviewers, reviewer.model, `review.reviewers[${index}].model`),
+      required(
+        reviewers || !!reviewer,
+        reviewer.model,
+        `review.reviewers[${index}].model`,
+      ),
     ),
     required(editor, config.merge.editor, "merge.editor"),
-    required(editor, config.merge.editor.model, "merge.editor.model"),
-    required(editor, config.merge.editor.author, "merge.editor.author"),
+    required(editor, config.merge.editor?.model, "merge.editor.model"),
+    required(editor, config.merge.editor?.author, "merge.editor.author"),
     required(voters, config.triage.voters, "triage.voters"),
     ...(config.triage.voters ?? []).map((voter, index) =>
-      required(voters, voter.model, `triage.voters[${index}].model`),
+      required(voters || !!voter, voter.model, `triage.voters[${index}].model`),
     ),
     required(creator, config.triage.creator, "triage.creator"),
-    required(creator, config.triage.creator.model, "triage.creator.model"),
-    required(creator, config.triage.creator.author, "triage.creator.author"),
+    required(creator, config.triage.creator?.model, "triage.creator.model"),
+    required(creator, config.triage.creator?.author, "triage.creator.author"),
   ]
 
   if (config.mode === "single") {
@@ -66,7 +75,7 @@ function requiredErrors(
       ),
     )
     errors.push(
-      required(editor, config.merge.editor.account, "merge.editor.account"),
+      required(editor, config.merge.editor?.account, "merge.editor.account"),
     )
     errors.push(
       ...(config.triage.voters ?? []).map((voter, index) =>
@@ -76,7 +85,7 @@ function requiredErrors(
     errors.push(
       required(
         creator,
-        config.triage.creator.account,
+        config.triage.creator?.account,
         "triage.creator.account",
       ),
     )
@@ -158,20 +167,23 @@ async function authErrors(config: Config.Root, exec: Exec): Promise<string[]> {
   } else {
     const accounts = {
       ...Object.fromEntries(
-        config.review.reviewers!.map(({ account }, index) => [
+        config.review.reviewers?.map(({ account }, index) => [
           account!,
           `review.reviewers[${index}]`,
-        ]),
+        ]) ?? [],
       ),
-      [config.merge.editor.account!]: "merge.editor",
       ...Object.fromEntries(
-        config.triage.voters!.map(({ account }, index) => [
+        config.triage.voters?.map(({ account }, index) => [
           account!,
           `triage.voters[${index}]`,
-        ]),
+        ]) ?? [],
       ),
-      [config.triage.creator.account!]: "triage.creator",
     }
+
+    if (config.merge.editor)
+      accounts[config.merge.editor.account!] = "merge.editor"
+    if (config.triage.creator)
+      accounts[config.triage.creator.account!] = "triage.creator"
 
     return filterEmpty([
       ...duplicateErrors(

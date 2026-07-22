@@ -1,6 +1,6 @@
 {
   "name": "opencode-magi",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Multi-agent PR review and merge orchestration plugin for OpenCode.",
   "license": "MIT",
   "author": "Hirotomo Yamada <hirotomo.yamada@avap.co.jp>",
@@ -46,8 +46,8 @@
     "release:dev": "changeset version --snapshot dev && changeset publish --tag dev"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "^1.15.10",
-    "@opencode-ai/sdk": "^1.15.13",
+    "@opencode-ai/plugin": "^1.18.1",
+    "@opencode-ai/sdk": "^1.18.1",
     "ajv": "^8.20.0",
     "graphql": "^16.14.0",
     "graphql-tag": "^2.12.6",

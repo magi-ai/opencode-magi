@@ -168,7 +168,6 @@ export async function classifyChecks(this: Review): Promise<void> {
       worktreePath: this.state.worktree.path,
     },
   )
-  const repairMessage = await prompt.repair()
 
   await Promise.all(
     Object.entries(this.state.reviewers ?? {}).map(([id, { sessionId }]) =>
@@ -179,10 +178,10 @@ export async function classifyChecks(this: Review): Promise<void> {
         await this.updateEvent(`Classifying CI checks with reviewer ${id}.`)
 
         const output = await retry(
-          async (count) => {
+          async (count, e) => {
             const raw = await this.magi.promptSession(
               sessionId,
-              count === 1 ? taskMessage : repairMessage,
+              count === 1 ? taskMessage : await prompt.repair(e),
               this.context.abort,
             )
 
@@ -196,10 +195,13 @@ export async function classifyChecks(this: Review): Promise<void> {
             return parsed
           },
           {
-            error: (_, count) =>
-              this.updateEvent(
+            error: async (e, count) => {
+              if (e instanceof MagiError) throw e
+
+              await this.updateEvent(
                 `Attempt ${count} failed to classify CI checks with reviewer ${id}. Retrying...`,
-              ),
+              )
+            },
             retries: this.config.output.repairAttempts,
             signal: this.context.abort,
           },

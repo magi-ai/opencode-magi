@@ -6,6 +6,14 @@ query mergeQueueStatus($owner: String!, $repo: String!, $pr: Int!) {
       mergeQueueEntry {
         id
       }
+      timelineItems(last: 1, itemTypes: REMOVED_FROM_MERGE_QUEUE_EVENT) {
+        nodes {
+          ... on RemovedFromMergeQueueEvent {
+            createdAt
+            reason
+          }
+        }
+      }
     }
   }
 }
