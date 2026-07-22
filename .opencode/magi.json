@@ -59,8 +59,7 @@
     "merge": { "queue": true, "approvalPolicy": "unanimous" },
     "prompts": {
       "reviewGuidelines": ".agents/references/pr-review-guidelines.md"
-    },
-    "automation": { "merge": false }
+    }
   },
   "merge": {
     "editor": { "ref": "hirotomoyamada" },
