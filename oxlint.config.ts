@@ -23,6 +23,12 @@ export default defineConfig({
     },
   ],
   options: { typeAware: true },
+  overrides: [
+    {
+      files: ["**/*.test.ts"],
+      rules: { "no-restricted-imports": ["error", "vitest"] },
+    },
+  ],
   plugins: ["eslint", "typescript", "unicorn", "import", "vitest"],
   rules: {
     curly: ["error", "multi", "consistent"],
