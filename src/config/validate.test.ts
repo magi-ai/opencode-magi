@@ -277,30 +277,39 @@ describe("validate", () => {
       ])
     })
 
-    test("reports duplicate multi-agent accounts", async () => {
+    test("reuses accounts across agent roles", async () => {
       const config = createConfig()
       const exec = vi.fn<Exec>().mockResolvedValue("token")
 
       config.mode = "multi"
       config.review.reviewers = [
-        createReviewer("reviewer-1", "shared-account"),
-        createReviewer("reviewer-2", "review-account-2"),
-        createReviewer("reviewer-3", "review-account-3"),
+        createReviewer("reviewer-1", "melchior"),
+        createReviewer("reviewer-2", "balthasar"),
+        createReviewer("reviewer-3", "caspar"),
       ]
+      config.merge.editor = {
+        account: "creator",
+        author: { email: "creator@example.com", name: "Creator" },
+        model: { id: "provider/model" },
+      }
       config.triage.voters = [
-        createVoter("voter-1", "shared-account"),
-        createVoter("voter-2", "voter-account-2"),
-        createVoter("voter-3", "voter-account-3"),
+        createVoter("voter-1", "melchior"),
+        createVoter("voter-2", "balthasar"),
+        createVoter("voter-3", "caspar"),
       ]
+      config.triage.creator = {
+        account: "creator",
+        author: { email: "creator@example.com", name: "Creator" },
+        model: { id: "provider/model" },
+      }
 
-      await expect(validateConfig(config, { exec })).resolves.toStrictEqual([
-        "triage.voters[0] has duplicate account: shared-account",
+      await expect(validateConfig(config, { exec })).resolves.toStrictEqual([])
+      expect(exec.mock.calls.map(([command]) => command)).toStrictEqual([
+        'gh auth token --user "melchior"',
+        'gh auth token --user "balthasar"',
+        'gh auth token --user "caspar"',
+        'gh auth token --user "creator"',
       ])
-      expect(exec).toHaveBeenCalledTimes(5)
-      expect(exec).toHaveBeenCalledWith(
-        'gh auth token --user "shared-account"',
-        undefined,
-      )
     })
 
     test("formats incomplete schema validation errors", async () => {
