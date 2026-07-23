@@ -1,6 +1,5 @@
 import type { Config } from "."
 import type { Exec } from "@/utils"
-import { describe, expect, test, vi } from "vitest"
 import { DEFAULT_CONFIG } from "@/constant"
 import { validateConfig } from "./validate"
 

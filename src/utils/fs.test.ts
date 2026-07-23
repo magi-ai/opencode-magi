@@ -1,5 +1,4 @@
 import { resolve } from "node:path"
-import { afterEach, describe, expect, test, vi } from "vitest"
 import { rm } from "./fs"
 
 const fs = vi.hoisted(() => ({

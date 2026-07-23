@@ -1,4 +1,3 @@
-import { describe, expect, test, vi } from "vitest"
 import { Worker } from "./worker"
 
 interface Deferred<T> {

@@ -1,7 +1,6 @@
 import type { PluginInput } from "@/utils"
 import { mkdir, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
-import { afterEach, beforeEach, describe, expect, vi } from "vitest"
 import { test } from "#/fixtures/magi"
 import { CONFIG_PATH } from "@/constant"
 import { getConfig, resolvePermissions } from "./resolve"
