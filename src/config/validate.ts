@@ -44,18 +44,14 @@ function requiredErrors(
     required(github, config.github.repo, "github.repo"),
     required(reviewers, config.review.reviewers, "review.reviewers"),
     ...(config.review.reviewers ?? []).map((reviewer, index) =>
-      required(
-        reviewers || !!reviewer,
-        reviewer.model,
-        `review.reviewers[${index}].model`,
-      ),
+      required(reviewers, reviewer.model, `review.reviewers[${index}].model`),
     ),
     required(editor, config.merge.editor, "merge.editor"),
     required(editor, config.merge.editor?.model, "merge.editor.model"),
     required(editor, config.merge.editor?.author, "merge.editor.author"),
     required(voters, config.triage.voters, "triage.voters"),
     ...(config.triage.voters ?? []).map((voter, index) =>
-      required(voters || !!voter, voter.model, `triage.voters[${index}].model`),
+      required(voters, voter.model, `triage.voters[${index}].model`),
     ),
     required(creator, config.triage.creator, "triage.creator"),
     required(creator, config.triage.creator?.model, "triage.creator.model"),
@@ -165,29 +161,29 @@ async function authErrors(config: Config.Root, exec: Exec): Promise<string[]> {
   if (config.mode === "single") {
     return filterEmpty([await authError(config, exec, config.account!)])
   } else {
-    const accounts = {
-      ...Object.fromEntries(
-        config.review.reviewers?.map(({ account }, index) => [
+    const entries: [string, string][] = [
+      ...(config.review.reviewers?.map(
+        ({ account }, index): [string, string] => [
           account!,
           `review.reviewers[${index}]`,
-        ]) ?? [],
-      ),
-      ...Object.fromEntries(
-        config.triage.voters?.map(({ account }, index) => [
-          account!,
-          `triage.voters[${index}]`,
-        ]) ?? [],
-      ),
-    }
+        ],
+      ) ?? []),
+      ...(config.triage.voters?.map(({ account }, index): [string, string] => [
+        account!,
+        `triage.voters[${index}]`,
+      ]) ?? []),
+    ]
 
     if (config.merge.editor)
-      accounts[config.merge.editor.account!] = "merge.editor"
+      entries.push([config.merge.editor.account!, "merge.editor"])
     if (config.triage.creator)
-      accounts[config.triage.creator.account!] = "triage.creator"
+      entries.push([config.triage.creator.account!, "triage.creator"])
+
+    const accounts = Object.fromEntries(entries)
 
     return filterEmpty([
       ...duplicateErrors(
-        Object.keys(accounts),
+        entries.map(([account]) => account),
         (value) => `${accounts[value]} has duplicate account: ${value}`,
       ),
       ...(await Promise.all(
