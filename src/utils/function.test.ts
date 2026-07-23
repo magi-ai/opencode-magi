@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, test } from "vitest"
 import { ignoreError } from "./function"
 
 describe("ignoreError", () => {
