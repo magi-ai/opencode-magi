@@ -15,6 +15,17 @@ export function wait(ms = 0, signal?: AbortSignal): Promise<void> {
   })
 }
 
+export async function ignoreError<T>(
+  cb: () => Promise<T> | T,
+  shouldIgnore: (e: unknown) => boolean,
+): Promise<T | undefined> {
+  try {
+    return await cb()
+  } catch (e) {
+    if (!shouldIgnore(e)) throw e
+  }
+}
+
 export async function loop<T>(
   cb: () => Promise<T | void> | T | void,
   ms = 0,
