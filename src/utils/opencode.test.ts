@@ -1,7 +1,6 @@
 import type { Provider } from "@opencode-ai/sdk/v2"
 import type { PluginInput } from "./opencode"
 import { createOpencodeClient } from "@opencode-ai/sdk/v2"
-import { beforeEach, describe, expect, test, vi } from "vitest"
 import { getModels } from "./opencode"
 
 const { createExecMock, execMock } = vi.hoisted(() => {

@@ -1,5 +1,4 @@
 import type { Exec } from "./exec"
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { createExecWithGitHubApiRetry, parseIssues, parsePrs } from "./github"
 
 describe("parseIssues", () => {

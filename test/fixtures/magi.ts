@@ -7,7 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Readable } from "node:stream"
-import { test as base, vi } from "vitest"
+import { test as base } from "vitest"
 import { Magi } from "@/magi"
 
 export interface ClientMocks {

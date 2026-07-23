@@ -1,4 +1,3 @@
-import { beforeEach, describe, expect, test, vi } from "vitest"
 import { createExec, execAsync } from "./exec"
 
 const { execAsyncMock } = vi.hoisted(() => ({ execAsyncMock: vi.fn() }))

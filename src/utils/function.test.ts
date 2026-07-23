@@ -1,4 +1,3 @@
-import { afterEach, describe, expect, test, vi } from "vitest"
 import { ignoreError, loop, retry, wait } from "./function"
 
 describe("wait", () => {
