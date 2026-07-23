@@ -11,6 +11,7 @@ import { Prompt } from "@/prompts"
 import {
   command,
   filterEmpty,
+  ignoreError,
   isArray,
   isObject,
   isString,
@@ -403,7 +404,15 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
     const graphql = this.magi.createGraphql(octokit)
     const enqueuedAt = new Date().toISOString()
 
-    await graphql.enqueuePullRequest({ id: this.state.pr.metadata.node_id })
+    await ignoreError(
+      () =>
+        graphql.enqueuePullRequest({ id: this.state.pr!.metadata!.node_id }),
+      (e) => {
+        const message = e instanceof Error ? e.message : String(e)
+
+        return /pull request is already in the queue/i.test(message)
+      },
+    )
     await this.updateEvent(`Waiting for merge queue.`)
 
     const result = await waitMergeQueue.call(this, enqueuedAt)
@@ -643,9 +652,17 @@ async function waitMergeQueue(
       await this.updateEvent(
         `Attempt ${attempt} failed to merge from the merge queue. Retrying...`,
       )
-      await this.graphql.enqueuePullRequest({
-        id: this.state.pr.metadata.node_id,
-      })
+      await ignoreError(
+        () =>
+          this.graphql.enqueuePullRequest({
+            id: this.state.pr!.metadata!.node_id,
+          }),
+        (e) => {
+          const message = e instanceof Error ? e.message : String(e)
+
+          return /pull request is already in the queue/i.test(message)
+        },
+      )
 
       return await waitMergeQueue.call(this, nextEnqueuedAt, false, attempt)
     }
