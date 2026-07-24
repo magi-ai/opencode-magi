@@ -7,7 +7,7 @@ Follow these rules when creating or modifying automated tests.
 - Add unit tests for individual functions, class methods, config resolution, config validation, prompt composition, output parsing, report formatting, and other isolated behavior.
 - Add integration or flow tests for orchestration across modules, command sequencing, retries, safety gates, run state, review flow, merge flow, triage flow, and CI handling.
 - Add scenario tests when a user-visible command crosses multiple decisions or long-running phases.
-- Name command scenario suites `scenario: /magi:<command>` and keep their fixtures explicit in the test file.
+- Name command scenario suites `magi:<command>`, such as `magi:review` or `magi:merge`, and keep their fixtures explicit in the test file.
 - Do not use a broad flow test as a substitute for focused unit tests of the functions it depends on.
 
 ## File Placement

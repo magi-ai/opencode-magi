@@ -22,7 +22,7 @@ async function readEvents(output: string): Promise<Event[]> {
     .map((line) => JSON.parse(line) as Event)
 }
 
-describe("scenario: /magi:review", () => {
+describe("magi:review", () => {
   describe.each(["single", "multi"] as const)("%s mode", (mode) => {
     test("completes an approved review and persists its artifacts", async ({
       createMagi,
