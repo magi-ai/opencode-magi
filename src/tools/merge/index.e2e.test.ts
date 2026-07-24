@@ -22,7 +22,7 @@ async function readEvents(output: string): Promise<Event[]> {
     .map((line) => JSON.parse(line) as Event)
 }
 
-describe("magi:merge", () => {
+describe("scenario: /magi:merge", () => {
   describe.each(["single", "multi"] as const)("%s mode", (mode) => {
     test("completes an approved run without an edit cycle", async ({
       createMagi,
