@@ -298,6 +298,48 @@ describe("Merge", () => {
         "Finished posting editor replies.",
       )
     })
+
+    test("requires editor output", async ({ magiFixture: { magi } }) => {
+      const { merge } = createMergeFixture(magi)
+
+      await expect(merge.postReplies()).rejects.toThrow(
+        "Editor output not found.",
+      )
+    })
+
+    test("returns without an API client when there are no responses", async ({
+      magiFixture: { magi },
+    }) => {
+      const { merge, updateEvent } = createMergeFixture(magi)
+      const createOctokit = vi.spyOn(magi, "createOctokit")
+
+      merge.state.editor = { outputs: [createEditOutput()] }
+
+      await merge.postReplies()
+
+      expect(createOctokit).not.toHaveBeenCalled()
+      expect(updateEvent).not.toHaveBeenCalled()
+    })
+
+    test("requires an editor account before posting", async ({
+      magiFixture: { magi },
+    }) => {
+      const { merge } = createMergeFixture(magi)
+
+      merge.state.editor = {
+        outputs: [
+          createEditOutput({
+            responses: [
+              { action: "ASK", body: "Please clarify.", commentId: 101 },
+            ],
+          }),
+        ],
+      }
+
+      await expect(merge.postReplies()).rejects.toThrow(
+        "Editor account not found.",
+      )
+    })
   })
 
   describe("fetchMergeContext", () => {
@@ -333,6 +375,14 @@ describe("Merge", () => {
       expect(merge.state.pr?.inlineCommentTargets).toStrictEqual({
         "base-sha": { "src/index.ts": [1, 2] },
       })
+    })
+
+    test("requires editor output", async ({ magiFixture: { magi } }) => {
+      const { merge } = createMergeFixture(magi)
+
+      await expect(merge.fetchMergeContext()).rejects.toThrow(
+        "Editor output not found.",
+      )
     })
   })
 
@@ -372,6 +422,77 @@ describe("Merge", () => {
         reviewers: {
           one: { status: "reply" },
           two: { status: "skip" },
+        },
+      })
+    })
+
+    describe.each([
+      ["editor output", "Editor output not found."],
+      ["threads", "PR threads not found."],
+      ["reviewers", "Reviewers not found."],
+    ])("requires %s", (target, message) => {
+      test("rejects incomplete state", async ({ magiFixture: { magi } }) => {
+        const { merge } = createMergeFixture(magi)
+
+        if (target !== "editor output")
+          merge.state.editor = { outputs: [createEditOutput()] }
+        if (target === "reviewers") merge.state.pr!.threads = []
+
+        await expect(merge.markRepliedReviewers()).rejects.toThrow(message)
+      })
+    })
+
+    test("requires a response matching a review thread", async ({
+      magiFixture: { magi },
+    }) => {
+      const { merge } = createMergeFixture(magi)
+
+      merge.state.editor = {
+        outputs: [
+          createEditOutput({
+            responses: [{ action: "ASK", body: "Question.", commentId: 999 }],
+          }),
+        ],
+      }
+      merge.state.pr!.threads = []
+      merge.state.reviewers = { one: {} }
+
+      await expect(merge.markRepliedReviewers()).rejects.toThrow(
+        "No replied reviewers found.",
+      )
+    })
+
+    test("matches multi-mode reviewers by thread author", async ({
+      magiFixture: { magi },
+    }) => {
+      const { config, merge, updateState } = createMergeFixture(magi)
+
+      config.mode = "multi"
+      merge.state.editor = {
+        outputs: [
+          createEditOutput({
+            responses: [{ action: "FIXED", body: "Fixed.", commentId: 101 }],
+          }),
+        ],
+      }
+      merge.state.pr!.threads = [
+        {
+          comments: [{ author: { login: "reviewer-two" }, databaseId: 101 }],
+          id: "thread-1",
+          isResolved: false,
+        } as PullRequestReviewThread,
+      ]
+      merge.state.reviewers = {
+        one: { account: "reviewer-one" },
+        two: { account: "reviewer-two" },
+      }
+
+      await merge.markRepliedReviewers()
+
+      expect(updateState).toHaveBeenCalledWith(merge.state.output, {
+        reviewers: {
+          one: { status: "skip" },
+          two: { status: "reply" },
         },
       })
     })
@@ -441,6 +562,93 @@ describe("Merge", () => {
         editor: { outputs: [output] },
       })
     })
+
+    describe.each([
+      ["session", "Editor session ID not found."],
+      ["author", "Editor author not found."],
+      ["worktree", "PR worktree not found."],
+    ])("requires editor %s", (target, message) => {
+      test("rejects incomplete state", async ({ magiFixture: { magi } }) => {
+        const { merge } = createMergeFixture(magi)
+
+        merge.state.editor = {
+          author:
+            target === "author"
+              ? undefined
+              : { email: "editor@example.com", name: "Editor" },
+          sessionId: target === "session" ? undefined : "editor-session",
+        }
+
+        if (target !== "worktree")
+          merge.state.worktree = { path: "/tmp/worktree" }
+
+        await expect(merge.edit()).rejects.toThrow(message)
+      })
+    })
+
+    test("blocks when no editable threads remain", async ({
+      magiFixture: { magi },
+    }) => {
+      const { merge } = createMergeFixture(magi)
+
+      merge.state.editor = {
+        author: { email: "editor@example.com", name: "Editor" },
+        sessionId: "editor-session",
+      }
+      merge.state.worktree = { path: "/tmp/worktree" }
+
+      await expect(merge.edit()).rejects.toThrow(
+        "No editable review threads found.",
+      )
+    })
+
+    test("rejects an edited output that does not match worktree HEAD", async ({
+      magiFixture: { magi },
+    }) => {
+      const { exec, graphqlMocks, merge } = createMergeFixture(magi)
+      const output = createEditOutput({
+        commitMessage: "fix review",
+        commitSha: "reported-sha",
+        filesTouched: ["src/index.ts"],
+        mode: "EDITED",
+        responses: [{ action: "FIXED", body: "Fixed.", commentId: 101 }],
+      })
+      const prompt = {
+        create: vi.fn().mockResolvedValue("edit-task"),
+        parse: vi.fn().mockReturnValue(output),
+        repair: vi.fn(),
+        validate: vi.fn().mockReturnValue(true),
+      }
+
+      merge.config.output.repairAttempts = 1
+      merge.state.editor = {
+        author: { email: "editor@example.com", name: "Editor" },
+        sessionId: "editor-session",
+      }
+      merge.state.worktree = { path: "/tmp/worktree" }
+      graphqlMocks.paginate.mockResolvedValue({
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [
+                {
+                  comments: { nodes: [{ databaseId: 101 }] },
+                  id: "thread-1",
+                  isResolved: false,
+                },
+              ],
+            },
+          },
+        },
+      })
+      exec.mockImplementation((command) =>
+        Promise.resolve(command === "git rev-parse HEAD" ? "actual-sha" : ""),
+      )
+      vi.spyOn(Prompt, "init").mockResolvedValue(prompt as unknown as Prompt)
+      vi.spyOn(magi, "promptSession").mockResolvedValue("raw-editor-output")
+
+      await expect(merge.edit()).rejects.toThrow("Invalid output for editor.")
+    })
   })
 
   describe("resolveConflict", () => {
@@ -467,6 +675,172 @@ describe("Merge", () => {
         cwd: "/tmp/worktree",
         signal: merge.context.abort,
       })
+    })
+
+    test("requires pull request metadata", async ({
+      magiFixture: { magi },
+    }) => {
+      const { merge } = createMergeFixture(magi)
+
+      merge.state.editor = {
+        author: { email: "editor@example.com", name: "Editor" },
+        sessionId: "editor-session",
+      }
+      merge.state.worktree = { path: "/tmp/worktree" }
+
+      await expect(merge.resolveConflict()).rejects.toThrow(
+        "PR metadata not found.",
+      )
+    })
+
+    test("blocks when a failed merge reports no conflicted files", async ({
+      magiFixture: { magi },
+    }) => {
+      const { exec, merge } = createMergeFixture(magi)
+
+      merge.state.editor = {
+        author: { email: "editor@example.com", name: "Editor" },
+        sessionId: "editor-session",
+      }
+      merge.state.pr!.metadata = createMetadata()
+      merge.state.worktree = { path: "/tmp/worktree" }
+      exec.mockImplementation((command) => {
+        if (command.includes("git merge --no-commit"))
+          return Promise.reject(new Error("merge failed"))
+
+        return Promise.resolve("")
+      })
+
+      await expect(merge.resolveConflict()).rejects.toThrow(
+        "No merge conflicts found in worktree.",
+      )
+      expect(exec).toHaveBeenCalledWith("git merge --abort", {
+        cwd: "/tmp/worktree",
+        signal: merge.context.abort,
+      })
+    })
+
+    describe.each([
+      ["invalid output", "invalid"],
+      ["remaining conflicts", "conflicts"],
+      ["missing commit", "commit"],
+      ["non-merge commit", "parents"],
+    ])("blocks conflict resolution with %s", (_label, failure) => {
+      test("rejects an incomplete resolution", async ({
+        magiFixture: { magi },
+      }) => {
+        const { exec, merge, updateEvent } = createMergeFixture(magi)
+        const prompt = {
+          create: vi.fn().mockResolvedValue("conflict-task"),
+          parse: vi.fn().mockReturnValue({}),
+          repair: vi.fn(),
+          validate: vi.fn().mockReturnValue(failure !== "invalid"),
+        }
+
+        let conflictChecks = 0
+
+        merge.config.output.repairAttempts = 1
+        merge.state.editor = {
+          author: { email: "editor@example.com", name: "Editor" },
+          sessionId: "editor-session",
+        }
+        merge.state.pr!.metadata = createMetadata()
+        merge.state.worktree = { path: "/tmp/worktree" }
+        exec.mockImplementation((command) => {
+          if (command.includes("git merge --no-commit"))
+            return Promise.reject(new Error("merge conflict"))
+
+          if (command.includes("git diff --name-only")) {
+            conflictChecks += 1
+
+            return Promise.resolve(
+              conflictChecks === 1 || failure === "conflicts"
+                ? "src/index.ts"
+                : "",
+            )
+          }
+
+          if (command === "git rev-parse HEAD")
+            return Promise.resolve(
+              failure === "commit" ? "head-sha" : "resolved-sha",
+            )
+          if (command.includes("git rev-list"))
+            return Promise.resolve(
+              failure === "parents"
+                ? "resolved-sha parent-sha"
+                : "resolved-sha parent-one parent-two",
+            )
+
+          return Promise.resolve("")
+        })
+        vi.spyOn(Prompt, "init").mockResolvedValue(prompt as unknown as Prompt)
+        vi.spyOn(magi, "promptSession").mockResolvedValue("editor-output")
+
+        await expect(merge.resolveConflict()).rejects.toThrow(
+          "Invalid output for conflict editor.",
+        )
+        expect(updateEvent).toHaveBeenCalledWith(
+          merge.state.output,
+          "Attempt 1 failed to resolve conflicts. Retrying...",
+        )
+      })
+    })
+
+    test("saves a dry-run conflict resolution without pushing", async ({
+      magiFixture: { magi },
+    }) => {
+      const { exec, merge, updateEvent } = createMergeFixture(magi)
+      const prompt = {
+        create: vi.fn().mockResolvedValue("conflict-task"),
+        parse: vi.fn().mockReturnValue({}),
+        repair: vi.fn(),
+        validate: vi.fn().mockReturnValue(true),
+      }
+
+      let conflictChecks = 0
+
+      merge.state.dryRun = true
+      merge.state.editor = {
+        author: { email: "editor@example.com", name: "Editor" },
+        outputs: [createEditOutput()],
+        sessionId: "editor-session",
+      }
+      merge.state.pr = {
+        ...merge.state.pr!,
+        files: ["README.md"],
+        metadata: createMetadata(),
+      }
+      merge.state.worktree = { path: "/tmp/worktree" }
+      exec.mockImplementation((command) => {
+        if (command.includes("git merge --no-commit"))
+          return Promise.reject(new Error("merge conflict"))
+
+        if (command.includes("git diff --name-only")) {
+          conflictChecks += 1
+
+          return Promise.resolve(conflictChecks === 1 ? "src/index.ts" : "")
+        }
+
+        if (command === "git rev-parse HEAD")
+          return Promise.resolve("resolved-sha")
+        if (command.includes("git rev-list"))
+          return Promise.resolve("resolved-sha parent-one parent-two")
+        if (command.includes("git log"))
+          return Promise.resolve("Resolve conflict")
+
+        return Promise.resolve("")
+      })
+      vi.spyOn(Prompt, "init").mockResolvedValue(prompt as unknown as Prompt)
+      vi.spyOn(magi, "promptSession").mockResolvedValue("editor-output")
+
+      await merge.resolveConflict()
+
+      expect(merge.state.pr.metadata?.head.sha).toBe("resolved-sha")
+      expect(merge.state.pr.files).toStrictEqual(["README.md", "src/index.ts"])
+      expect(updateEvent).toHaveBeenCalledWith(
+        merge.state.output,
+        "Skipped pushing conflict resolution during dry run.",
+      )
     })
   })
 })
