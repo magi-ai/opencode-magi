@@ -26,14 +26,20 @@ export interface RepositoryFixture {
 }
 
 export interface GitHubFixture {
+  closingIssues: ReturnType<typeof vi.fn>
   createReplyForReviewComment: ReturnType<typeof vi.fn>
   createReview: ReturnType<typeof vi.fn>
   get: ReturnType<typeof vi.fn>
   graphql: Graphql
   graphqlPaginate: ReturnType<typeof vi.fn>
+  listComments: ReturnType<typeof vi.fn>
+  listCommits: ReturnType<typeof vi.fn>
+  listFiles: ReturnType<typeof vi.fn>
+  listReviews: ReturnType<typeof vi.fn>
   octokit: Octokit
   octokitPaginate: ReturnType<typeof vi.fn>
   resolveReviewThread: ReturnType<typeof vi.fn>
+  reviewThreads: ReturnType<typeof vi.fn>
 }
 
 export interface PullRequestTarget {
@@ -201,26 +207,41 @@ export function createGitHubFixture(
   } as unknown as Graphql
 
   return {
+    closingIssues,
     createReplyForReviewComment,
     createReview,
     get,
     graphql,
     graphqlPaginate,
+    listComments,
+    listCommits,
+    listFiles,
+    listReviews,
     octokit,
     octokitPaginate: paginate,
     resolveReviewThread,
+    reviewThreads,
   }
+}
+
+export interface PullRequestExecHandler {
+  (command: string): Promise<string | undefined> | string | undefined
 }
 
 export function createPullRequestExec(
   repository: RepositoryFixture,
   { number, owner, repo }: PullRequestTarget,
   ghCommands: string[],
+  handler?: PullRequestExecHandler,
 ): Exec {
   return async function (command, options): Promise<string> {
     if (!command.startsWith("gh ")) return repository.exec(command, options)
 
     ghCommands.push(command)
+
+    const output = await handler?.(command)
+
+    if (output !== undefined) return output
 
     if (command === `gh pr checkout ${number} --detach`)
       return repository.exec(
