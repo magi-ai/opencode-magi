@@ -9,8 +9,12 @@ export default defineConfig({
     },
   },
   test: {
+    coverage: {
+      exclude: ["**/*.generated.ts"],
+    },
     globals: true,
     include: ["src/**/*.test.ts"],
+    onConsoleLog: (_, type) => type !== "stderr",
     setupFiles: ["./test/setup.ts"],
   },
 })

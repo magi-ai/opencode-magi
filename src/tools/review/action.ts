@@ -404,15 +404,30 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
     const graphql = this.magi.createGraphql(octokit)
     const enqueuedAt = new Date().toISOString()
 
-    await ignoreError(
-      () =>
-        graphql.enqueuePullRequest({ id: this.state.pr!.metadata!.node_id }),
-      (e) => {
-        const message = e instanceof Error ? e.message : String(e)
+    try {
+      await ignoreError(
+        () =>
+          graphql.enqueuePullRequest({ id: this.state.pr!.metadata!.node_id }),
+        (e) => {
+          const message = e instanceof Error ? e.message : String(e)
 
-        return /pull request is already in the queue/i.test(message)
-      },
-    )
+          return /pull request is already in the queue/i.test(message)
+        },
+      )
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+
+      if (!/pull request is closed/i.test(message)) throw e
+
+      const { repository } = await graphql.mergeQueueStatus({
+        owner: this.config.github.owner,
+        pr: this.number,
+        repo: this.config.github.repo,
+      })
+
+      if (repository?.pullRequest?.state !== "MERGED") throw e
+    }
+
     await this.updateEvent(`Waiting for merge queue.`)
 
     const result = await waitMergeQueue.call(this, enqueuedAt)
