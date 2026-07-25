@@ -40,6 +40,7 @@
     "lint:fix": "oxlint . --max-warnings=0 --fix",
     "type:check": "tsgo --noEmit",
     "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --coverage --coverage.reporter=html && open coverage/index.html",
     "test:dev": "vitest --watch --ui --passWithNoTests",
     "quality": "pnpm format:check && pnpm lint:check && pnpm type:check && pnpm test",
     "release": "changeset publish",
