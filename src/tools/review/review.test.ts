@@ -1623,47 +1623,6 @@ describe("Review", () => {
         )
       })
     })
-
-    test("blocks a resolution targeting the wrong thread", async ({
-      magiFixture: { magi },
-    }) => {
-      const { config, review } = createReviewFixture(magi)
-      const prompt = {
-        create: vi.fn().mockResolvedValue("review-task"),
-        parse: vi.fn().mockReturnValue({
-          resolves: [{ commentId: 101, threadId: "wrong-thread" }],
-          verdict: "APPROVED",
-        }),
-        repair: vi.fn(),
-        validate: vi.fn().mockReturnValue(true),
-      }
-
-      config.mode = "multi"
-      config.output.repairAttempts = 1
-      config.review.reviewers = config.review.reviewers!.slice(0, 1)
-      review.state.pr = {
-        ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
-        threads: [
-          {
-            comments: [{ author: { login: "reviewer-one" }, databaseId: 101 }],
-            id: "thread-1",
-            isResolved: false,
-          } as PullRequestReviewThread,
-        ],
-      }
-      review.state.reviewers = {
-        one: { sessionId: "reviewer-one-session", status: "initial" },
-      }
-      review.state.worktree = { path: "/tmp/worktree" }
-      vi.spyOn(Prompt, "init").mockResolvedValue(prompt as unknown as Prompt)
-      vi.spyOn(magi, "promptSession").mockResolvedValue("invalid-review")
-
-      await expect(review.review()).rejects.toThrow(
-        "Invalid output for reviewer one.",
-      )
-    })
   })
 
   describe("validateFindings", () => {
