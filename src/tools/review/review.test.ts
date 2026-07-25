@@ -677,6 +677,47 @@ describe("Review", () => {
       expect(exec).not.toHaveBeenCalled()
       expect(updateState).not.toHaveBeenCalled()
     })
+
+    test("completes when the pull request was merged before queueing", async ({
+      magiFixture: { magi },
+    }) => {
+      const { config, graphqlMocks, octokit, review } =
+        createReviewFixture(magi)
+
+      config.review.automation.merge = true
+      config.review.merge.queue = true
+      review.state.operator = { account: "reviewer-one" }
+      review.state.pr!.checks = createChecks()
+      review.state.pr!.metadata = createMetadata()
+      review.state.pr!.verdict = "APPROVED"
+      graphqlMocks.enqueuePullRequest.mockRejectedValue(
+        new Error("Pull request is closed"),
+      )
+      graphqlMocks.mergeQueueStatus.mockResolvedValue({
+        repository: {
+          pullRequest: {
+            isInMergeQueue: false,
+            mergeQueueEntry: null,
+            state: "MERGED",
+            timelineItems: { nodes: [] },
+          },
+        },
+      })
+      vi.spyOn(magi, "createOctokit").mockResolvedValue(octokit)
+      vi.spyOn(magi, "createGraphql").mockReturnValue(
+        graphqlMocks as unknown as Graphql,
+      )
+
+      await expect(review.automate()).resolves.toBe("MERGED")
+      expect(graphqlMocks.enqueuePullRequest).toHaveBeenCalledWith({
+        id: "pr-node",
+      })
+      expect(graphqlMocks.mergeQueueStatus).toHaveBeenCalledWith({
+        owner: "magi-ai",
+        pr: 42,
+        repo: "opencode-magi",
+      })
+    })
   })
 
   describe("createReport", () => {
