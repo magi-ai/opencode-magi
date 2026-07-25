@@ -22,6 +22,8 @@ export interface OctokitMocks {
 
 export interface GraphqlMocks {
   closingIssues: ReturnType<typeof vi.fn>
+  enqueuePullRequest: ReturnType<typeof vi.fn>
+  mergeQueueStatus: ReturnType<typeof vi.fn>
   paginate: ReturnType<typeof vi.fn>
   resolveReviewThread: ReturnType<typeof vi.fn>
   reviewThreads: ReturnType<typeof vi.fn>
@@ -158,6 +160,8 @@ export function createReviewFixture<T extends Review>(
   } as unknown as Octokit
   const graphqlMocks: GraphqlMocks = {
     closingIssues: vi.fn(),
+    enqueuePullRequest: vi.fn(),
+    mergeQueueStatus: vi.fn(),
     paginate: vi.fn(),
     resolveReviewThread: vi.fn(),
     reviewThreads: vi.fn(),
