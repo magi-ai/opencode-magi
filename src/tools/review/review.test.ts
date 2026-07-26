@@ -502,6 +502,21 @@ describe("Review", () => {
       )
     })
 
+    test("blocks missing labels after inspecting existing labels", async ({
+      magiFixture: { magi },
+    }) => {
+      const { config, octokitMocks, review } = createReviewFixture(magi)
+      const metadata = createMetadata()
+
+      config.review.safety.requiredLabels = ["reviewable"]
+      metadata.labels = [{ name: "unrelated" }] as typeof metadata.labels
+      octokitMocks.get.mockResolvedValue({ data: metadata })
+
+      await expect(review.checkPr()).rejects.toThrow(
+        "Required labels missing: reviewable.",
+      )
+    })
+
     test("blocks a multi-mode reviewer that authored the pull request", async ({
       magiFixture: { magi },
     }) => {
@@ -1248,6 +1263,51 @@ describe("Review", () => {
       )
     })
 
+    test("builds separate inline targets for a rereview commit", async ({
+      magiFixture: { magi },
+    }) => {
+      const { exec, review } = createReviewFixture(magi)
+
+      review.state.reviewers = {
+        one: {
+          review: { commit_id: "previous-head-sha" } as PullRequestReview,
+          status: "rereview",
+        },
+      }
+      review.state.pr!.metadata = createMetadata()
+      review.state.worktree = { path: "/tmp/worktree" }
+      exec.mockImplementation((command) => {
+        if (command.includes("previous-head-sha...head-sha"))
+          return Promise.resolve(
+            [
+              "diff --git a/src/index.ts b/src/index.ts",
+              "+++ b/src/index.ts",
+              "@@ -2,1 +2,1 @@",
+              "+rereview line",
+            ].join("\n"),
+          )
+
+        if (command.includes("git diff"))
+          return Promise.resolve(
+            [
+              "diff --git a/src/index.ts b/src/index.ts",
+              "+++ b/src/index.ts",
+              "@@ -1,1 +1,1 @@",
+              "+initial line",
+            ].join("\n"),
+          )
+
+        return Promise.resolve("")
+      })
+
+      await review.fetchReviewContext()
+
+      expect(review.state.pr?.inlineCommentTargets).toStrictEqual({
+        "base-sha": { "src/index.ts": [1] },
+        "previous-head-sha": { "src/index.ts": [2] },
+      })
+    })
+
     test("requires a previous commit for rereview diff targets", async ({
       magiFixture: { magi },
     }) => {
@@ -1932,6 +1992,89 @@ describe("Review", () => {
         "Attempt 1 failed to reconsider close verdict with reviewer one. Retrying...",
       )
     })
+
+    test("validates findings returned during close reconsideration", async ({
+      magiFixture: { magi },
+    }) => {
+      const { config, review } = createReviewFixture(magi)
+      const prompt = {
+        create: vi.fn().mockResolvedValue("task"),
+        parse: vi.fn((raw: string) => {
+          if (raw === "reconsider-output")
+            return {
+              findings: [
+                { body: "New finding.", line: 1, path: "src/index.ts" },
+              ],
+              verdict: "CHANGES_REQUESTED",
+            }
+
+          return {
+            votes:
+              raw === "validation-one"
+                ? []
+                : [
+                    {
+                      comment: "Confirmed.",
+                      index: 0,
+                      reviewer: "one",
+                      vote: "AGREE",
+                    },
+                  ],
+          }
+        }),
+        repair: vi.fn(),
+        validate: vi.fn().mockReturnValue(true),
+      }
+
+      config.review.merge.approvalPolicy = "unanimous"
+      review.state.pr = {
+        ...review.state.pr!,
+        inlineCommentTargets: { "base-sha": { "src/index.ts": [1] } },
+        metadata: createMetadata(),
+      }
+      review.state.reviewers = {
+        one: {
+          outputs: [{ verdict: "CLOSED" }],
+          sessionId: "reviewer-one-session",
+          status: "initial",
+        },
+        three: {
+          outputs: [{ verdict: "APPROVED" }],
+          sessionId: "reviewer-three-session",
+        },
+        two: {
+          outputs: [{ verdict: "APPROVED" }],
+          sessionId: "reviewer-two-session",
+        },
+      }
+      vi.spyOn(Prompt, "init").mockResolvedValue(prompt as unknown as Prompt)
+
+      let prompts = 0
+
+      vi.spyOn(magi, "promptSession").mockImplementation((sessionId) => {
+        prompts += 1
+
+        return Promise.resolve(
+          prompts === 1
+            ? "reconsider-output"
+            : `validation-${sessionId.replace("reviewer-", "").replace("-session", "")}`,
+        )
+      })
+
+      await review.reconsiderClose()
+
+      expect(review.state.reviewers.one?.outputs?.at(-1)).toStrictEqual({
+        findings: [
+          {
+            body: "New finding.",
+            line: 1,
+            path: "src/index.ts",
+            state: "accepted",
+          },
+        ],
+        verdict: "CHANGES_REQUESTED",
+      })
+    })
   })
 
   describe("postReviews", () => {
@@ -2011,6 +2154,62 @@ describe("Review", () => {
       )
       expect(review.state.reviewers.one?.posted).toBe(
         "https://github.com/review/1",
+      )
+    })
+
+    test("posts accepted finding ranges in single mode", async ({
+      magiFixture: { magi },
+    }) => {
+      const { graphql, octokit, octokitMocks, review } =
+        createReviewFixture(magi)
+      const prompt = {
+        create: vi.fn().mockResolvedValue("comment-task"),
+        parse: vi.fn().mockReturnValue({ comment: "Changes are required." }),
+        repair: vi.fn(),
+        validate: vi.fn().mockReturnValue(true),
+      }
+
+      review.state.operator = { sessionId: "operator-session" }
+      review.state.pr!.verdict = "CHANGES_REQUESTED"
+      review.state.reviewers = {
+        one: {
+          outputs: [
+            {
+              findings: [
+                {
+                  body: "Fix this range.",
+                  line: 3,
+                  path: "src/index.ts",
+                  startLine: 2,
+                  state: "accepted",
+                },
+              ],
+              verdict: "CHANGES_REQUESTED",
+            },
+          ],
+        },
+      }
+      vi.spyOn(magi, "createOctokit").mockResolvedValue(octokit)
+      vi.spyOn(magi, "createGraphql").mockReturnValue(graphql)
+      vi.spyOn(Prompt, "init").mockResolvedValue(prompt as unknown as Prompt)
+      vi.spyOn(magi, "promptSession").mockResolvedValue("operator-output")
+      octokitMocks.createReview.mockResolvedValue({
+        data: { html_url: "https://github.com/review/1" },
+      })
+
+      await review.postReviews()
+
+      expect(octokitMocks.createReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          comments: [
+            expect.objectContaining({
+              line: 3,
+              start_line: 2,
+              start_side: "RIGHT",
+            }),
+          ],
+          event: "REQUEST_CHANGES",
+        }),
       )
     })
 
