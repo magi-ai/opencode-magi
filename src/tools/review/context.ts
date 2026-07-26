@@ -96,9 +96,6 @@ export async function checkExistingReviews(this: Review): Promise<boolean> {
   for (const [id, reviewer] of Object.entries(reviewers)) {
     if (reviewer.status !== "skip") continue
 
-    if (!reviewer.review)
-      throw new MagiError("blocked", `No review found for reviewer ${id}.`)
-
     const single = this.config.mode === "single"
     const author = single ? this.config.account : reviewer.account
     const hasUserReply = threads.some(({ comments, isResolved }) => {
@@ -119,15 +116,15 @@ export async function checkExistingReviews(this: Review): Promise<boolean> {
       return (
         !!last &&
         last.author?.login !== author &&
-        (!reviewer.review?.submitted_at ||
-          last.createdAt.localeCompare(reviewer.review.submitted_at) > 0)
+        (!reviewer.review!.submitted_at ||
+          last.createdAt.localeCompare(reviewer.review!.submitted_at) > 0)
       )
     })
 
     if (hasUserReply) {
       reviewer.status = "rereview"
     } else {
-      const verdict = reviewer.review.state as PullRequestVerdict
+      const verdict = reviewer.review!.state as PullRequestVerdict
 
       reviewer.outputs = [...(reviewer.outputs ?? []), { verdict }]
     }
@@ -366,14 +363,11 @@ export async function getInlineCommentTargets(
 }
 
 async function hasCommit(this: Review, sha: string): Promise<boolean> {
-  if (!this.state.worktree)
-    throw new MagiError("blocked", "PR worktree not found.")
-
   try {
     await this.exec(
       command("git", "cat-file", "-e", quote(`${sha}^{commit}`)),
       {
-        cwd: this.state.worktree.path,
+        cwd: this.state.worktree!.path,
         signal: this.context.abort,
       },
     )
