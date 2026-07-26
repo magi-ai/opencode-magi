@@ -697,8 +697,6 @@ async function waitMergeQueue(
 
 async function isConflict(this: Review): Promise<boolean> {
   if (!this.state.worktree) return false
-  if (!this.state.pr?.metadata)
-    throw new MagiError("blocked", "PR metadata not found.")
 
   const options = { cwd: this.state.worktree.path, signal: this.context.abort }
   const status = await this.exec(
@@ -714,8 +712,8 @@ async function isConflict(this: Review): Promise<boolean> {
       "git",
       "fetch",
       "--no-tags",
-      quote(this.state.pr.metadata.base.repo.clone_url),
-      quote(`refs/heads/${this.state.pr.metadata.base.ref}`),
+      quote(this.state.pr!.metadata!.base.repo.clone_url),
+      quote(`refs/heads/${this.state.pr!.metadata!.base.ref}`),
     ),
     options,
   )
