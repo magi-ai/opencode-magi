@@ -10,7 +10,7 @@ export default defineConfig({
   },
   test: {
     coverage: {
-      exclude: ["**/*.generated.ts"],
+      exclude: ["test/**", "**/*.generated.ts", "**/*.json"],
     },
     globals: true,
     include: ["src/**/*.test.ts"],
