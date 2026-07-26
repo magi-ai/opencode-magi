@@ -216,6 +216,8 @@ You can set `allow`, `ask`, or `deny`. A string applies to the entire target per
 
 By default, Magi runs in single mode (`mode: "single"`). To use multiple GitHub accounts, set `mode: "multi"` and configure an account for each agent.
 
+Accounts must be unique within `review.reviewers` and `triage.voters`, but may be reused between roles.
+
 ```json
 {
   "mode": "multi",

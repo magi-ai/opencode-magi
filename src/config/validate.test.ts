@@ -276,6 +276,40 @@ describe("validate", () => {
       ])
     })
 
+    test("reports duplicate reviewer accounts", async () => {
+      const config = createConfig()
+      const exec = vi.fn<Exec>().mockResolvedValue("token")
+
+      config.mode = "multi"
+      config.review.reviewers = [
+        createReviewer("reviewer-1", "shared-account"),
+        createReviewer("reviewer-2", "shared-account"),
+        createReviewer("reviewer-3", "review-account-3"),
+      ]
+
+      await expect(validateConfig(config, { exec })).resolves.toStrictEqual([
+        "review.reviewers has duplicate account: shared-account",
+      ])
+      expect(exec).toHaveBeenCalledTimes(2)
+    })
+
+    test("reports duplicate voter accounts", async () => {
+      const config = createConfig()
+      const exec = vi.fn<Exec>().mockResolvedValue("token")
+
+      config.mode = "multi"
+      config.triage.voters = [
+        createVoter("voter-1", "shared-account"),
+        createVoter("voter-2", "shared-account"),
+        createVoter("voter-3", "voter-account-3"),
+      ]
+
+      await expect(validateConfig(config, { exec })).resolves.toStrictEqual([
+        "triage.voters has duplicate account: shared-account",
+      ])
+      expect(exec).toHaveBeenCalledTimes(2)
+    })
+
     test("reuses accounts across agent roles", async () => {
       const config = createConfig()
       const exec = vi.fn<Exec>().mockResolvedValue("token")

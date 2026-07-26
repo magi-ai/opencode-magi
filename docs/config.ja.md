@@ -216,6 +216,8 @@ Magiの設定ファイルは、OpenCodeではなくOpenCode Magiによってマ�
 
 デフォルトでは、シングルモード（`mode: "single"`）です。複数のGitHubアカウントを使用するマルチモードにする場合は、`mode: "multi"`を設定し、各エージェントごとにアカウントを設定します。
 
+`review.reviewers`内と`triage.voters`内では、アカウントを一意にする必要があります。ロール間では同じアカウントを再利用できます。
+
 ```json
 {
   "mode": "multi",
