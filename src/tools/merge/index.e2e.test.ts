@@ -518,6 +518,121 @@ describe("magi:merge", () => {
     )
   })
 
+  test("creates edit-cycle resources after reusing changes-requested reviews", async ({
+    createMagi,
+    temporaryDirectory,
+  }) => {
+    const repository = await createRepository(temporaryDirectory)
+    const config = createPullRequestConfig(temporaryDirectory, "single")
+    const github = createGitHubFixture(
+      createPullRequestMetadata(temporaryDirectory, repository),
+      PULL_REQUEST,
+    )
+    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const ghCommands: string[] = []
+    const reviewBody = marker.stringify(
+      ...REVIEWERS.map((reviewer) => ({
+        command: "review",
+        reviewer,
+        verdict: "CHANGES_REQUESTED",
+      })),
+    )
+    const threads = REVIEWERS.map((reviewer, index) => ({
+      comments: {
+        nodes: [
+          {
+            author: { login: "review-bot" },
+            body: marker.stringify({
+              command: "review",
+              reviewer,
+              verdict: "CHANGES_REQUESTED",
+            }),
+            createdAt: "2026-07-24T01:00:00.000Z",
+            databaseId: index + 7,
+          },
+        ],
+      },
+      id: `thread-${index + 1}`,
+      isResolved: false,
+      line: index + 1,
+      path: "reviewed.txt",
+    }))
+
+    config.merge.maxThreadResolutionCycles = 1
+    config.review.concurrency.reviewers = 1
+    github.octokitPaginate.mockImplementation((request) => {
+      if (request === github.listFiles)
+        return Promise.resolve([{ filename: "reviewed.txt" }])
+      if (request === github.listComments) return Promise.resolve([])
+      if (request === github.listCommits)
+        return Promise.resolve([
+          {
+            commit: { author: { date: "2026-07-24T00:00:00.000Z" } },
+            parents: [{}],
+          },
+        ])
+      if (request === github.listReviews)
+        return Promise.resolve([
+          {
+            body: reviewBody,
+            commit_id: repository.headSha,
+            html_url:
+              "https://github.com/magi-ai/opencode-magi/pull/123#review",
+            state: "COMMENTED",
+            submitted_at: "2026-07-24T01:00:00.000Z",
+            user: { login: "review-bot" },
+          },
+        ])
+
+      return Promise.reject(new Error("Unexpected Octokit pagination request."))
+    })
+    github.graphqlPaginate.mockImplementation((request) => {
+      if (request === github.closingIssues)
+        return Promise.resolve({
+          repository: {
+            pullRequest: { closingIssuesReferences: { nodes: [] } },
+          },
+        })
+      if (request === github.reviewThreads)
+        return Promise.resolve({
+          repository: { pullRequest: { reviewThreads: { nodes: threads } } },
+        })
+
+      return Promise.reject(new Error("Unexpected GraphQL pagination request."))
+    })
+    magi.exec = createScenarioExec(repository, ghCommands)
+    mockSessions(client)
+    mockPromptOutputs(client, [
+      JSON.stringify({
+        mode: "REPLIED",
+        responses: REVIEWERS.map((_, index) => ({
+          action: "DISAGREE",
+          body: "No code change is needed.",
+          commentId: index + 7,
+        })),
+      }),
+      ...REVIEWERS.map(() => approvedOutput()),
+    ])
+    vi.spyOn(magi, "getConfig").mockResolvedValue(config)
+    mockGitHub(magi, github)
+
+    await expect(executeMerge(magi, createContext())).resolves.toContain(
+      "- **Verdict**: Approved",
+    )
+
+    const { events, state } = await readRun(config)
+
+    expect(client.session.create).toHaveBeenCalledTimes(5)
+    expect(state.worktree?.path).toBeTypeOf("string")
+    expect(github.createReplyForReviewComment).toHaveBeenCalledTimes(3)
+    expect(events.map(({ message }) => message)).toStrictEqual(
+      expect.arrayContaining([
+        "Creating editor session.",
+        "Creating worktree.",
+      ]),
+    )
+  })
+
   test("repairs invalid editor output within the full edit cycle", async ({
     createMagi,
     temporaryDirectory,
