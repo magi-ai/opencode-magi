@@ -65,6 +65,7 @@ describe("createExecWithGitHubApiRetry", () => {
       new Error("rate limit exceeded"),
     ],
     ["a non-rate-limit error", "gh api repos/example", new Error("not found")],
+    ["a primitive error", "gh api repos/example", "not found"],
   ])("propagates %s without retrying", async (_label, command, error) => {
     const exec = vi.fn<Exec>().mockRejectedValue(error)
     const retryingExec = createExecWithGitHubApiRetry(exec, 2)
