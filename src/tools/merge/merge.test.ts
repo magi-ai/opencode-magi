@@ -14,6 +14,7 @@ import {
   createReviewFixture,
   createState,
 } from "#/fixtures/review"
+import { MagiError } from "@/magi"
 import { Prompt } from "@/prompts"
 import { marker } from "@/utils"
 import { Merge } from "./merge"
@@ -384,6 +385,55 @@ describe("Merge", () => {
         "Editor output not found.",
       )
     })
+
+    test("includes synthetic new findings and editor replies during a dry run", async ({
+      magiFixture: { magi },
+    }) => {
+      const { exec, merge } = createMergeFixture(magi)
+
+      merge.state.dryRun = true
+      merge.state.editor = {
+        outputs: [
+          createEditOutput({
+            responses: [{ action: "FIXED", body: "Fixed.", commentId: -1 }],
+          }),
+        ],
+      }
+      merge.state.reviewers = {
+        one: {
+          outputs: [
+            {
+              newFindings: [
+                {
+                  body: "Finding.",
+                  line: 2,
+                  path: "src/index.ts",
+                  state: "accepted",
+                },
+              ],
+              verdict: "CHANGES_REQUESTED",
+            },
+          ],
+        },
+      }
+      merge.state.pr!.metadata = createMetadata()
+      merge.state.worktree = { path: "/tmp/worktree" }
+      exec.mockResolvedValue("")
+
+      await merge.fetchMergeContext()
+
+      expect(merge.state.pr?.threads).toStrictEqual([
+        expect.objectContaining({
+          comments: [
+            expect.objectContaining({
+              body: expect.stringContaining("Finding."),
+            }),
+            expect.objectContaining({ body: "Fixed." }),
+          ],
+          id: "dry-run:one:1",
+        }),
+      ])
+    })
   })
 
   describe("markRepliedReviewers", () => {
@@ -602,6 +652,77 @@ describe("Merge", () => {
       )
     })
 
+    test("ignores null and resolved review threads", async ({
+      magiFixture: { magi },
+    }) => {
+      const { graphqlMocks, merge } = createMergeFixture(magi)
+
+      merge.state.editor = {
+        author: { email: "editor@example.com", name: "Editor" },
+        sessionId: "editor-session",
+      }
+      merge.state.worktree = { path: "/tmp/worktree" }
+      graphqlMocks.paginate.mockResolvedValue({
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [
+                null,
+                { comments: { nodes: [] }, id: "thread-1", isResolved: true },
+              ],
+            },
+          },
+        },
+      })
+
+      await expect(merge.edit()).rejects.toThrow(
+        "No editable review threads found.",
+      )
+    })
+
+    test("stops retrying when the editor session is blocked", async ({
+      magiFixture: { magi },
+    }) => {
+      const { graphqlMocks, merge, updateEvent } = createMergeFixture(magi)
+      const error = new MagiError("blocked", "Editor requested input.")
+
+      merge.config.output.repairAttempts = 2
+      merge.state.editor = {
+        author: { email: "editor@example.com", name: "Editor" },
+        sessionId: "editor-session",
+      }
+      merge.state.worktree = { path: "/tmp/worktree" }
+      graphqlMocks.paginate.mockResolvedValue({
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [
+                {
+                  comments: { nodes: [{ databaseId: 101 }] },
+                  id: "thread-1",
+                  isResolved: false,
+                },
+              ],
+            },
+          },
+        },
+      })
+      vi.spyOn(Prompt, "init").mockResolvedValue({
+        create: vi.fn().mockResolvedValue("edit-task"),
+      } as unknown as Prompt)
+
+      const promptSession = vi
+        .spyOn(magi, "promptSession")
+        .mockRejectedValue(error)
+
+      await expect(merge.edit()).rejects.toThrow(error)
+      expect(promptSession).toHaveBeenCalledOnce()
+      expect(updateEvent).not.toHaveBeenCalledWith(
+        merge.state.output,
+        "Attempt 1 failed to edit. Retrying...",
+      )
+    })
+
     test("rejects an edited output that does not match worktree HEAD", async ({
       magiFixture: { magi },
     }) => {
@@ -793,12 +914,13 @@ describe("Merge", () => {
       const prompt = {
         create: vi.fn().mockResolvedValue("conflict-task"),
         parse: vi.fn().mockReturnValue({}),
-        repair: vi.fn(),
-        validate: vi.fn().mockReturnValue(true),
+        repair: vi.fn().mockResolvedValue("repaired-conflict-task"),
+        validate: vi.fn().mockReturnValueOnce(false).mockReturnValue(true),
       }
 
       let conflictChecks = 0
 
+      merge.config.output.repairAttempts = 2
       merge.state.dryRun = true
       merge.state.editor = {
         author: { email: "editor@example.com", name: "Editor" },
@@ -835,11 +957,49 @@ describe("Merge", () => {
 
       await merge.resolveConflict()
 
+      expect(prompt.repair).toHaveBeenCalledOnce()
       expect(merge.state.pr.metadata?.head.sha).toBe("resolved-sha")
       expect(merge.state.pr.files).toStrictEqual(["README.md", "src/index.ts"])
       expect(updateEvent).toHaveBeenCalledWith(
         merge.state.output,
         "Skipped pushing conflict resolution during dry run.",
+      )
+    })
+
+    test("stops retrying when the conflict editor session is blocked", async ({
+      magiFixture: { magi },
+    }) => {
+      const { exec, merge, updateEvent } = createMergeFixture(magi)
+      const error = new MagiError("blocked", "Editor requested input.")
+
+      merge.config.output.repairAttempts = 2
+      merge.state.editor = {
+        author: { email: "editor@example.com", name: "Editor" },
+        sessionId: "editor-session",
+      }
+      merge.state.pr!.metadata = createMetadata()
+      merge.state.worktree = { path: "/tmp/worktree" }
+      exec.mockImplementation((command) => {
+        if (command.includes("git merge --no-commit"))
+          return Promise.reject(new Error("merge conflict"))
+        if (command.includes("git diff --name-only"))
+          return Promise.resolve("src/index.ts")
+
+        return Promise.resolve("")
+      })
+      vi.spyOn(Prompt, "init").mockResolvedValue({
+        create: vi.fn().mockResolvedValue("conflict-task"),
+      } as unknown as Prompt)
+
+      const promptSession = vi
+        .spyOn(magi, "promptSession")
+        .mockRejectedValue(error)
+
+      await expect(merge.resolveConflict()).rejects.toThrow(error)
+      expect(promptSession).toHaveBeenCalledOnce()
+      expect(updateEvent).not.toHaveBeenCalledWith(
+        merge.state.output,
+        "Attempt 1 failed to resolve conflicts. Retrying...",
       )
     })
   })
