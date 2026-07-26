@@ -161,35 +161,30 @@ async function authErrors(config: Config.Root, exec: Exec): Promise<string[]> {
   if (config.mode === "single") {
     return filterEmpty([await authError(config, exec, config.account!)])
   } else {
-    const accounts = {
-      ...Object.fromEntries(
-        config.review.reviewers?.map(({ account }, index) => [
-          account!,
-          `review.reviewers[${index}]`,
-        ]) ?? [],
-      ),
-      ...Object.fromEntries(
-        config.triage.voters?.map(({ account }, index) => [
-          account!,
-          `triage.voters[${index}]`,
-        ]) ?? [],
-      ),
-    }
-
-    if (config.merge.editor)
-      accounts[config.merge.editor.account!] = "merge.editor"
-    if (config.triage.creator)
-      accounts[config.triage.creator.account!] = "triage.creator"
+    const reviewerAccounts =
+      config.review.reviewers?.map(({ account }) => account!) ?? []
+    const voterAccounts =
+      config.triage.voters?.map(({ account }) => account!) ?? []
+    const accounts = new Set(
+      filterEmpty([
+        ...reviewerAccounts,
+        ...voterAccounts,
+        config.merge.editor?.account,
+        config.triage.creator?.account,
+      ]),
+    )
 
     return filterEmpty([
       ...duplicateErrors(
-        Object.keys(accounts),
-        (value) => `${accounts[value]} has duplicate account: ${value}`,
+        reviewerAccounts,
+        (value) => `review.reviewers has duplicate account: ${value}`,
+      ),
+      ...duplicateErrors(
+        voterAccounts,
+        (value) => `triage.voters has duplicate account: ${value}`,
       ),
       ...(await Promise.all(
-        Object.keys(accounts).map((account) =>
-          authError(config, exec, account),
-        ),
+        [...accounts].map((account) => authError(config, exec, account)),
       )),
     ])
   }
