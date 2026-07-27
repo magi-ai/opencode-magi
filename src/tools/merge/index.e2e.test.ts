@@ -1024,7 +1024,7 @@ describe("magi:merge", () => {
     const { client, magi } = createMagi({ directory: temporaryDirectory })
     const ghCommands: string[] = []
 
-    config.merge.automation.merge = true
+    config.merge.automation.merge = [[true, { edited: false }]]
     config.review.concurrency.reviewers = 1
     magi.exec = createScenarioExec(repository, ghCommands, (command) => {
       if (command.startsWith("gh auth token")) return "token"
@@ -1133,7 +1133,9 @@ describe("magi:merge", () => {
     let diffChecks = 0
     let mergeAttempts = 0
 
-    config.merge.automation.conflict = true
+    config.merge.automation.conflict = [
+      [true, { paths: { exclude: [".github/**"] } }],
+    ]
     config.merge.automation.merge = true
     config.merge.maxThreadResolutionCycles = 1
     config.review.concurrency.reviewers = 1

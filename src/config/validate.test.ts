@@ -52,6 +52,47 @@ describe("validate", () => {
       expect(exec).not.toHaveBeenCalled()
     })
 
+    test("accepts conditional automation and safety configuration", async () => {
+      const config = createConfig()
+
+      config.review.automation.merge = [
+        [
+          true,
+          {
+            authors: { include: ["dependabot[bot]"] },
+            branches: { base: { include: ["main"] } },
+            labels: { exclude: ["do-not-merge"] },
+            paths: { exclude: [".github/**"] },
+          },
+        ],
+      ]
+      config.merge.automation.close = [[false, { edited: true }]]
+      config.review.safety = [
+        [
+          true,
+          {
+            authors: { exclude: ["untrusted"] },
+            branches: { head: { exclude: ["wip/**"] } },
+            labels: { include: ["ready"] },
+            maxChangedFiles: 10,
+            paths: { include: ["src/**"] },
+          },
+        ],
+      ]
+
+      await expect(validateConfig(config)).resolves.toStrictEqual([])
+    })
+
+    test("accepts merge automation conditions without edited", async () => {
+      const config = createConfig()
+
+      config.merge.automation.merge = [
+        [true, { authors: { include: ["dependabot[bot]"] } }],
+      ]
+
+      await expect(validateConfig(config)).resolves.toStrictEqual([])
+    })
+
     test("allows GitHub fields to be optional", async () => {
       const config = createConfig()
 

@@ -180,7 +180,7 @@ export const merge: Tool = function (magi) {
 
                 if (
                   automation === "CONFLICT" &&
-                  run.config.merge.automation.conflict
+                  run.isAutomationEnabled(run.config.merge.automation.conflict)
                 ) {
                   await run.editCycles(async (cycle) =>
                     editCycle(run, { conflict: true, cycle }),

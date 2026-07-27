@@ -328,10 +328,17 @@ describe("magi:review", () => {
     const { client, magi } = createMagi({ directory: temporaryDirectory })
     const ghCommands: string[] = []
 
-    config.review.safety.allowAuthors = ["trusted-author"]
-    config.review.safety.blockedPaths = ["reviewed.txt"]
-    config.review.safety.maxChangedFiles = 0
-    config.review.safety.requiredLabels = ["ready"]
+    config.review.safety = [
+      [
+        true,
+        {
+          authors: { include: ["trusted-author"] },
+          labels: { include: ["ready"] },
+          maxChangedFiles: 0,
+          paths: { exclude: ["reviewed.txt"] },
+        },
+      ],
+    ]
     magi.exec = createReviewExec(repository, ghCommands)
     vi.spyOn(magi, "getConfig").mockResolvedValue(config)
     mockGitHub(magi, github)
@@ -343,10 +350,10 @@ describe("magi:review", () => {
     const { report, state } = await readRun(config)
 
     expect(state.status).toBe("blocked")
-    expect(report).toContain("Author is not allowed: author.")
-    expect(report).toContain("Required labels missing: ready.")
+    expect(report).toContain("Author does not match safety filter: author.")
+    expect(report).toContain("Labels do not match safety filter.")
     expect(report).toContain("Changed files exceed limit: 1 > 0.")
-    expect(report).toContain("Blocked paths changed: reviewed.txt.")
+    expect(report).toContain("Paths do not match safety filter.")
     expect(client.session.create).not.toHaveBeenCalled()
     expect(github.createReview).not.toHaveBeenCalled()
     expect(ghCommands).toStrictEqual([])

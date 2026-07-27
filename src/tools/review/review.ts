@@ -8,7 +8,7 @@ import type { DeepPartial, Exec } from "@/utils"
 import { join } from "node:path"
 import { MagiError } from "@/magi"
 import { createExecWithGitHubApiRetry, quote } from "@/utils"
-import { automate, postReviews } from "./action"
+import { automate, isAutomationEnabled, postReviews } from "./action"
 import { checkCi, checkPr, classifyChecks, rerunChecks } from "./check"
 import { checkExistingReviews, fetchReviewContext } from "./context"
 import { createReport } from "./report"
@@ -128,6 +128,7 @@ export class Review {
   public validateFindings = validateFindings
   public reconsiderClose = reconsiderClose
   public postReviews = postReviews
+  public isAutomationEnabled = isAutomationEnabled
   public automate = automate
   public createReport = createReport
 

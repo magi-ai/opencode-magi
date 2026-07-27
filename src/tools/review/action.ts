@@ -4,6 +4,7 @@ import type {
   PullRequestReviewParams,
 } from "./index.type"
 import type { Review } from "./review"
+import type { Config } from "@/config"
 import type { ReviewerState } from "@/magi"
 import type { Dict } from "@/utils"
 import { MagiError } from "@/magi"
@@ -13,6 +14,7 @@ import {
   filterEmpty,
   ignoreError,
   isArray,
+  isBoolean,
   isObject,
   isString,
   loop,
@@ -23,6 +25,7 @@ import {
   wait,
   Worker,
 } from "@/utils"
+import { getConditionErrors } from "./check"
 
 const events = {
   APPROVED: "APPROVE",
@@ -312,10 +315,14 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
 
   if (!["APPROVED", "CLOSED"].includes(this.state.pr.verdict)) return "SKIPPED"
 
-  const automation = this.config[this.state.command].automation
   const action = this.state.pr.verdict === "APPROVED" ? "merge" : "close"
 
-  if (!automation[action]) {
+  if (
+    !isAutomationEnabled.call(
+      this,
+      this.config[this.state.command].automation[action],
+    )
+  ) {
     await this.updateState({ pr: { automation: "SKIPPED" } })
     await this.updateEvent(`Skipped ${action} automation.`)
 
@@ -568,6 +575,32 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
   await this.updateEvent(`Finished ${action} automation.`)
 
   return action === "merge" ? "MERGED" : "CLOSED"
+}
+
+export function isAutomationEnabled(
+  this: Review,
+  conditions:
+    | Config.MergeAutomationConditions
+    | Config.ReviewAutomationConditions,
+): boolean {
+  if (isBoolean(conditions)) return conditions
+
+  const edited =
+    !this.state.dryRun &&
+    this.state.editor?.outputs?.some(({ commitSha }) => !!commitSha)
+
+  return conditions.every(([expected, condition]) => {
+    const errors = getConditionErrors(
+      condition,
+      this.state.pr!.metadata!,
+      this.state.pr!.files ?? [],
+    )
+    const matches =
+      !errors.length &&
+      (!("edited" in condition) || condition.edited === !!edited)
+
+    return matches === expected
+  })
 }
 
 function hasFailedChecks(checks: unknown): boolean {

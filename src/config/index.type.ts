@@ -74,10 +74,39 @@ export interface Reviewer extends Omit<AgentRef, "author" | "id"> {
   ref?: string
 }
 
+export type ReviewConditionFilter =
+  | { exclude: string[]; include: string[] }
+  | { exclude: string[] }
+  | { include: string[] }
+
+export type ReviewConditionBranchFilter =
+  | { base: ReviewConditionFilter; head: ReviewConditionFilter }
+  | { base: ReviewConditionFilter }
+  | { head: ReviewConditionFilter }
+
+export interface ReviewCondition {
+  authors?: ReviewConditionFilter
+  branches?: ReviewConditionBranchFilter
+  labels?: ReviewConditionFilter
+  maxChangedFiles?: number
+  paths?: ReviewConditionFilter
+}
+
+export type ReviewConditions = [boolean, ReviewCondition][] | boolean
+
+export interface ReviewAutomationCondition extends Omit<
+  ReviewCondition,
+  "maxChangedFiles"
+> {}
+
+export type ReviewAutomationConditions =
+  | [boolean, ReviewAutomationCondition][]
+  | boolean
+
 export interface Review {
   automation: {
-    close: boolean
-    merge: boolean
+    close: ReviewAutomationConditions
+    merge: ReviewAutomationConditions
   }
   checks: {
     exclude: string[]
@@ -106,12 +135,7 @@ export interface Review {
     reviewGuidelines?: string
   }
   reviewers?: Reviewer[]
-  safety: {
-    allowAuthors: string[]
-    blockedPaths: string[]
-    maxChangedFiles?: number
-    requiredLabels: string[]
-  }
+  safety: ReviewConditions
   worktree: string
 }
 
@@ -119,11 +143,22 @@ export interface Editor extends Omit<Reviewer, "id"> {
   author?: Author
 }
 
+export interface MergeAutomationCondition extends Omit<
+  ReviewCondition,
+  "maxChangedFiles"
+> {
+  edited?: boolean
+}
+
+export type MergeAutomationConditions =
+  | [boolean, MergeAutomationCondition][]
+  | boolean
+
 export interface Merge {
   automation: {
-    close: boolean
-    conflict: boolean
-    merge: boolean
+    close: MergeAutomationConditions
+    conflict: ReviewAutomationConditions
+    merge: MergeAutomationConditions
   }
   checks: {
     wait: boolean
