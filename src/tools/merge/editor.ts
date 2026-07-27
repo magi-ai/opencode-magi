@@ -304,22 +304,15 @@ async function setAccount(this: Merge): Promise<void> {
 async function push(
   this: Merge,
 ): Promise<{ files: string[]; metadata: PullRequestMetadata }> {
-  if (!this.state.editor?.account)
-    throw new MagiError("blocked", "Editor account not found.")
-  if (!this.state.pr?.metadata)
-    throw new MagiError("blocked", "PR metadata not found.")
-  if (!this.state.worktree)
-    throw new MagiError("blocked", "PR worktree not found.")
-
   const token = await this.magi.getGhToken(
-    this.state.editor.account,
+    this.state.editor!.account,
     this.context.abort,
   )
-  const url = `https://${this.config.github.host}/${this.state.pr.metadata.head.repo.owner.login}/${this.state.pr.metadata.head.repo.name}.git`
-  const ref = `HEAD:refs/heads/${this.state.pr.metadata.head.ref}`
+  const url = `https://${this.config.github.host}/${this.state.pr!.metadata!.head.repo.owner.login}/${this.state.pr!.metadata!.head.repo.name}.git`
+  const ref = `HEAD:refs/heads/${this.state.pr!.metadata!.head.ref}`
 
   await this.exec(command("git", "push", quote(url), quote(ref)), {
-    cwd: this.state.worktree.path,
+    cwd: this.state.worktree!.path,
     env: {
       GIT_CONFIG_COUNT: "2",
       GIT_CONFIG_KEY_0: "credential.helper",
@@ -337,10 +330,7 @@ async function push(
 }
 
 async function getConflictedFiles(this: Merge): Promise<string[]> {
-  if (!this.state.worktree)
-    throw new MagiError("blocked", "PR worktree not found.")
-
-  const options = { cwd: this.state.worktree.path, signal: this.context.abort }
+  const options = { cwd: this.state.worktree!.path, signal: this.context.abort }
 
   try {
     await this.exec(

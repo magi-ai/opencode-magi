@@ -136,9 +136,7 @@ function addSyntheticReplies(
   this: Merge,
   threads: PullRequestReviewThread[],
 ): PullRequestReviewThread[] {
-  const output = this.state.editor?.outputs?.at(-1)
-
-  if (!output) throw new MagiError("blocked", "Editor output not found.")
+  const output = this.state.editor!.outputs!.at(-1)!
 
   return threads.map((thread) => ({
     ...thread,
