@@ -1,5 +1,27 @@
 # opencode-magi
 
+## 0.12.0
+
+### Minor Changes
+
+- [#439](https://github.com/magi-ai/opencode-magi/pull/439) [`c769a87`](https://github.com/magi-ai/opencode-magi/commit/c769a876d1a130a9b0723e5a1193e0795a9f5f8d) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Add conditional review and merge automation and replace review safety filters.
+
+### Patch Changes
+
+- [`d5c8908`](https://github.com/magi-ai/opencode-magi/commit/d5c8908b51073b320e06ac0fc9c8525c51da41ef) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Updated dependencies.
+
+- [#431](https://github.com/magi-ai/opencode-magi/pull/431) [`3b00763`](https://github.com/magi-ai/opencode-magi/commit/3b0076345be835d80f7f679e94ffbc08e663d25a) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Treat a pull request merged by a concurrent review run as a successful merge queue outcome.
+
+- [#411](https://github.com/magi-ai/opencode-magi/pull/411) [`1752b9d`](https://github.com/magi-ai/opencode-magi/commit/1752b9d2a35841fd53ece114e132aa4ba61b6e13) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Continue waiting when a pull request is already in the merge queue.
+
+- [#435](https://github.com/magi-ai/opencode-magi/pull/435) [`bb4bb40`](https://github.com/magi-ai/opencode-magi/commit/bb4bb4032da15f5da4dfc869a7e92f8fdcd4bdcc) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Reject duplicate GitHub accounts within reviewer and voter groups.
+
+- [#437](https://github.com/magi-ai/opencode-magi/pull/437) [`6535875`](https://github.com/magi-ai/opencode-magi/commit/6535875f3d718df7ec8c57bbd8797202bbdf89b0) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Remove redundant merge state guards.
+
+- [#436](https://github.com/magi-ai/opencode-magi/pull/436) [`05c255f`](https://github.com/magi-ai/opencode-magi/commit/05c255f449125485a15274ace34c1567488ae8e0) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Remove unreachable review state guards.
+
+- [#430](https://github.com/magi-ai/opencode-magi/pull/430) [`7e42ed7`](https://github.com/magi-ai/opencode-magi/commit/7e42ed7d20ff17fd1465f28b4faac12f1d75438d) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Simplify reviewer and voter config validation conditions.
+
 ## 0.11.0
 
 ### Minor Changes
