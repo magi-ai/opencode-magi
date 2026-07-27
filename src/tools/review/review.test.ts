@@ -488,17 +488,24 @@ describe("Review", () => {
       metadata.changed_files = 2
       metadata.labels = []
       metadata.user.login = "untrusted"
-      config.review.safety.allowAuthors = ["trusted"]
-      config.review.safety.blockedPaths = ["secrets/**"]
-      config.review.safety.maxChangedFiles = 1
-      config.review.safety.requiredLabels = ["reviewable"]
+      config.review.safety = [
+        [
+          true,
+          {
+            authors: { include: ["trusted"] },
+            labels: { include: ["reviewable"] },
+            maxChangedFiles: 1,
+            paths: { exclude: ["secrets/**"] },
+          },
+        ],
+      ]
       octokitMocks.get.mockResolvedValue({ data: metadata })
       octokitMocks.paginate.mockResolvedValue([
         { filename: "secrets/token.txt" },
       ])
 
       await expect(review.checkPr()).rejects.toThrow(
-        "PR is safety blocked. Author is not allowed: untrusted. Required labels missing: reviewable. Changed files exceed limit: 2 > 1. Blocked paths changed: secrets/token.txt.",
+        "PR is safety blocked. Author does not match safety filter: untrusted. Labels do not match safety filter. Paths do not match safety filter. Changed files exceed limit: 2 > 1.",
       )
     })
 
@@ -508,13 +515,43 @@ describe("Review", () => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
       const metadata = createMetadata()
 
-      config.review.safety.requiredLabels = ["reviewable"]
+      config.review.safety = [[true, { labels: { include: ["reviewable"] } }]]
       metadata.labels = [{ name: "unrelated" }] as typeof metadata.labels
       octokitMocks.get.mockResolvedValue({ data: metadata })
 
       await expect(review.checkPr()).rejects.toThrow(
-        "Required labels missing: reviewable.",
+        "Labels do not match safety filter.",
       )
+    })
+
+    test("accepts pull requests that match every safety filter", async ({
+      magiFixture: { magi },
+    }) => {
+      const { config, octokitMocks, review } = createReviewFixture(magi)
+      const metadata = createMetadata()
+
+      metadata.base.ref = "main"
+      metadata.head.ref = "feature/automation"
+      metadata.labels = [{ name: "ready" }] as typeof metadata.labels
+      metadata.user.login = "trusted"
+      config.review.safety = [
+        [
+          true,
+          {
+            authors: { exclude: ["untrusted"], include: ["trusted"] },
+            branches: {
+              base: { exclude: ["legacy/**"], include: ["main"] },
+              head: { exclude: ["wip/**"], include: ["feature/**"] },
+            },
+            labels: { exclude: ["do-not-review"], include: ["ready"] },
+            paths: { exclude: ["src/generated/**"], include: ["src/**"] },
+          },
+        ],
+      ]
+      octokitMocks.get.mockResolvedValue({ data: metadata })
+      octokitMocks.paginate.mockResolvedValue([{ filename: "src/index.ts" }])
+
+      await expect(review.checkPr()).resolves.toBeUndefined()
     })
 
     test("blocks a multi-mode reviewer that authored the pull request", async ({
@@ -2476,6 +2513,84 @@ describe("Review", () => {
 
       await expect(review.automate()).resolves.toBe("SKIPPED")
       expect(review.state.pr.automation).toBe("SKIPPED")
+      expect(exec).not.toHaveBeenCalled()
+    })
+
+    test("skips automation when a condition fails", async ({
+      magiFixture: { magi },
+    }) => {
+      const { config, exec, review } = createReviewFixture(magi)
+      const metadata = createMetadata()
+
+      metadata.labels = [{ name: "do-not-merge" }] as typeof metadata.labels
+      config.review.automation.merge = [
+        [true, { authors: { include: [metadata.user.login] } }],
+        [false, { labels: { include: ["do-not-merge"] } }],
+      ]
+      review.state.operator = { account: "review-bot" }
+      review.state.pr = {
+        ...review.state.pr!,
+        checks: createChecks(),
+        metadata,
+        verdict: "APPROVED",
+      }
+
+      await expect(review.automate()).resolves.toBe("SKIPPED")
+      expect(exec).not.toHaveBeenCalled()
+    })
+
+    test("enables automation when a condition does not match", async ({
+      magiFixture: { magi },
+    }) => {
+      const { config, exec, review } = createReviewFixture(magi)
+      const metadata = createMetadata()
+
+      config.review.automation.merge = [
+        [true, { authors: { include: [metadata.user.login] } }],
+        [false, { authors: { include: ["blocked-author"] } }],
+      ]
+      config.review.merge.auto = false
+      review.state.operator = { account: "review-bot" }
+      review.state.pr = {
+        ...review.state.pr!,
+        checks: createChecks(),
+        metadata,
+        verdict: "APPROVED",
+      }
+      vi.spyOn(magi, "getGhToken").mockResolvedValue("token")
+      exec.mockImplementation((command) =>
+        Promise.resolve(command.includes("gh api") ? "[]" : ""),
+      )
+
+      await expect(review.automate()).resolves.toBe("MERGED")
+    })
+
+    test("skips merge automation after an editor commit when configured", async ({
+      magiFixture: { magi },
+    }) => {
+      const { config, exec, review } = createReviewFixture(magi)
+
+      config.merge.automation.merge = [[true, { edited: false }]]
+      review.state.command = "merge"
+      review.state.editor = {
+        outputs: [
+          {
+            commitSha: "editor-commit",
+            filesTouched: ["src/index.ts"],
+            mode: "EDITED",
+            responses: [],
+          },
+        ],
+      }
+      review.state.operator = { account: "review-bot" }
+      review.state.pr = {
+        ...review.state.pr!,
+        checks: createChecks(),
+        metadata: createMetadata(),
+        verdict: "APPROVED",
+      }
+
+      await expect(review.automate()).resolves.toBe("SKIPPED")
       expect(exec).not.toHaveBeenCalled()
     })
 

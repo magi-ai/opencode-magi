@@ -62,11 +62,7 @@ export const DEFAULT_CONFIG: Config.Root = {
       queue: false,
     },
     output: ".magi/runs/pr",
-    safety: {
-      allowAuthors: [],
-      blockedPaths: [],
-      requiredLabels: [],
-    },
+    safety: [],
     worktree: ".magi/worktrees/pr",
   },
   triage: {

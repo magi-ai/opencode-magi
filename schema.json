@@ -174,21 +174,125 @@
         "variant": { "type": "string" }
       }
     },
+    "safetyFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "exclude": { "type": "array", "items": { "type": "string" } },
+        "include": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "safetyBranchFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "base": { "$ref": "#/$defs/safetyFilter" },
+        "head": { "$ref": "#/$defs/safetyFilter" }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "authors": { "$ref": "#/$defs/safetyFilter" },
+        "branches": { "$ref": "#/$defs/safetyBranchFilter" },
+        "labels": { "$ref": "#/$defs/safetyFilter" },
+        "maxChangedFiles": { "type": "integer", "minimum": 0 },
+        "paths": { "$ref": "#/$defs/safetyFilter" }
+      }
+    },
+    "conditions": {
+      "oneOf": [
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "prefixItems": [{ "type": "boolean" }, { "$ref": "#/$defs/safety" }]
+          }
+        }
+      ]
+    },
+    "automationSafety": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "authors": { "$ref": "#/$defs/safetyFilter" },
+        "branches": { "$ref": "#/$defs/safetyBranchFilter" },
+        "labels": { "$ref": "#/$defs/safetyFilter" },
+        "paths": { "$ref": "#/$defs/safetyFilter" }
+      }
+    },
+    "automationConditions": {
+      "oneOf": [
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "prefixItems": [
+              { "type": "boolean" },
+              { "$ref": "#/$defs/automationSafety" }
+            ]
+          }
+        }
+      ]
+    },
+    "mergeAutomationConditions": {
+      "oneOf": [
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "prefixItems": [
+              { "type": "boolean" },
+              { "$ref": "#/$defs/mergeAutomationSafety" }
+            ]
+          }
+        }
+      ]
+    },
+    "mergeAutomationSafety": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "authors": { "$ref": "#/$defs/safetyFilter" },
+        "branches": { "$ref": "#/$defs/safetyBranchFilter" },
+        "edited": { "type": "boolean" },
+        "labels": { "$ref": "#/$defs/safetyFilter" },
+        "paths": { "$ref": "#/$defs/safetyFilter" }
+      }
+    },
     "automation": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "merge": { "type": "boolean", "default": true },
-        "close": { "type": "boolean" }
+        "merge": { "$ref": "#/$defs/automationConditions", "default": true },
+        "close": { "$ref": "#/$defs/automationConditions", "default": false }
       }
     },
     "mergeAutomation": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "merge": { "type": "boolean", "default": true },
-        "close": { "type": "boolean", "default": false },
-        "conflict": { "type": "boolean", "default": false }
+        "merge": {
+          "$ref": "#/$defs/mergeAutomationConditions",
+          "default": true
+        },
+        "close": {
+          "$ref": "#/$defs/mergeAutomationConditions",
+          "default": false
+        },
+        "conflict": { "$ref": "#/$defs/automationConditions", "default": false }
       }
     },
     "reviewChecks": {
@@ -220,16 +324,6 @@
       "additionalProperties": false,
       "properties": {
         "runs": { "type": "integer", "minimum": 1, "default": 3 }
-      }
-    },
-    "safety": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "allowAuthors": { "type": "array", "items": { "type": "string" } },
-        "blockedPaths": { "type": "array", "items": { "type": "string" } },
-        "maxChangedFiles": { "type": "integer", "minimum": 0 },
-        "requiredLabels": { "type": "array", "items": { "type": "string" } }
       }
     },
     "reviewPrompts": {
@@ -376,7 +470,7 @@
         },
         "prompts": { "$ref": "#/$defs/reviewPrompts" },
         "checks": { "$ref": "#/$defs/reviewChecks" },
-        "safety": { "$ref": "#/$defs/safety" },
+        "safety": { "$ref": "#/$defs/conditions" },
         "automation": { "$ref": "#/$defs/automation" },
         "concurrency": { "$ref": "#/$defs/concurrency" },
         "merge": { "$ref": "#/$defs/reviewMerge" },

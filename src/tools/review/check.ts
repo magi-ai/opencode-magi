@@ -6,12 +6,14 @@ import type {
   PullRequestMetadata,
 } from "./index.type"
 import type { Review } from "./review"
+import type { Config } from "@/config"
 import picomatch from "picomatch"
 import { MagiError } from "@/magi"
 import { Prompt } from "@/prompts"
 import {
   command,
   filterEmpty,
+  isBoolean,
   isNumber,
   omitNullish,
   quote,
@@ -43,6 +45,106 @@ const ci = {
   },
 }
 
+function matchesValues(
+  filter: Config.ReviewConditionFilter | undefined,
+  values: string[],
+): boolean {
+  if (!filter) return true
+  if (
+    "include" in filter &&
+    !values.some((value) => filter.include.includes(value))
+  )
+    return false
+
+  return !(
+    "exclude" in filter &&
+    values.some((value) => filter.exclude.includes(value))
+  )
+}
+
+function matchesPatterns(
+  filter: Config.ReviewConditionFilter | undefined,
+  values: string[],
+): boolean {
+  if (!filter) return true
+
+  if ("include" in filter) {
+    const isIncluded = picomatch(filter.include, { dot: true })
+
+    if (!values.some((value) => isIncluded(value))) return false
+  }
+
+  if ("exclude" in filter) {
+    const isExcluded = picomatch(filter.exclude, { dot: true })
+
+    if (values.some((value) => isExcluded(value))) return false
+  }
+
+  return true
+}
+
+export function getConditionErrors(
+  condition: Config.ReviewCondition,
+  metadata: PullRequestMetadata,
+  files: string[],
+): string[] {
+  const errors: string[] = []
+  const branches = condition.branches
+    ? {
+        base:
+          "base" in condition.branches ? condition.branches.base : undefined,
+        head:
+          "head" in condition.branches ? condition.branches.head : undefined,
+      }
+    : {}
+
+  if (!matchesValues(condition.authors, [metadata.user.login]))
+    errors.push(`Author does not match safety filter: ${metadata.user.login}.`)
+  if (!matchesPatterns(branches.base, [metadata.base.ref]))
+    errors.push(
+      `Base branch does not match safety filter: ${metadata.base.ref}.`,
+    )
+  if (!matchesPatterns(branches.head, [metadata.head.ref]))
+    errors.push(
+      `Head branch does not match safety filter: ${metadata.head.ref}.`,
+    )
+  if (
+    !matchesValues(
+      condition.labels,
+      metadata.labels.map(({ name }) => name),
+    )
+  )
+    errors.push(`Labels do not match safety filter.`)
+  if (!matchesPatterns(condition.paths, files))
+    errors.push(`Paths do not match safety filter.`)
+  if (
+    isNumber(condition.maxChangedFiles) &&
+    metadata.changed_files > condition.maxChangedFiles
+  )
+    errors.push(
+      `Changed files exceed limit: ${metadata.changed_files} > ${condition.maxChangedFiles}.`,
+    )
+
+  return errors
+}
+
+function getSafetyErrors(
+  conditions: Config.ReviewConditions,
+  metadata: PullRequestMetadata,
+  files: string[],
+): string[] {
+  if (isBoolean(conditions)) return conditions ? [] : ["Safety is disabled."]
+
+  return conditions.flatMap(([expected, condition], index) => {
+    const errors = getConditionErrors(condition, metadata, files)
+
+    if (!errors.length === expected) return []
+    if (expected) return errors
+
+    return [`Safety condition ${index + 1} unexpectedly matched.`]
+  })
+}
+
 export async function checkPr(this: Review): Promise<void> {
   this.context.abort.throwIfAborted()
 
@@ -55,39 +157,7 @@ export async function checkPr(this: Review): Promise<void> {
     throw new MagiError("blocked", `PR is not open.`)
   if (metadata.draft) throw new MagiError("blocked", `PR is a draft.`)
 
-  const errors: string[] = []
-
-  if (this.config.review.safety.allowAuthors.length)
-    if (!this.config.review.safety.allowAuthors.includes(metadata.user.login))
-      errors.push(`Author is not allowed: ${metadata.user.login}.`)
-
-  if (this.config.review.safety.requiredLabels.length) {
-    const missingLabels = this.config.review.safety.requiredLabels.filter(
-      (label) =>
-        !metadata.labels.some(({ name }: { name: string }) => name === label),
-    )
-
-    if (missingLabels.length)
-      errors.push(`Required labels missing: ${missingLabels.join(", ")}.`)
-  }
-
-  if (
-    isNumber(this.config.review.safety.maxChangedFiles) &&
-    metadata.changed_files > this.config.review.safety.maxChangedFiles
-  )
-    errors.push(
-      `Changed files exceed limit: ${metadata.changed_files} > ${this.config.review.safety.maxChangedFiles}.`,
-    )
-
-  if (this.config.review.safety.blockedPaths.length) {
-    const isBlocked = picomatch(this.config.review.safety.blockedPaths, {
-      dot: true,
-    })
-    const blocked = files.filter((file) => isBlocked(file))
-
-    if (blocked.length)
-      errors.push(`Blocked paths changed: ${blocked.join(", ")}.`)
-  }
+  const errors = getSafetyErrors(this.config.review.safety, metadata, files)
 
   if (errors.length)
     throw new MagiError("blocked", `PR is safety blocked. ${errors.join(" ")}`)
