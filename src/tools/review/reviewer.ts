@@ -484,11 +484,6 @@ async function collectAcceptedFindings(
 
   if (!findings.length) return accepted
 
-  if (!this.config.review.reviewers?.length)
-    throw new MagiError("blocked", "No reviewers configured.")
-  if (!this.state.reviewers)
-    throw new MagiError("blocked", "Reviewers not found.")
-
   const worker = new Worker<[string, FindingValidationOutput]>(
     this.config.review.concurrency.reviewers,
   )
@@ -499,7 +494,7 @@ async function collectAcceptedFindings(
   )
   const validations = Object.fromEntries(
     await Promise.all(
-      this.config.review.reviewers.map(({ id }) =>
+      this.config.review.reviewers!.map(({ id }) =>
         worker.run(async () => {
           const { sessionId } = this.state.reviewers![id]!
 
@@ -594,7 +589,7 @@ async function collectAcceptedFindings(
       ),
     ),
   )
-  const threshold = Math.floor(this.config.review.reviewers.length / 2) + 1
+  const threshold = Math.floor(this.config.review.reviewers!.length / 2) + 1
 
   await Promise.all(
     findings.map(async ({ finding, index, reviewer }) => {

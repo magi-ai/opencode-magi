@@ -554,6 +554,32 @@ describe("Review", () => {
       await expect(review.checkPr()).resolves.toBeUndefined()
     })
 
+    test("reports branch mismatches and an unexpectedly matched negative condition", async ({
+      magiFixture: { magi },
+    }) => {
+      const { config, octokitMocks, review } = createReviewFixture(magi)
+      const metadata = createMetadata()
+
+      config.review.safety = [
+        [
+          true,
+          {
+            branches: {
+              base: { include: ["release"] },
+              head: { include: ["fix/**"] },
+            },
+          },
+        ],
+        [false, { maxChangedFiles: 1 }],
+      ]
+      octokitMocks.get.mockResolvedValue({ data: metadata })
+      octokitMocks.paginate.mockResolvedValue([])
+
+      await expect(review.checkPr()).rejects.toThrow(
+        "PR is safety blocked. Base branch does not match safety filter: main. Head branch does not match safety filter: feature. Safety condition 2 unexpectedly matched.",
+      )
+    })
+
     test("blocks a multi-mode reviewer that authored the pull request", async ({
       magiFixture: { magi },
     }) => {
@@ -1276,6 +1302,30 @@ describe("Review", () => {
       })
     })
 
+    test("preserves a non-JSON quoted diff path", async ({
+      magiFixture: { magi },
+    }) => {
+      const { exec, review } = createReviewFixture(magi)
+
+      review.state.reviewers = { one: { status: "initial" } }
+      review.state.pr!.metadata = createMetadata()
+      review.state.worktree = { path: "/tmp/worktree" }
+      exec.mockImplementation((command) => {
+        if (command.includes("git diff "))
+          return Promise.resolve(
+            ['+++ "b/src\\303\\251.ts"', "@@ -0,0 +1 @@", "+line"].join("\n"),
+          )
+
+        return Promise.resolve("")
+      })
+
+      await review.fetchReviewContext()
+
+      expect(review.state.pr?.inlineCommentTargets).toStrictEqual({
+        "base-sha": { "src\\303\\251.ts": [1] },
+      })
+    })
+
     test("requires every diff commit to be available after fetching", async ({
       magiFixture: { magi },
     }) => {
@@ -1736,6 +1786,20 @@ describe("Review", () => {
 
       expect(updateEvent).not.toHaveBeenCalled()
       expect(updateState).not.toHaveBeenCalled()
+    })
+
+    describe.each([
+      ["configured reviewers", "No reviewers configured."],
+      ["reviewer state", "Reviewers not found."],
+    ])("requires %s", (target, message) => {
+      test("rejects incomplete state", async ({ magiFixture: { magi } }) => {
+        const { config, review } = createReviewFixture(magi)
+
+        if (target === "configured reviewers") config.review.reviewers = []
+        if (target !== "reviewer state") review.state.reviewers = {}
+
+        await expect(review.validateFindings()).rejects.toThrow(message)
+      })
     })
 
     test("accepts findings with majority support and discards the rest", async ({
@@ -2644,7 +2708,7 @@ describe("Review", () => {
       )
     })
 
-    test("blocks auto-merge after a required check failure", async ({
+    test("blocks auto-merge after the latest required check fails", async ({
       magiFixture: { magi },
     }) => {
       const { exec, review } = createReviewFixture(magi)
@@ -2666,6 +2730,12 @@ describe("Review", () => {
               mergeStateStatus: "BLOCKED",
               state: "OPEN",
               statusCheckRollup: [
+                {
+                  completedAt: "2026-07-23T00:00:00.000Z",
+                  conclusion: "SUCCESS",
+                  name: "test",
+                  workflowName: "CI",
+                },
                 {
                   completedAt: "2026-07-23T01:00:00.000Z",
                   conclusion: "FAILURE",
@@ -2841,6 +2911,51 @@ describe("Review", () => {
       )
     })
 
+    test("reports a conflict while waiting after retrying an out-of-date auto-merge", async ({
+      magiFixture: { magi },
+    }) => {
+      const { exec, review } = createReviewFixture(magi)
+
+      let mergeAttempts = 0
+
+      review.state.operator = { account: "review-bot" }
+      review.state.pr = {
+        ...review.state.pr!,
+        checks: createChecks(),
+        metadata: createMetadata(),
+        verdict: "APPROVED",
+      }
+      vi.spyOn(magi, "getGhToken").mockResolvedValue("token")
+      exec.mockImplementation((command) => {
+        if (command.includes("gh api")) return Promise.resolve("[]")
+
+        if (command.includes("gh pr merge")) {
+          mergeAttempts += 1
+
+          if (mergeAttempts === 1)
+            return Promise.reject(new Error("head branch is not up to date"))
+
+          return Promise.resolve("")
+        }
+
+        if (command.includes("gh pr view"))
+          return Promise.resolve(
+            JSON.stringify({
+              autoMergeRequest: {},
+              mergeStateStatus: "DIRTY",
+              state: "OPEN",
+              statusCheckRollup: [],
+            }),
+          )
+
+        return Promise.resolve("")
+      })
+
+      await expect(review.automate()).resolves.toBe("CONFLICT")
+      expect(mergeAttempts).toBe(2)
+      expect(review.state.pr.automation).toBe("CONFLICT")
+    })
+
     test("re-enqueues after failed merge-queue checks", async ({
       magiFixture: { magi },
     }) => {
@@ -2928,6 +3043,234 @@ describe("Review", () => {
         review.state.output,
         "Attempt 1 failed to merge from the merge queue. Retrying...",
       )
+    })
+
+    test("blocks when the merge queue status is unavailable", async ({
+      magiFixture: { magi },
+    }) => {
+      const { config, graphqlMocks, octokit, review } =
+        createReviewFixture(magi)
+
+      config.review.merge.queue = true
+      review.state.operator = { account: "reviewer-one" }
+      review.state.pr = {
+        ...review.state.pr!,
+        checks: createChecks(),
+        metadata: createMetadata(),
+        verdict: "APPROVED",
+      }
+      graphqlMocks.enqueuePullRequest.mockResolvedValue(undefined)
+      graphqlMocks.mergeQueueStatus.mockResolvedValue({ repository: null })
+      vi.spyOn(magi, "createOctokit").mockResolvedValue(octokit)
+      vi.spyOn(magi, "createGraphql").mockReturnValue(
+        graphqlMocks as unknown as Graphql,
+      )
+      vi.spyOn(magi, "getGhToken").mockResolvedValue("token")
+
+      await expect(review.automate()).rejects.toThrow(
+        "Could not fetch merge queue status.",
+      )
+    })
+
+    test("reports a conflict after leaving the merge queue", async ({
+      magiFixture: { magi },
+    }) => {
+      const { config, exec, graphqlMocks, octokit, review } =
+        createReviewFixture(magi)
+
+      let mergeAttempts = 0
+
+      const leftQueue = {
+        repository: {
+          pullRequest: {
+            isInMergeQueue: false,
+            mergeQueueEntry: null,
+            state: "OPEN",
+            timelineItems: { nodes: [] },
+          },
+        },
+      }
+
+      config.review.merge.queue = true
+      review.state.operator = { account: "reviewer-one" }
+      review.state.pr = {
+        ...review.state.pr!,
+        checks: createChecks(),
+        metadata: createMetadata(),
+        verdict: "APPROVED",
+      }
+      review.state.worktree = { path: "/tmp/worktree" }
+      graphqlMocks.enqueuePullRequest.mockResolvedValue(undefined)
+      graphqlMocks.mergeQueueStatus
+        .mockResolvedValueOnce({
+          repository: {
+            pullRequest: {
+              isInMergeQueue: true,
+              mergeQueueEntry: { id: "entry-1" },
+              state: "OPEN",
+              timelineItems: { nodes: [] },
+            },
+          },
+        })
+        .mockResolvedValueOnce(leftQueue)
+        .mockResolvedValueOnce(leftQueue)
+      exec.mockImplementation((command) => {
+        if (command.includes("git merge --no-commit")) {
+          mergeAttempts += 1
+
+          if (mergeAttempts > 1)
+            return Promise.reject(new Error("merge failed"))
+        }
+
+        if (command.includes("git diff --name-only"))
+          return Promise.resolve("src/index.ts")
+
+        return Promise.resolve("")
+      })
+      vi.spyOn(magi, "createOctokit").mockResolvedValue(octokit)
+      vi.spyOn(magi, "createGraphql").mockReturnValue(
+        graphqlMocks as unknown as Graphql,
+      )
+      vi.spyOn(magi, "getGhToken").mockResolvedValue("token")
+      vi.useFakeTimers()
+
+      try {
+        const result = review.automate()
+
+        await vi.advanceTimersByTimeAsync(30_000)
+        await vi.advanceTimersByTimeAsync(30_000)
+        await expect(result).resolves.toBe("CONFLICT")
+      } finally {
+        vi.useRealTimers()
+      }
+
+      expect(review.state.pr.automation).toBe("CONFLICT")
+    })
+
+    test("blocks after merge-queue check retries are exhausted", async ({
+      magiFixture: { magi },
+    }) => {
+      const { config, graphqlMocks, octokit, review } =
+        createReviewFixture(magi)
+      const leftQueue = {
+        repository: {
+          pullRequest: {
+            isInMergeQueue: false,
+            mergeQueueEntry: null,
+            state: "OPEN",
+            timelineItems: {
+              nodes: [
+                {
+                  createdAt: "2026-07-23T01:00:00.000Z",
+                  reason: "failed_checks",
+                },
+              ],
+            },
+          },
+        },
+      }
+
+      config.review.checks.retryFailedJobs = 0
+      config.review.merge.queue = true
+      review.state.operator = { account: "reviewer-one" }
+      review.state.pr = {
+        ...review.state.pr!,
+        checks: createChecks(),
+        metadata: createMetadata(),
+        verdict: "APPROVED",
+      }
+      graphqlMocks.enqueuePullRequest.mockResolvedValue(undefined)
+      graphqlMocks.mergeQueueStatus
+        .mockResolvedValueOnce({
+          repository: {
+            pullRequest: {
+              isInMergeQueue: true,
+              mergeQueueEntry: { id: "entry-1" },
+              state: "OPEN",
+              timelineItems: { nodes: [] },
+            },
+          },
+        })
+        .mockResolvedValueOnce(leftQueue)
+        .mockResolvedValueOnce(leftQueue)
+      vi.spyOn(magi, "createOctokit").mockResolvedValue(octokit)
+      vi.spyOn(magi, "createGraphql").mockReturnValue(
+        graphqlMocks as unknown as Graphql,
+      )
+      vi.spyOn(magi, "getGhToken").mockResolvedValue("token")
+      vi.useFakeTimers()
+      vi.setSystemTime("2026-07-23T00:00:00.000Z")
+
+      try {
+        const result = review.automate().catch((error: unknown) => error)
+
+        await vi.advanceTimersByTimeAsync(30_000)
+        await vi.advanceTimersByTimeAsync(30_000)
+        await expect(result).resolves.toMatchObject({
+          message:
+            "PR left the merge queue after failed checks exceeded 0 retries.",
+        })
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    test("blocks after leaving the merge queue without a failed-check reason", async ({
+      magiFixture: { magi },
+    }) => {
+      const { config, graphqlMocks, octokit, review } =
+        createReviewFixture(magi)
+      const leftQueue = {
+        repository: {
+          pullRequest: {
+            isInMergeQueue: false,
+            mergeQueueEntry: null,
+            state: "OPEN",
+            timelineItems: { nodes: [] },
+          },
+        },
+      }
+
+      config.review.merge.queue = true
+      review.state.operator = { account: "reviewer-one" }
+      review.state.pr = {
+        ...review.state.pr!,
+        checks: createChecks(),
+        metadata: createMetadata(),
+        verdict: "APPROVED",
+      }
+      graphqlMocks.enqueuePullRequest.mockResolvedValue(undefined)
+      graphqlMocks.mergeQueueStatus
+        .mockResolvedValueOnce({
+          repository: {
+            pullRequest: {
+              isInMergeQueue: true,
+              mergeQueueEntry: { id: "entry-1" },
+              state: "OPEN",
+              timelineItems: { nodes: [] },
+            },
+          },
+        })
+        .mockResolvedValueOnce(leftQueue)
+        .mockResolvedValueOnce(leftQueue)
+      vi.spyOn(magi, "createOctokit").mockResolvedValue(octokit)
+      vi.spyOn(magi, "createGraphql").mockReturnValue(
+        graphqlMocks as unknown as Graphql,
+      )
+      vi.spyOn(magi, "getGhToken").mockResolvedValue("token")
+      vi.useFakeTimers()
+
+      try {
+        const result = review.automate().catch((error: unknown) => error)
+
+        await vi.advanceTimersByTimeAsync(30_000)
+        await vi.advanceTimersByTimeAsync(30_000)
+        await expect(result).resolves.toMatchObject({
+          message: "PR left the merge queue before merging.",
+        })
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     describe.each([
