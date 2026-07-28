@@ -796,7 +796,7 @@ describe("magi:merge", () => {
     )
     const { client, magi } = createMagi({ directory: temporaryDirectory })
     const ghCommands: string[] = []
-    const pushed: string[] = []
+    const pushed: { command: string; env?: { [key: string]: string } }[] = []
     const editorOutput = JSON.stringify({
       commitMessage: "fix review findings",
       commitSha: "edited-sha",
@@ -830,7 +830,7 @@ describe("magi:merge", () => {
           return "edited-sha"
 
         if (command.startsWith("git push ")) {
-          pushed.push(command)
+          pushed.push({ command, env: options?.env })
 
           return ""
         }
@@ -863,7 +863,15 @@ describe("magi:merge", () => {
     expect(state.reviewers?.["reviewer-two"]?.outputs).toHaveLength(2)
     expect(state.reviewers?.["reviewer-three"]?.outputs).toHaveLength(2)
     expect(pushed).toStrictEqual([
-      "git push 'https://github.com/author/opencode-magi.git' 'HEAD:refs/heads/feature'",
+      {
+        command:
+          "git push 'https://github.com/author/opencode-magi.git' 'HEAD:refs/heads/feature'",
+        env: expect.objectContaining({
+          GIT_CONFIG_COUNT: "3",
+          GIT_CONFIG_KEY_2: "http.https://github.com/.extraheader",
+          GIT_CONFIG_VALUE_2: "",
+        }),
+      },
     ])
     expect(
       events.filter(({ message }) => message === "Checking CI."),
