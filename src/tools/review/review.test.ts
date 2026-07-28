@@ -524,6 +524,20 @@ describe("Review", () => {
       )
     })
 
+    test("blocks pull requests with unmatched author roles", async ({
+      magiFixture: { magi },
+    }) => {
+      const { config, octokitMocks, review } = createReviewFixture(magi)
+      const metadata = createMetadata()
+
+      config.review.safety = [[true, { roles: { include: ["MEMBER"] } }]]
+      octokitMocks.get.mockResolvedValue({ data: metadata })
+
+      await expect(review.checkPr()).rejects.toThrow(
+        "PR is safety blocked. Role does not match safety filter: NONE.",
+      )
+    })
+
     test("accepts pull requests that match every safety filter", async ({
       magiFixture: { magi },
     }) => {
@@ -534,6 +548,7 @@ describe("Review", () => {
       metadata.head.ref = "feature/automation"
       metadata.labels = [{ name: "ready" }] as typeof metadata.labels
       metadata.user.login = "trusted"
+      metadata.author_association = "MEMBER"
       config.review.safety = [
         [
           true,
@@ -545,6 +560,7 @@ describe("Review", () => {
             },
             labels: { exclude: ["do-not-review"], include: ["ready"] },
             paths: { exclude: ["src/generated/**"], include: ["src/**"] },
+            roles: { exclude: ["NONE"], include: ["MEMBER"] },
           },
         ],
       ]

@@ -52,6 +52,7 @@ export interface ReviewFixture<T extends Review> {
 
 export function createMetadata(): PullRequestMetadata {
   return {
+    author_association: "NONE",
     base: {
       ref: "main",
       repo: { clone_url: "https://github.com/magi-ai/opencode-magi.git" },

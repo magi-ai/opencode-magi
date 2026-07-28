@@ -100,6 +100,10 @@ export function getConditionErrors(
 
   if (!matchesValues(condition.authors, [metadata.user.login]))
     errors.push(`Author does not match safety filter: ${metadata.user.login}.`)
+  if (!matchesValues(condition.roles, [metadata.author_association]))
+    errors.push(
+      `Role does not match safety filter: ${metadata.author_association}.`,
+    )
   if (!matchesPatterns(branches.base, [metadata.base.ref]))
     errors.push(
       `Base branch does not match safety filter: ${metadata.base.ref}.`,
