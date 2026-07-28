@@ -79,6 +79,21 @@ export type ReviewConditionFilter =
   | { exclude: string[] }
   | { include: string[] }
 
+export type ReviewConditionRole =
+  | "COLLABORATOR"
+  | "CONTRIBUTOR"
+  | "FIRST_TIME_CONTRIBUTOR"
+  | "FIRST_TIMER"
+  | "MANNEQUIN"
+  | "MEMBER"
+  | "NONE"
+  | "OWNER"
+
+export type ReviewConditionRoleFilter =
+  | { exclude: ReviewConditionRole[]; include: ReviewConditionRole[] }
+  | { exclude: ReviewConditionRole[] }
+  | { include: ReviewConditionRole[] }
+
 export type ReviewConditionBranchFilter =
   | { base: ReviewConditionFilter; head: ReviewConditionFilter }
   | { base: ReviewConditionFilter }
@@ -90,6 +105,7 @@ export interface ReviewCondition {
   labels?: ReviewConditionFilter
   maxChangedFiles?: number
   paths?: ReviewConditionFilter
+  roles?: ReviewConditionRoleFilter
 }
 
 export type ReviewConditions = [boolean, ReviewCondition][] | boolean

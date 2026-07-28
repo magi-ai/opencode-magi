@@ -63,10 +63,13 @@ describe("validate", () => {
             branches: { base: { include: ["main"] } },
             labels: { exclude: ["do-not-merge"] },
             paths: { exclude: [".github/**"] },
+            roles: { include: ["MEMBER"] },
           },
         ],
       ]
-      config.merge.automation.close = [[false, { edited: true }]]
+      config.merge.automation.close = [
+        [false, { edited: true, roles: { include: ["COLLABORATOR"] } }],
+      ]
       config.review.safety = [
         [
           true,
@@ -76,6 +79,7 @@ describe("validate", () => {
             labels: { include: ["ready"] },
             maxChangedFiles: 10,
             paths: { include: ["src/**"] },
+            roles: { exclude: ["NONE"] },
           },
         ],
       ]

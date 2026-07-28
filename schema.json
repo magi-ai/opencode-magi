@@ -192,6 +192,45 @@
         "head": { "$ref": "#/$defs/safetyFilter" }
       }
     },
+    "roleFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "COLLABORATOR",
+              "CONTRIBUTOR",
+              "FIRST_TIME_CONTRIBUTOR",
+              "FIRST_TIMER",
+              "MANNEQUIN",
+              "MEMBER",
+              "NONE",
+              "OWNER"
+            ]
+          }
+        },
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "COLLABORATOR",
+              "CONTRIBUTOR",
+              "FIRST_TIME_CONTRIBUTOR",
+              "FIRST_TIMER",
+              "MANNEQUIN",
+              "MEMBER",
+              "NONE",
+              "OWNER"
+            ]
+          }
+        }
+      }
+    },
     "safety": {
       "type": "object",
       "additionalProperties": false,
@@ -200,7 +239,8 @@
         "branches": { "$ref": "#/$defs/safetyBranchFilter" },
         "labels": { "$ref": "#/$defs/safetyFilter" },
         "maxChangedFiles": { "type": "integer", "minimum": 0 },
-        "paths": { "$ref": "#/$defs/safetyFilter" }
+        "paths": { "$ref": "#/$defs/safetyFilter" },
+        "roles": { "$ref": "#/$defs/roleFilter" }
       }
     },
     "conditions": {
@@ -224,7 +264,8 @@
         "authors": { "$ref": "#/$defs/safetyFilter" },
         "branches": { "$ref": "#/$defs/safetyBranchFilter" },
         "labels": { "$ref": "#/$defs/safetyFilter" },
-        "paths": { "$ref": "#/$defs/safetyFilter" }
+        "paths": { "$ref": "#/$defs/safetyFilter" },
+        "roles": { "$ref": "#/$defs/roleFilter" }
       }
     },
     "automationConditions": {
@@ -269,7 +310,8 @@
         "branches": { "$ref": "#/$defs/safetyBranchFilter" },
         "edited": { "type": "boolean" },
         "labels": { "$ref": "#/$defs/safetyFilter" },
-        "paths": { "$ref": "#/$defs/safetyFilter" }
+        "paths": { "$ref": "#/$defs/safetyFilter" },
+        "roles": { "$ref": "#/$defs/roleFilter" }
       }
     },
     "automation": {
