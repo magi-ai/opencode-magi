@@ -314,12 +314,14 @@ async function push(
   await this.exec(command("git", "push", quote(url), quote(ref)), {
     cwd: this.state.worktree!.path,
     env: {
-      GIT_CONFIG_COUNT: "2",
+      GIT_CONFIG_COUNT: "3",
       GIT_CONFIG_KEY_0: "credential.helper",
       GIT_CONFIG_KEY_1: "credential.helper",
+      GIT_CONFIG_KEY_2: `http.https://${this.config.github.host}/.extraheader`,
       GIT_CONFIG_VALUE_0: "",
       GIT_CONFIG_VALUE_1:
         "!f() { echo username=git; echo password=$GIT_PASSWORD; }; f",
+      GIT_CONFIG_VALUE_2: "",
       GIT_PASSWORD: token,
       GIT_TERMINAL_PROMPT: "0",
     },
