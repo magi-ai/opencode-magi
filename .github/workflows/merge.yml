@@ -155,12 +155,12 @@ jobs:
 
       - name: Setup github accounts
         env:
-          CREATOR_TOKEN: ${{ secrets.PAT_TOKEN }}
+          EDITOR_TOKEN: ${{ secrets.PAT_TOKEN }}
           MELCHIOR_TOKEN: ${{ secrets.MELCHIOR_TOKEN }}
           BALTHASAR_TOKEN: ${{ secrets.BALTHASAR_TOKEN }}
           CASPAR_TOKEN: ${{ secrets.CASPAR_TOKEN }}
         run: |
-          printf '%s' "$CREATOR_TOKEN" | gh auth login --hostname github.com --with-token
+          printf '%s' "$EDITOR_TOKEN" | gh auth login --hostname github.com --with-token
           printf '%s' "$MELCHIOR_TOKEN" | gh auth login --hostname github.com --with-token
           printf '%s' "$BALTHASAR_TOKEN" | gh auth login --hostname github.com --with-token
           printf '%s' "$CASPAR_TOKEN" | gh auth login --hostname github.com --with-token
