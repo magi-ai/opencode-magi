@@ -162,15 +162,15 @@ describe("magi:review", () => {
   describe.each(["single", "multi"] as const)("%s mode", (mode) => {
     test("completes an approved review and persists its artifacts", async ({
       createMagi,
-      temporaryDirectory,
+      tmpDir,
     }) => {
-      const repository = await createRepository(temporaryDirectory)
-      const config = createPullRequestConfig(temporaryDirectory, mode)
+      const repository = await createRepository(tmpDir)
+      const config = createPullRequestConfig(tmpDir, mode)
       const github = createGitHubFixture(
-        createPullRequestMetadata(temporaryDirectory, repository),
+        createPullRequestMetadata(tmpDir, repository),
         PULL_REQUEST,
       )
-      const { client, magi } = createMagi({ directory: temporaryDirectory })
+      const { client, magi } = createMagi({ dir: tmpDir })
       const ghCommands: string[] = []
       const rawReview = JSON.stringify({ verdict: "APPROVED" })
       const context = {
@@ -319,13 +319,13 @@ describe("magi:review", () => {
 
   test("blocks unsafe pull requests before creating review resources", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
-    const metadata = createPullRequestMetadata(temporaryDirectory, repository)
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const metadata = createPullRequestMetadata(tmpDir, repository)
     const github = createGitHubFixture(metadata, PULL_REQUEST)
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
 
     config.review.safety = [
@@ -361,13 +361,13 @@ describe("magi:review", () => {
 
   test("completes one pull request while reporting another blocked run", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
-    const metadata = createPullRequestMetadata(temporaryDirectory, repository)
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const metadata = createPullRequestMetadata(tmpDir, repository)
     const github = createGitHubFixture(metadata, PULL_REQUEST)
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
 
     let session = 0
@@ -428,13 +428,13 @@ describe("magi:review", () => {
 
   test("applies command options to a complete dry-run scenario", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
-    const metadata = createPullRequestMetadata(temporaryDirectory, repository)
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const metadata = createPullRequestMetadata(tmpDir, repository)
     const github = createGitHubFixture(metadata, PULL_REQUEST)
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
 
     magi.exec = createReviewExec(repository, ghCommands)
@@ -485,13 +485,13 @@ describe("magi:review", () => {
 
   test("reuses current reviews without creating sessions or a worktree", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
-    const metadata = createPullRequestMetadata(temporaryDirectory, repository)
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const metadata = createPullRequestMetadata(tmpDir, repository)
     const github = createGitHubFixture(metadata, PULL_REQUEST)
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
     const reviewBody = marker.stringify(
       ...REVIEWERS.map((reviewer) => ({
@@ -539,13 +539,13 @@ describe("magi:review", () => {
 
   test("runs initial and rereview reviewers while preserving a current review", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
-    const metadata = createPullRequestMetadata(temporaryDirectory, repository)
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const metadata = createPullRequestMetadata(tmpDir, repository)
     const github = createGitHubFixture(metadata, PULL_REQUEST)
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
     const thread = {
       comments: {
@@ -649,18 +649,12 @@ describe("magi:review", () => {
   describe.each(["single", "multi"] as const)(
     "%s mode change requests",
     (mode) => {
-      test("posts accepted findings", async ({
-        createMagi,
-        temporaryDirectory,
-      }) => {
-        const repository = await createRepository(temporaryDirectory)
-        const config = createPullRequestConfig(temporaryDirectory, mode)
-        const metadata = createPullRequestMetadata(
-          temporaryDirectory,
-          repository,
-        )
+      test("posts accepted findings", async ({ createMagi, tmpDir }) => {
+        const repository = await createRepository(tmpDir)
+        const config = createPullRequestConfig(tmpDir, mode)
+        const metadata = createPullRequestMetadata(tmpDir, repository)
         const github = createGitHubFixture(metadata, PULL_REQUEST)
-        const { client, magi } = createMagi({ directory: temporaryDirectory })
+        const { client, magi } = createMagi({ dir: tmpDir })
         const ghCommands: string[] = []
         const finding = (body: string): object => ({
           body,
@@ -737,13 +731,13 @@ describe("magi:review", () => {
 
   test("promotes a reviewer to approved when its finding is rejected", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
-    const metadata = createPullRequestMetadata(temporaryDirectory, repository)
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const metadata = createPullRequestMetadata(tmpDir, repository)
     const github = createGitHubFixture(metadata, PULL_REQUEST)
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
     const disagreement = {
       comment: "Not reproducible.",
@@ -795,13 +789,13 @@ describe("magi:review", () => {
 
   test("classifies and reruns an out-of-scope failed check before review", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
-    const metadata = createPullRequestMetadata(temporaryDirectory, repository)
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const metadata = createPullRequestMetadata(tmpDir, repository)
     const github = createGitHubFixture(metadata, PULL_REQUEST)
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
 
     let checks = 0
@@ -873,13 +867,13 @@ describe("magi:review", () => {
 
   test("reports in-scope, pending, and excluded checks without rerunning", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
-    const metadata = createPullRequestMetadata(temporaryDirectory, repository)
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const metadata = createPullRequestMetadata(tmpDir, repository)
     const github = createGitHubFixture(metadata, PULL_REQUEST)
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
     const check = (
       name: string,
@@ -945,13 +939,13 @@ describe("magi:review", () => {
 
   test("repairs invalid reviewer output and preserves both attempts", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
-    const metadata = createPullRequestMetadata(temporaryDirectory, repository)
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const metadata = createPullRequestMetadata(tmpDir, repository)
     const github = createGitHubFixture(metadata, PULL_REQUEST)
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
 
     config.output.repairAttempts = 2
@@ -986,13 +980,13 @@ describe("magi:review", () => {
 
   test("blocks the scenario when reviewer repair attempts are exhausted", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
-    const metadata = createPullRequestMetadata(temporaryDirectory, repository)
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const metadata = createPullRequestMetadata(tmpDir, repository)
     const github = createGitHubFixture(metadata, PULL_REQUEST)
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
 
     config.review.concurrency.reviewers = 1
@@ -1021,13 +1015,13 @@ describe("magi:review", () => {
 
   test("reconsiders a minority close verdict under unanimous approval", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
-    const metadata = createPullRequestMetadata(temporaryDirectory, repository)
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const metadata = createPullRequestMetadata(tmpDir, repository)
     const github = createGitHubFixture(metadata, PULL_REQUEST)
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
 
     config.review.concurrency.reviewers = 1
@@ -1069,13 +1063,13 @@ describe("magi:review", () => {
 
   test("posts closed reviews and closes the pull request", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
-    const metadata = createPullRequestMetadata(temporaryDirectory, repository)
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const metadata = createPullRequestMetadata(tmpDir, repository)
     const github = createGitHubFixture(metadata, PULL_REQUEST)
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
 
     config.review.automation.close = true
@@ -1115,13 +1109,13 @@ describe("magi:review", () => {
 
   test("merges an approved pull request with direct auto-merge", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
-    const metadata = createPullRequestMetadata(temporaryDirectory, repository)
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const metadata = createPullRequestMetadata(tmpDir, repository)
     const github = createGitHubFixture(metadata, PULL_REQUEST)
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
 
     config.review.automation.merge = true
@@ -1163,13 +1157,13 @@ describe("magi:review", () => {
 
   test("marks an aborted in-progress scenario as cancelled and cleans its worktree", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
-    const metadata = createPullRequestMetadata(temporaryDirectory, repository)
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const metadata = createPullRequestMetadata(tmpDir, repository)
     const github = createGitHubFixture(metadata, PULL_REQUEST)
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
     const controller = new AbortController()
 

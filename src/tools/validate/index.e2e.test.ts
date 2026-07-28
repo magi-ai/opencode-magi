@@ -50,13 +50,13 @@ describe("magi:validate", () => {
 
   test("passes merged global and project config", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const projectPath = join(temporaryDirectory, CONFIG_PATH.PROJECT)
-    const { magi } = createMagi({ directory: temporaryDirectory })
+    const projectPath = join(tmpDir, CONFIG_PATH.PROJECT)
+    const { magi } = createMagi({ dir: tmpDir })
     const exec = vi.fn<Exec>().mockResolvedValue("token")
 
-    CONFIG_PATH.GLOBAL = join(temporaryDirectory, "global.json")
+    CONFIG_PATH.GLOBAL = join(tmpDir, "global.json")
     magi.exec = exec
     await writeConfig(CONFIG_PATH.GLOBAL, {
       account: "global-account",
@@ -91,12 +91,12 @@ describe("magi:validate", () => {
 
   test("reports schema and agent group errors", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const { magi } = createMagi({ directory: temporaryDirectory })
+    const { magi } = createMagi({ dir: tmpDir })
     const exec = vi.fn<Exec>()
 
-    CONFIG_PATH.GLOBAL = join(temporaryDirectory, "global.json")
+    CONFIG_PATH.GLOBAL = join(tmpDir, "global.json")
     magi.exec = exec
     await writeConfig(CONFIG_PATH.GLOBAL, {
       account: "single-account",
@@ -146,12 +146,12 @@ describe("magi:validate", () => {
 
   test("reports an unavailable configured model", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const { magi } = createMagi({ directory: temporaryDirectory })
+    const { magi } = createMagi({ dir: tmpDir })
     const exec = vi.fn<Exec>()
 
-    CONFIG_PATH.GLOBAL = join(temporaryDirectory, "global.json")
+    CONFIG_PATH.GLOBAL = join(tmpDir, "global.json")
     magi.exec = exec
     await writeConfig(CONFIG_PATH.GLOBAL, {
       account: "single-account",
@@ -174,9 +174,9 @@ describe("magi:validate", () => {
 
   test("reports failed authentication across multi-agent roles", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const { magi } = createMagi({ directory: temporaryDirectory })
+    const { magi } = createMagi({ dir: tmpDir })
     const exec = vi.fn<Exec>((command) => {
       if (
         command.includes('"review-account-2"') ||
@@ -187,7 +187,7 @@ describe("magi:validate", () => {
       return Promise.resolve("token")
     })
 
-    CONFIG_PATH.GLOBAL = join(temporaryDirectory, "global.json")
+    CONFIG_PATH.GLOBAL = join(tmpDir, "global.json")
     magi.exec = exec
     await writeConfig(CONFIG_PATH.GLOBAL, {
       github: { owner: "magi-ai", repo: "opencode-magi" },
@@ -243,12 +243,12 @@ describe("magi:validate", () => {
 
   test("reports when OpenCode has no models", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const { magi } = createMagi({ directory: temporaryDirectory })
+    const { magi } = createMagi({ dir: tmpDir })
     const exec = vi.fn<Exec>()
 
-    CONFIG_PATH.GLOBAL = join(temporaryDirectory, "global.json")
+    CONFIG_PATH.GLOBAL = join(tmpDir, "global.json")
     magi.exec = exec
     mocks.getModels.mockResolvedValue([])
     await writeConfig(CONFIG_PATH.GLOBAL, {
@@ -267,14 +267,11 @@ describe("magi:validate", () => {
     expect(exec).not.toHaveBeenCalled()
   })
 
-  test("reports when no config file exists", async ({
-    createMagi,
-    temporaryDirectory,
-  }) => {
-    const projectPath = join(temporaryDirectory, CONFIG_PATH.PROJECT)
-    const { magi } = createMagi({ directory: temporaryDirectory })
+  test("reports when no config file exists", async ({ createMagi, tmpDir }) => {
+    const projectPath = join(tmpDir, CONFIG_PATH.PROJECT)
+    const { magi } = createMagi({ dir: tmpDir })
 
-    CONFIG_PATH.GLOBAL = join(temporaryDirectory, "global.json")
+    CONFIG_PATH.GLOBAL = join(tmpDir, "global.json")
 
     await expect(executeValidate(magi)).resolves.toBe(
       [
@@ -286,13 +283,10 @@ describe("magi:validate", () => {
     )
   })
 
-  test("reports malformed config JSON", async ({
-    createMagi,
-    temporaryDirectory,
-  }) => {
-    const { magi } = createMagi({ directory: temporaryDirectory })
+  test("reports malformed config JSON", async ({ createMagi, tmpDir }) => {
+    const { magi } = createMagi({ dir: tmpDir })
 
-    CONFIG_PATH.GLOBAL = join(temporaryDirectory, "global.json")
+    CONFIG_PATH.GLOBAL = join(tmpDir, "global.json")
     await writeFile(CONFIG_PATH.GLOBAL, "not json")
 
     const report = await executeValidate(magi)
@@ -304,11 +298,11 @@ describe("magi:validate", () => {
 
   test("reports config values that are not objects", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const { magi } = createMagi({ directory: temporaryDirectory })
+    const { magi } = createMagi({ dir: tmpDir })
 
-    CONFIG_PATH.GLOBAL = join(temporaryDirectory, "global.json")
+    CONFIG_PATH.GLOBAL = join(tmpDir, "global.json")
     await writeConfig(CONFIG_PATH.GLOBAL, [])
 
     await expect(executeValidate(magi)).resolves.toBe(

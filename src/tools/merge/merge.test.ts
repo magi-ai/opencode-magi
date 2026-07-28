@@ -41,7 +41,7 @@ function createEditOutput(overrides: Partial<EditOutput> = {}): EditOutput {
 describe("Merge", () => {
   describe("init", () => {
     test("creates a merge state and records the start event", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const config = createConfig()
       const context = {
@@ -108,9 +108,7 @@ describe("Merge", () => {
   })
 
   describe("createSession", () => {
-    test("creates and saves an editor session", async ({
-      magiFixture: { magi },
-    }) => {
+    test("creates and saves an editor session", async ({ magi }) => {
       const { context, merge, updateEvent, updateState } =
         createMergeFixture(magi)
       const createSession = vi
@@ -145,14 +143,14 @@ describe("Merge", () => {
       )
     })
 
-    test("requires editor state", async ({ magiFixture: { magi } }) => {
+    test("requires editor state", async ({ magi }) => {
       const { merge } = createMergeFixture(magi)
 
       await expect(merge.createSession()).rejects.toThrow("Editor not found.")
     })
 
     test("rejects an aborted merge before creating a session", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { controller, merge } = createMergeFixture(magi)
       const createSession = vi.spyOn(magi, "createSession")
@@ -167,12 +165,12 @@ describe("Merge", () => {
 
   describe("createReport", () => {
     test("writes editor results to a completed report", async ({
-      magiFixture: { magi },
-      temporaryDirectory,
+      magi,
+      tmpDir,
     }) => {
       const { getEvents, merge, updateState } = createMergeFixture(magi)
 
-      merge.state.output = temporaryDirectory
+      merge.state.output = tmpDir
       merge.state.editor = {
         outputs: [
           createEditOutput({
@@ -199,10 +197,10 @@ describe("Merge", () => {
       expect(report).toContain(
         "    - **Commit**: `commit-sha` fix: address review",
       )
-      await expect(
-        readFile(join(temporaryDirectory, "report.md"), "utf8"),
-      ).resolves.toBe(`${report}\n`)
-      expect(updateState).toHaveBeenCalledWith(temporaryDirectory, {
+      await expect(readFile(join(tmpDir, "report.md"), "utf8")).resolves.toBe(
+        `${report}\n`,
+      )
+      expect(updateState).toHaveBeenCalledWith(tmpDir, {
         completedAt: "2026-07-23T02:00:00.000Z",
         status: "completed",
       })
@@ -211,7 +209,7 @@ describe("Merge", () => {
 
   describe("editCycles", () => {
     test("retries changes-requested verdicts until approval", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, merge, updateEvent } = createMergeFixture(magi)
       const callback = vi
@@ -231,9 +229,7 @@ describe("Merge", () => {
       )
     })
 
-    test("blocks after reaching the maximum edit cycles", async ({
-      magiFixture: { magi },
-    }) => {
+    test("blocks after reaching the maximum edit cycles", async ({ magi }) => {
       const { config, merge } = createMergeFixture(magi)
       const callback = vi
         .fn<(cycle: number) => Promise<"CHANGES_REQUESTED">>()
@@ -250,7 +246,7 @@ describe("Merge", () => {
 
   describe("postReplies", () => {
     test("posts each editor response with the editor account", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { context, merge, octokit, octokitMocks, updateEvent } =
         createMergeFixture(magi)
@@ -300,7 +296,7 @@ describe("Merge", () => {
       )
     })
 
-    test("requires editor output", async ({ magiFixture: { magi } }) => {
+    test("requires editor output", async ({ magi }) => {
       const { merge } = createMergeFixture(magi)
 
       await expect(merge.postReplies()).rejects.toThrow(
@@ -309,7 +305,7 @@ describe("Merge", () => {
     })
 
     test("returns without an API client when there are no responses", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { merge, updateEvent } = createMergeFixture(magi)
       const createOctokit = vi.spyOn(magi, "createOctokit")
@@ -322,9 +318,7 @@ describe("Merge", () => {
       expect(updateEvent).not.toHaveBeenCalled()
     })
 
-    test("requires an editor account before posting", async ({
-      magiFixture: { magi },
-    }) => {
+    test("requires an editor account before posting", async ({ magi }) => {
       const { merge } = createMergeFixture(magi)
 
       merge.state.editor = {
@@ -345,7 +339,7 @@ describe("Merge", () => {
 
   describe("fetchMergeContext", () => {
     test("fetches merge context and inline comment targets", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, merge } = createMergeFixture(magi)
 
@@ -378,7 +372,7 @@ describe("Merge", () => {
       })
     })
 
-    test("requires editor output", async ({ magiFixture: { magi } }) => {
+    test("requires editor output", async ({ magi }) => {
       const { merge } = createMergeFixture(magi)
 
       await expect(merge.fetchMergeContext()).rejects.toThrow(
@@ -387,7 +381,7 @@ describe("Merge", () => {
     })
 
     test("includes synthetic new findings and editor replies during a dry run", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, merge } = createMergeFixture(magi)
 
@@ -437,9 +431,7 @@ describe("Merge", () => {
   })
 
   describe("markRepliedReviewers", () => {
-    test("marks the reviewer owning a replied thread", async ({
-      magiFixture: { magi },
-    }) => {
+    test("marks the reviewer owning a replied thread", async ({ magi }) => {
       const { merge, updateState } = createMergeFixture(magi)
       const body = [
         "Finding.",
@@ -481,7 +473,7 @@ describe("Merge", () => {
       ["threads", "PR threads not found."],
       ["reviewers", "Reviewers not found."],
     ])("requires %s", (target, message) => {
-      test("rejects incomplete state", async ({ magiFixture: { magi } }) => {
+      test("rejects incomplete state", async ({ magi }) => {
         const { merge } = createMergeFixture(magi)
 
         if (target !== "editor output")
@@ -492,9 +484,7 @@ describe("Merge", () => {
       })
     })
 
-    test("requires a response matching a review thread", async ({
-      magiFixture: { magi },
-    }) => {
+    test("requires a response matching a review thread", async ({ magi }) => {
       const { merge } = createMergeFixture(magi)
 
       merge.state.editor = {
@@ -512,9 +502,7 @@ describe("Merge", () => {
       )
     })
 
-    test("matches multi-mode reviewers by thread author", async ({
-      magiFixture: { magi },
-    }) => {
+    test("matches multi-mode reviewers by thread author", async ({ magi }) => {
       const { config, merge, updateState } = createMergeFixture(magi)
 
       config.mode = "multi"
@@ -550,7 +538,7 @@ describe("Merge", () => {
 
   describe("edit", () => {
     test("records an editor response without pushing changes", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { createAgentFile, exec, graphqlMocks, merge, updateState } =
         createMergeFixture(magi)
@@ -618,7 +606,7 @@ describe("Merge", () => {
       ["author", "Editor author not found."],
       ["worktree", "PR worktree not found."],
     ])("requires editor %s", (target, message) => {
-      test("rejects incomplete state", async ({ magiFixture: { magi } }) => {
+      test("rejects incomplete state", async ({ magi }) => {
         const { merge } = createMergeFixture(magi)
 
         merge.state.editor = {
@@ -636,9 +624,7 @@ describe("Merge", () => {
       })
     })
 
-    test("blocks when no editable threads remain", async ({
-      magiFixture: { magi },
-    }) => {
+    test("blocks when no editable threads remain", async ({ magi }) => {
       const { merge } = createMergeFixture(magi)
 
       merge.state.editor = {
@@ -652,9 +638,7 @@ describe("Merge", () => {
       )
     })
 
-    test("ignores null and resolved review threads", async ({
-      magiFixture: { magi },
-    }) => {
+    test("ignores null and resolved review threads", async ({ magi }) => {
       const { graphqlMocks, merge } = createMergeFixture(magi)
 
       merge.state.editor = {
@@ -681,7 +665,7 @@ describe("Merge", () => {
     })
 
     test("stops retrying when the editor session is blocked", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { graphqlMocks, merge, updateEvent } = createMergeFixture(magi)
       const error = new MagiError("blocked", "Editor requested input.")
@@ -724,7 +708,7 @@ describe("Merge", () => {
     })
 
     test("rejects an edited output that does not match worktree HEAD", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, graphqlMocks, merge } = createMergeFixture(magi)
       const output = createEditOutput({
@@ -774,7 +758,7 @@ describe("Merge", () => {
 
   describe("resolveConflict", () => {
     test("blocks when the worktree has no merge conflicts", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, merge } = createMergeFixture(magi)
 
@@ -798,9 +782,7 @@ describe("Merge", () => {
       })
     })
 
-    test("requires pull request metadata", async ({
-      magiFixture: { magi },
-    }) => {
+    test("requires pull request metadata", async ({ magi }) => {
       const { merge } = createMergeFixture(magi)
 
       merge.state.editor = {
@@ -815,7 +797,7 @@ describe("Merge", () => {
     })
 
     test("blocks when a failed merge reports no conflicted files", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, merge } = createMergeFixture(magi)
 
@@ -847,9 +829,7 @@ describe("Merge", () => {
       ["missing commit", "commit"],
       ["non-merge commit", "parents"],
     ])("blocks conflict resolution with %s", (_label, failure) => {
-      test("rejects an incomplete resolution", async ({
-        magiFixture: { magi },
-      }) => {
+      test("rejects an incomplete resolution", async ({ magi }) => {
         const { exec, merge, updateEvent } = createMergeFixture(magi)
         const prompt = {
           create: vi.fn().mockResolvedValue("conflict-task"),
@@ -908,7 +888,7 @@ describe("Merge", () => {
     })
 
     test("saves a dry-run conflict resolution without pushing", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, merge, updateEvent } = createMergeFixture(magi)
       const prompt = {
@@ -967,7 +947,7 @@ describe("Merge", () => {
     })
 
     test("stops retrying when the conflict editor session is blocked", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, merge, updateEvent } = createMergeFixture(magi)
       const error = new MagiError("blocked", "Editor requested input.")

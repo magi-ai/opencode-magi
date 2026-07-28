@@ -84,7 +84,7 @@ describe("Magi", () => {
       const fetch = vi.fn<typeof globalThis.fetch>()
       const options = {} as PluginOptions
       const { client, magi } = createMagi({
-        directory: "/repository",
+        dir: "/repository",
         fetch,
         options,
       })
@@ -102,9 +102,7 @@ describe("Magi", () => {
   })
 
   describe("getGhToken", () => {
-    test("requests the token for a selected account", async ({
-      magiFixture: { magi },
-    }) => {
+    test("requests the token for a selected account", async ({ magi }) => {
       const exec = vi.fn<Exec>().mockResolvedValue("token")
       const signal = new AbortController().signal
 
@@ -116,9 +114,7 @@ describe("Magi", () => {
       })
     })
 
-    test("requests the default account token", async ({
-      magiFixture: { magi },
-    }) => {
+    test("requests the default account token", async ({ magi }) => {
       const exec = vi.fn<Exec>().mockResolvedValue("token")
 
       magi.exec = exec
@@ -130,7 +126,7 @@ describe("Magi", () => {
 
   describe("createOctokit", () => {
     test("configures authentication, retries, and throttling", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const config = structuredClone(DEFAULT_CONFIG)
       const signal = new AbortController().signal
@@ -176,7 +172,7 @@ describe("Magi", () => {
 
   describe("createGraphql", () => {
     test("prints documents and delegates requests to Octokit", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const response = {
         enqueuePullRequest: { mergeQueueEntry: { id: "entry-1" } },
@@ -198,13 +194,13 @@ describe("Magi", () => {
   describe("clear", () => {
     test("clears inactive runs and skips active runs", async ({
       createMagi,
-      temporaryDirectory,
+      tmpDir,
     }) => {
-      const config = createConfig(temporaryDirectory)
-      const { client, magi } = createMagi({ directory: temporaryDirectory })
+      const config = createConfig(tmpDir)
+      const { client, magi } = createMagi({ dir: tmpDir })
       const output = join(config.review.output, "run-completed")
       const activeOutput = join(config.triage.output, "run-active")
-      const worktree = join(temporaryDirectory, "worktrees", "run-completed")
+      const worktree = join(tmpDir, "worktrees", "run-completed")
       const state = createState(output, {
         creator: { sessionId: "creator-session" },
         editor: { sessionId: "editor-session" },
@@ -265,11 +261,11 @@ describe("Magi", () => {
 
     test("continues when each cleanup operation fails", async ({
       createMagi,
-      temporaryDirectory,
+      tmpDir,
     }) => {
-      const config = createConfig(temporaryDirectory)
+      const config = createConfig(tmpDir)
       const scanDirectory = join(config.review.output, "run-failed")
-      const { client, magi } = createMagi({ directory: temporaryDirectory })
+      const { client, magi } = createMagi({ dir: tmpDir })
       const state = createState("\0", {
         worktree: {
           branch: "feature",
@@ -293,11 +289,11 @@ describe("Magi", () => {
 
     test("counts completed runs when cleanup is disabled", async ({
       createMagi,
-      temporaryDirectory,
+      tmpDir,
     }) => {
-      const config = createConfig(temporaryDirectory)
+      const config = createConfig(tmpDir)
       const output = join(config.review.output, "run-completed")
-      const { client, magi } = createMagi({ directory: temporaryDirectory })
+      const { client, magi } = createMagi({ dir: tmpDir })
       const exec = vi.fn<Exec>()
 
       config.clear = {
@@ -327,7 +323,7 @@ describe("Magi", () => {
     test("resolves relative paths and preserves absolute paths", ({
       createMagi,
     }) => {
-      const { magi } = createMagi({ directory: "/repository" })
+      const { magi } = createMagi({ dir: "/repository" })
 
       expect(magi.getPath("output/run-1")).toBe("/repository/output/run-1")
       expect(magi.getPath("/tmp/run-1")).toBe("/tmp/run-1")
@@ -335,7 +331,7 @@ describe("Magi", () => {
   })
 
   describe("getConfig", () => {
-    test("returns a valid config", async ({ magiFixture: { magi } }) => {
+    test("returns a valid config", async ({ magi }) => {
       const config = structuredClone(DEFAULT_CONFIG)
       const require = { reviewers: true }
 
@@ -350,7 +346,7 @@ describe("Magi", () => {
       })
     })
 
-    test("joins validation errors", async ({ magiFixture: { magi } }) => {
+    test("joins validation errors", async ({ magi }) => {
       const config = structuredClone(DEFAULT_CONFIG)
 
       mocks.getConfig.mockResolvedValue(config)
@@ -365,9 +361,9 @@ describe("Magi", () => {
   describe("createState", () => {
     test("creates and persists an initial state", async ({
       createMagi,
-      temporaryDirectory,
+      tmpDir,
     }) => {
-      const { magi } = createMagi({ directory: temporaryDirectory })
+      const { magi } = createMagi({ dir: tmpDir })
       const state = await magi.createState("runs", {
         command: "triage",
         dryRun: false,
@@ -385,9 +381,7 @@ describe("Magi", () => {
         status: "preparing",
       })
       expect(state.id).toMatch(/^run-[a-z0-9]+-[a-f0-9]{8}$/)
-      expect(
-        state.output.startsWith(join(temporaryDirectory, "runs")),
-      ).toBeTruthy()
+      expect(state.output.startsWith(join(tmpDir, "runs"))).toBeTruthy()
       expect(state.createdAt).toBe(state.updatedAt)
       await expect(
         readFile(join(state.output, "state.json"), "utf8"),
@@ -397,45 +391,30 @@ describe("Magi", () => {
 
   describe("createAgentFile", () => {
     test("includes the cycle and attempt in the filename", async ({
-      magiFixture: { magi },
-      temporaryDirectory,
+      magi,
+      tmpDir,
     }) => {
-      await magi.createAgentFile(
-        temporaryDirectory,
-        "review",
-        "reviewer-1",
-        "result",
-        2,
-        3,
-      )
+      await magi.createAgentFile(tmpDir, "review", "reviewer-1", "result", 2, 3)
 
       await expect(
-        readFile(join(temporaryDirectory, "reviewer-1-review-3-2.md"), "utf8"),
+        readFile(join(tmpDir, "reviewer-1-review-3-2.md"), "utf8"),
       ).resolves.toBe("result")
     })
 
     test("uses the default attempt when the cycle is omitted", async ({
-      magiFixture: { magi },
-      temporaryDirectory,
+      magi,
+      tmpDir,
     }) => {
-      await magi.createAgentFile(
-        temporaryDirectory,
-        "review",
-        "reviewer-1",
-        "result",
-      )
+      await magi.createAgentFile(tmpDir, "review", "reviewer-1", "result")
 
       await expect(
-        readFile(join(temporaryDirectory, "reviewer-1-review-1.md"), "utf8"),
+        readFile(join(tmpDir, "reviewer-1-review-1.md"), "utf8"),
       ).resolves.toBe("result")
     })
 
-    test("omits an invalid runtime attempt", async ({
-      magiFixture: { magi },
-      temporaryDirectory,
-    }) => {
+    test("omits an invalid runtime attempt", async ({ magi, tmpDir }) => {
       await magi.createAgentFile(
-        temporaryDirectory,
+        tmpDir,
         "review",
         "reviewer-1",
         "result",
@@ -443,7 +422,7 @@ describe("Magi", () => {
       )
 
       await expect(
-        readFile(join(temporaryDirectory, "reviewer-1-review.md"), "utf8"),
+        readFile(join(tmpDir, "reviewer-1-review.md"), "utf8"),
       ).resolves.toBe("result")
     })
   })
@@ -451,9 +430,9 @@ describe("Magi", () => {
   describe("updateState", () => {
     test("deeply merges and persists a state update", async ({
       createMagi,
-      temporaryDirectory,
+      tmpDir,
     }) => {
-      const { magi } = createMagi({ directory: temporaryDirectory })
+      const { magi } = createMagi({ dir: tmpDir })
       const state = await magi.createState("runs", {
         command: "triage",
         dryRun: false,
@@ -485,16 +464,10 @@ describe("Magi", () => {
   })
 
   describe("updateEvent", () => {
-    test("appends a JSON event", async ({
-      magiFixture: { magi },
-      temporaryDirectory,
-    }) => {
-      await magi.updateEvent(temporaryDirectory, "Preparing run")
+    test("appends a JSON event", async ({ magi, tmpDir }) => {
+      await magi.updateEvent(tmpDir, "Preparing run")
 
-      const content = await readFile(
-        join(temporaryDirectory, "events.jsonl"),
-        "utf8",
-      )
+      const content = await readFile(join(tmpDir, "events.jsonl"), "utf8")
       const event = JSON.parse(content) as {
         createdAt: string
         message: string
@@ -508,37 +481,32 @@ describe("Magi", () => {
 
   describe("getEvents", () => {
     test("returns an empty array when the event file is missing", async ({
-      magiFixture: { magi },
-      temporaryDirectory,
+      magi,
+      tmpDir,
     }) => {
-      await expect(magi.getEvents(temporaryDirectory)).resolves.toStrictEqual(
-        [],
-      )
+      await expect(magi.getEvents(tmpDir)).resolves.toStrictEqual([])
     })
 
-    test("parses non-empty event lines", async ({
-      magiFixture: { magi },
-      temporaryDirectory,
-    }) => {
+    test("parses non-empty event lines", async ({ magi, tmpDir }) => {
       await writeFile(
-        join(temporaryDirectory, "events.jsonl"),
+        join(tmpDir, "events.jsonl"),
         '{"createdAt":"first","message":"First"}\n\n' +
           '{"createdAt":"second","message":"Second"}\n',
       )
 
-      await expect(magi.getEvents(temporaryDirectory)).resolves.toStrictEqual([
+      await expect(magi.getEvents(tmpDir)).resolves.toStrictEqual([
         { createdAt: "first", message: "First" },
         { createdAt: "second", message: "Second" },
       ])
     })
 
     test("rethrows errors other than a missing file", async ({
-      magiFixture: { magi },
-      temporaryDirectory,
+      magi,
+      tmpDir,
     }) => {
-      await mkdir(join(temporaryDirectory, "events.jsonl"))
+      await mkdir(join(tmpDir, "events.jsonl"))
 
-      await expect(magi.getEvents(temporaryDirectory)).rejects.toMatchObject({
+      await expect(magi.getEvents(tmpDir)).rejects.toMatchObject({
         code: "EISDIR",
       })
     })
@@ -546,7 +514,8 @@ describe("Magi", () => {
 
   describe("createSession", () => {
     test("creates a child session with model and permissions", async ({
-      magiFixture: { client, magi },
+      client,
+      magi,
     }) => {
       const signal = new AbortController().signal
 
@@ -589,9 +558,7 @@ describe("Magi", () => {
       )
     })
 
-    test("rejects unresolved model values", async ({
-      magiFixture: { client, magi },
-    }) => {
+    test("rejects unresolved model values", async ({ client, magi }) => {
       await expect(
         magi.createSession("parent-session", "Reviewer", { model: undefined }),
       ).rejects.toBeInstanceOf(Error)
@@ -609,7 +576,8 @@ describe("Magi", () => {
     })
 
     test("uses the response status text for an API error", async ({
-      magiFixture: { client, magi },
+      client,
+      magi,
     }) => {
       client.session.create.mockResolvedValue({
         error: new Error("request failed"),
@@ -623,9 +591,7 @@ describe("Magi", () => {
       ).rejects.toThrow("Bad Gateway")
     })
 
-    test("uses an Error message for an API error", async ({
-      magiFixture: { client, magi },
-    }) => {
+    test("uses an Error message for an API error", async ({ client, magi }) => {
       client.session.create.mockResolvedValue({
         error: new Error("connection refused"),
       })
@@ -637,9 +603,7 @@ describe("Magi", () => {
       ).rejects.toThrow("connection refused")
     })
 
-    test("serializes a non-Error API failure", async ({
-      magiFixture: { client, magi },
-    }) => {
+    test("serializes a non-Error API failure", async ({ client, magi }) => {
       client.session.create.mockResolvedValue({
         error: { code: "ECONNRESET" },
       })
@@ -654,7 +618,8 @@ describe("Magi", () => {
 
   describe("promptSession", () => {
     test("returns text parts and closes the event subscription", async ({
-      magiFixture: { client, magi },
+      client,
+      magi,
     }) => {
       const signal = new AbortController().signal
 
@@ -687,9 +652,7 @@ describe("Magi", () => {
       expect(subscriptionSignal.aborted).toBeTruthy()
     })
 
-    test("rejects an empty text response", async ({
-      magiFixture: { client, magi },
-    }) => {
+    test("rejects an empty text response", async ({ client, magi }) => {
       client.session.prompt.mockResolvedValue({
         data: { parts: [{ type: "tool" }] },
       })
@@ -701,7 +664,8 @@ describe("Magi", () => {
     })
 
     test("uses the response status text for an API error", async ({
-      magiFixture: { client, magi },
+      client,
+      magi,
     }) => {
       client.session.prompt.mockResolvedValue({
         error: new Error("request failed"),
@@ -713,9 +677,7 @@ describe("Magi", () => {
       )
     })
 
-    test("uses an Error message for an API error", async ({
-      magiFixture: { client, magi },
-    }) => {
+    test("uses an Error message for an API error", async ({ client, magi }) => {
       client.session.prompt.mockResolvedValue({
         error: new Error("connection refused"),
       })
@@ -725,9 +687,7 @@ describe("Magi", () => {
       )
     })
 
-    test("serializes a non-Error API failure", async ({
-      magiFixture: { client, magi },
-    }) => {
+    test("serializes a non-Error API failure", async ({ client, magi }) => {
       client.session.prompt.mockResolvedValue({
         error: { code: "ECONNRESET" },
       })
@@ -738,7 +698,8 @@ describe("Magi", () => {
     })
 
     test("rejects permission requests and aborts the session", async ({
-      magiFixture: { client, magi },
+      client,
+      magi,
     }) => {
       client.event.subscribe.mockResolvedValue({
         stream: createEventStream([
@@ -792,9 +753,7 @@ describe("Magi", () => {
       })
     })
 
-    test("reports a permission rejection failure", async ({
-      magiFixture: { client, magi },
-    }) => {
+    test("reports a permission rejection failure", async ({ client, magi }) => {
       client.event.subscribe.mockResolvedValue({
         stream: createEventStream([
           {
@@ -824,7 +783,8 @@ describe("Magi", () => {
     })
 
     test("rejects questions and aborts the session", async ({
-      magiFixture: { client, magi },
+      client,
+      magi,
     }) => {
       client.event.subscribe.mockResolvedValue({
         stream: createEventStream([
@@ -855,9 +815,7 @@ describe("Magi", () => {
       })
     })
 
-    test("reports a question rejection failure", async ({
-      magiFixture: { client, magi },
-    }) => {
+    test("reports a question rejection failure", async ({ client, magi }) => {
       client.event.subscribe.mockResolvedValue({
         stream: createEventStream([
           {
@@ -888,16 +846,16 @@ describe("Magi", () => {
   describe("createWorktree", () => {
     test("creates a pull request worktree and returns its branch", async ({
       createMagi,
-      temporaryDirectory,
+      tmpDir,
     }) => {
-      const { magi } = createMagi({ directory: temporaryDirectory })
+      const { magi } = createMagi({ dir: tmpDir })
       const exec = vi
         .fn<Exec>()
         .mockResolvedValueOnce("")
         .mockResolvedValueOnce("")
         .mockResolvedValueOnce("feature")
       const signal = new AbortController().signal
-      const path = join(temporaryDirectory, "worktrees", "42", "run-1")
+      const path = join(tmpDir, "worktrees", "42", "run-1")
 
       magi.exec = exec
 
@@ -911,13 +869,10 @@ describe("Magi", () => {
       ])
     })
 
-    test("omits an empty branch name", async ({
-      createMagi,
-      temporaryDirectory,
-    }) => {
-      const { magi } = createMagi({ directory: temporaryDirectory })
+    test("omits an empty branch name", async ({ createMagi, tmpDir }) => {
+      const { magi } = createMagi({ dir: tmpDir })
       const exec = vi.fn<Exec>().mockResolvedValue("")
-      const path = join(temporaryDirectory, "worktrees", "42", "run-1")
+      const path = join(tmpDir, "worktrees", "42", "run-1")
 
       magi.exec = exec
 
@@ -928,16 +883,16 @@ describe("Magi", () => {
 
     test("cleans up and rethrows when checkout fails", async ({
       createMagi,
-      temporaryDirectory,
+      tmpDir,
     }) => {
-      const { magi } = createMagi({ directory: temporaryDirectory })
+      const { magi } = createMagi({ dir: tmpDir })
       const error = new Error("checkout failed")
       const exec = vi
         .fn<Exec>()
         .mockResolvedValueOnce("")
         .mockRejectedValueOnce(error)
         .mockResolvedValue("")
-      const path = join(temporaryDirectory, "worktrees", "42", "run-1")
+      const path = join(tmpDir, "worktrees", "42", "run-1")
 
       magi.exec = exec
 
@@ -954,9 +909,9 @@ describe("Magi", () => {
 
     test("preserves the original error when cleanup fails", async ({
       createMagi,
-      temporaryDirectory,
+      tmpDir,
     }) => {
-      const { magi } = createMagi({ directory: temporaryDirectory })
+      const { magi } = createMagi({ dir: tmpDir })
       const error = new Error("worktree failed")
       const exec = vi
         .fn<Exec>()
@@ -975,11 +930,11 @@ describe("Magi", () => {
   describe("deleteWorktree", () => {
     test("removes the git worktree and its directory", async ({
       createMagi,
-      temporaryDirectory,
+      tmpDir,
     }) => {
-      const { magi } = createMagi({ directory: temporaryDirectory })
+      const { magi } = createMagi({ dir: tmpDir })
       const exec = vi.fn<Exec>().mockResolvedValue("")
-      const path = join(temporaryDirectory, "worktrees", "run-1")
+      const path = join(tmpDir, "worktrees", "run-1")
 
       magi.exec = exec
       await mkdir(path, { recursive: true })
@@ -992,10 +947,10 @@ describe("Magi", () => {
 
     test("returns zero when the git command fails", async ({
       createMagi,
-      temporaryDirectory,
+      tmpDir,
     }) => {
-      const { magi } = createMagi({ directory: temporaryDirectory })
-      const path = join(temporaryDirectory, "worktrees", "run-1")
+      const { magi } = createMagi({ dir: tmpDir })
+      const path = join(tmpDir, "worktrees", "run-1")
 
       vi.spyOn(magi, "exec").mockRejectedValue(new Error("remove failed"))
       await mkdir(path, { recursive: true })
@@ -1004,9 +959,7 @@ describe("Magi", () => {
       await expect(access(path)).resolves.toBeUndefined()
     })
 
-    test("returns zero when filesystem removal fails", async ({
-      magiFixture: { magi },
-    }) => {
+    test("returns zero when filesystem removal fails", async ({ magi }) => {
       vi.spyOn(magi, "exec").mockResolvedValue("")
 
       await expect(magi.deleteWorktree("\0")).resolves.toBe(0)

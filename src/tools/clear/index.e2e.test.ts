@@ -57,12 +57,9 @@ async function executeClear(magi: Magi): Promise<string> {
 }
 
 describe("magi:clear", () => {
-  test("reports zero when no runs exist", async ({
-    createMagi,
-    temporaryDirectory,
-  }) => {
-    const config = createConfig(temporaryDirectory)
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+  test("reports zero when no runs exist", async ({ createMagi, tmpDir }) => {
+    const config = createConfig(tmpDir)
+    const { client, magi } = createMagi({ dir: tmpDir })
     const exec = vi.fn<Exec>()
     const getConfig = vi.spyOn(magi, "getConfig").mockResolvedValue(config)
 
@@ -85,16 +82,16 @@ describe("magi:clear", () => {
 
   test("clears inactive runs and skips active runs", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const config = createConfig(temporaryDirectory)
+    const config = createConfig(tmpDir)
     const completedOutput = join(config.review.output, "42", "run-completed")
     const failedOutput = join(config.triage.output, "42", "run-failed")
     const preparingOutput = join(config.review.output, "42", "run-preparing")
     const runningOutput = join(config.triage.output, "42", "run-running")
     const ignoredOutput = join(config.review.output, "ignored.txt")
-    const worktree = join(temporaryDirectory, "worktrees", "run-completed")
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const worktree = join(tmpDir, "worktrees", "run-completed")
+    const { client, magi } = createMagi({ dir: tmpDir })
     const exec = vi.fn<Exec>().mockResolvedValue("")
 
     magi.exec = exec
@@ -189,12 +186,12 @@ describe("magi:clear", () => {
 
   test("preserves artifacts when cleanup is disabled", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const config = createConfig(temporaryDirectory)
+    const config = createConfig(tmpDir)
     const output = join(config.review.output, "run-completed")
-    const worktree = join(temporaryDirectory, "worktrees", "run-completed")
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const worktree = join(tmpDir, "worktrees", "run-completed")
+    const { client, magi } = createMagi({ dir: tmpDir })
     const exec = vi.fn<Exec>()
 
     config.clear = {
@@ -231,11 +228,11 @@ describe("magi:clear", () => {
 
   test("continues when cleanup operations fail", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const config = createConfig(temporaryDirectory)
+    const config = createConfig(tmpDir)
     const scanDirectory = join(config.review.output, "run-failed")
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
 
     vi.spyOn(magi, "exec").mockRejectedValue(new Error("exec failed"))
     client.session.delete.mockRejectedValue(new Error("delete failed"))
@@ -264,9 +261,9 @@ describe("magi:clear", () => {
 
   test("surfaces config errors without clearing runs", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const { magi } = createMagi({ directory: temporaryDirectory })
+    const { magi } = createMagi({ dir: tmpDir })
     const clearRuns = vi.spyOn(magi, "clear")
 
     vi.spyOn(magi, "getConfig").mockRejectedValue(new Error("Invalid config"))
@@ -275,13 +272,10 @@ describe("magi:clear", () => {
     expect(clearRuns).not.toHaveBeenCalled()
   })
 
-  test("surfaces malformed persisted state", async ({
-    createMagi,
-    temporaryDirectory,
-  }) => {
-    const config = createConfig(temporaryDirectory)
+  test("surfaces malformed persisted state", async ({ createMagi, tmpDir }) => {
+    const config = createConfig(tmpDir)
     const output = join(config.review.output, "run-malformed")
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const exec = vi.fn<Exec>()
 
     magi.exec = exec

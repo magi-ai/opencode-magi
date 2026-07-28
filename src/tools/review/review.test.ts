@@ -26,7 +26,7 @@ function createChecks(): PullRequestChecks {
 describe("Review", () => {
   describe("init", () => {
     test("creates a review state and records the start event", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const config = createConfig()
       const context = {
@@ -89,7 +89,7 @@ describe("Review", () => {
     })
 
     test("selects an operator from the pull request number by default", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const config = createConfig()
       const context = {
@@ -115,9 +115,7 @@ describe("Review", () => {
   })
 
   describe("cleanup", () => {
-    test("marks an aborted active review as cancelled", async ({
-      magiFixture: { magi },
-    }) => {
+    test("marks an aborted active review as cancelled", async ({ magi }) => {
       const { controller, review, updateState } = createReviewFixture(magi)
 
       controller.abort()
@@ -137,7 +135,7 @@ describe("Review", () => {
     })
 
     test("deletes a worktree without changing a non-aborted review", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { review, updateState } = createReviewFixture(magi)
       const deleteWorktree = vi
@@ -153,7 +151,7 @@ describe("Review", () => {
     })
 
     test("leaves an aborted completed review status unchanged", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { controller, review, updateState } = createReviewFixture(magi)
 
@@ -167,9 +165,7 @@ describe("Review", () => {
   })
 
   describe("updateState", () => {
-    test("updates and replaces the current state", async ({
-      magiFixture: { magi },
-    }) => {
+    test("updates and replaces the current state", async ({ magi }) => {
       const { review, updateState } = createReviewFixture(magi)
 
       await review.updateState({ status: "running" })
@@ -182,9 +178,7 @@ describe("Review", () => {
   })
 
   describe("updateEvent", () => {
-    test("records an event in the review output", async ({
-      magiFixture: { magi },
-    }) => {
+    test("records an event in the review output", async ({ magi }) => {
       const { review, updateEvent } = createReviewFixture(magi)
 
       await review.updateEvent("Review event.")
@@ -197,9 +191,7 @@ describe("Review", () => {
   })
 
   describe("getEvents", () => {
-    test("returns events from the review output", async ({
-      magiFixture: { magi },
-    }) => {
+    test("returns events from the review output", async ({ magi }) => {
       const { getEvents, review } = createReviewFixture(magi)
       const events = [
         { createdAt: "2026-07-23T00:00:00.000Z", message: "Started." },
@@ -213,9 +205,7 @@ describe("Review", () => {
   })
 
   describe("createAgentFile", () => {
-    test("creates an agent file in the review output", async ({
-      magiFixture: { magi },
-    }) => {
+    test("creates an agent file in the review output", async ({ magi }) => {
       const { createAgentFile, review } = createReviewFixture(magi)
 
       await review.createAgentFile("review", "one", "content", 2, 3)
@@ -233,7 +223,7 @@ describe("Review", () => {
 
   describe("createSessions", () => {
     test("creates reviewer and operator sessions and saves their IDs", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { context, review, updateState } = createReviewFixture(magi)
       const createSession = vi
@@ -279,7 +269,7 @@ describe("Review", () => {
     })
 
     test("rejects an aborted review before creating sessions", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { controller, review } = createReviewFixture(magi)
       const createSession = vi.spyOn(magi, "createSession")
@@ -290,7 +280,7 @@ describe("Review", () => {
       expect(createSession).not.toHaveBeenCalled()
     })
 
-    test("requires reviewer state", async ({ magiFixture: { magi } }) => {
+    test("requires reviewer state", async ({ magi }) => {
       const { review } = createReviewFixture(magi)
 
       await expect(review.createSessions()).rejects.toThrow(
@@ -298,7 +288,7 @@ describe("Review", () => {
       )
     })
 
-    test("requires operator state", async ({ magiFixture: { magi } }) => {
+    test("requires operator state", async ({ magi }) => {
       const { review } = createReviewFixture(magi)
 
       review.state.reviewers = {}
@@ -310,7 +300,7 @@ describe("Review", () => {
   })
 
   describe("createWorktree", () => {
-    test("creates and saves a worktree", async ({ magiFixture: { magi } }) => {
+    test("creates and saves a worktree", async ({ magi }) => {
       const { config, context, review, updateEvent, updateState } =
         createReviewFixture(magi)
       const worktree = { branch: "magi/review-42", path: "/tmp/worktree" }
@@ -342,7 +332,7 @@ describe("Review", () => {
     })
 
     test("rejects an aborted review before creating a worktree", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { controller, review } = createReviewFixture(magi)
       const createWorktree = vi.spyOn(magi, "createWorktree")
@@ -355,7 +345,7 @@ describe("Review", () => {
   })
 
   describe("resolveVerdict", () => {
-    test("resolves a closed majority", async ({ magiFixture: { magi } }) => {
+    test("resolves a closed majority", async ({ magi }) => {
       const { review, updateEvent, updateState } = createReviewFixture(magi)
 
       review.state.reviewers = {
@@ -374,7 +364,7 @@ describe("Review", () => {
       )
     })
 
-    test("resolves an approved majority", async ({ magiFixture: { magi } }) => {
+    test("resolves an approved majority", async ({ magi }) => {
       const { review } = createReviewFixture(magi)
 
       review.state.reviewers = {
@@ -386,9 +376,7 @@ describe("Review", () => {
       await expect(review.resolveVerdict()).resolves.toBe("APPROVED")
     })
 
-    test("requests changes without an approved majority", async ({
-      magiFixture: { magi },
-    }) => {
+    test("requests changes without an approved majority", async ({ magi }) => {
       const { review } = createReviewFixture(magi)
 
       review.state.reviewers = {
@@ -401,7 +389,7 @@ describe("Review", () => {
     })
 
     test("requires unanimous approval under the unanimous policy", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, review } = createReviewFixture(magi)
 
@@ -415,7 +403,7 @@ describe("Review", () => {
       await expect(review.resolveVerdict()).resolves.toBe("CHANGES_REQUESTED")
     })
 
-    test("approves a unanimous verdict", async ({ magiFixture: { magi } }) => {
+    test("approves a unanimous verdict", async ({ magi }) => {
       const { config, review } = createReviewFixture(magi)
 
       config.review.merge.approvalPolicy = "unanimous"
@@ -428,7 +416,7 @@ describe("Review", () => {
       await expect(review.resolveVerdict()).resolves.toBe("APPROVED")
     })
 
-    test("requires configured reviewers", async ({ magiFixture: { magi } }) => {
+    test("requires configured reviewers", async ({ magi }) => {
       const { config, review } = createReviewFixture(magi)
 
       config.review.reviewers = []
@@ -438,7 +426,7 @@ describe("Review", () => {
       )
     })
 
-    test("requires reviewer state", async ({ magiFixture: { magi } }) => {
+    test("requires reviewer state", async ({ magi }) => {
       const { review } = createReviewFixture(magi)
 
       await expect(review.resolveVerdict()).rejects.toThrow(
@@ -446,9 +434,7 @@ describe("Review", () => {
       )
     })
 
-    test("requires an output from every reviewer", async ({
-      magiFixture: { magi },
-    }) => {
+    test("requires an output from every reviewer", async ({ magi }) => {
       const { review } = createReviewFixture(magi)
 
       review.state.reviewers = { one: {} }
@@ -461,7 +447,7 @@ describe("Review", () => {
 
   describe("checkPr", () => {
     test("checks and saves pull request metadata and files", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { octokitMocks, review } = createReviewFixture(magi)
 
@@ -479,9 +465,7 @@ describe("Review", () => {
       })
     })
 
-    test("reports every configured safety violation", async ({
-      magiFixture: { magi },
-    }) => {
+    test("reports every configured safety violation", async ({ magi }) => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
       const metadata = createMetadata()
 
@@ -510,7 +494,7 @@ describe("Review", () => {
     })
 
     test("blocks missing labels after inspecting existing labels", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
       const metadata = createMetadata()
@@ -525,7 +509,7 @@ describe("Review", () => {
     })
 
     test("blocks pull requests with unmatched author roles", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
       const metadata = createMetadata()
@@ -539,7 +523,7 @@ describe("Review", () => {
     })
 
     test("accepts pull requests that match every safety filter", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
       const metadata = createMetadata()
@@ -571,7 +555,7 @@ describe("Review", () => {
     })
 
     test("reports branch mismatches and an unexpectedly matched negative condition", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
       const metadata = createMetadata()
@@ -597,7 +581,7 @@ describe("Review", () => {
     })
 
     test("blocks a multi-mode reviewer that authored the pull request", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
       const metadata = createMetadata()
@@ -616,7 +600,7 @@ describe("Review", () => {
       )
     })
 
-    test("blocks a closed pull request", async ({ magiFixture: { magi } }) => {
+    test("blocks a closed pull request", async ({ magi }) => {
       const { octokitMocks, review } = createReviewFixture(magi)
       const metadata = createMetadata()
 
@@ -626,7 +610,7 @@ describe("Review", () => {
       await expect(review.checkPr()).rejects.toThrow("PR is not open.")
     })
 
-    test("blocks a draft pull request", async ({ magiFixture: { magi } }) => {
+    test("blocks a draft pull request", async ({ magi }) => {
       const { octokitMocks, review } = createReviewFixture(magi)
       const metadata = createMetadata()
 
@@ -637,7 +621,7 @@ describe("Review", () => {
     })
 
     test("blocks the single-mode account from reviewing its own pull request", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
       const metadata = createMetadata()
@@ -653,7 +637,7 @@ describe("Review", () => {
 
   describe("checkExistingReviews", () => {
     test("marks reviewers without existing reviews for initial review", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { review } = createReviewFixture(magi)
 
@@ -667,9 +651,7 @@ describe("Review", () => {
       })
     })
 
-    test("reuses a current marked review in single mode", async ({
-      magiFixture: { magi },
-    }) => {
+    test("reuses a current marked review in single mode", async ({ magi }) => {
       const { octokitMocks, review } = createReviewFixture(magi)
 
       review.config.review.reviewers = review.config.review.reviewers!.slice(
@@ -719,7 +701,7 @@ describe("Review", () => {
     })
 
     test("rereviews a current review after a new user reply", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { graphqlMocks, octokitMocks, review } = createReviewFixture(magi)
 
@@ -781,9 +763,7 @@ describe("Review", () => {
       expect(review.state.reviewers?.one?.status).toBe("rereview")
     })
 
-    test("requires pull request metadata", async ({
-      magiFixture: { magi },
-    }) => {
+    test("requires pull request metadata", async ({ magi }) => {
       const { review } = createReviewFixture(magi)
 
       await expect(review.checkExistingReviews()).rejects.toThrow(
@@ -791,7 +771,7 @@ describe("Review", () => {
       )
     })
 
-    test("requires configured reviewers", async ({ magiFixture: { magi } }) => {
+    test("requires configured reviewers", async ({ magi }) => {
       const { config, review } = createReviewFixture(magi)
 
       config.review.reviewers = []
@@ -803,7 +783,7 @@ describe("Review", () => {
     })
 
     test("falls back to an empty body for a malformed single-mode marker", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { octokitMocks, review } = createReviewFixture(magi)
 
@@ -845,9 +825,7 @@ describe("Review", () => {
       expect(review.state.reviewers?.one?.status).toBe("rereview")
     })
 
-    test("recognizes closed review markers in multi mode", async ({
-      magiFixture: { magi },
-    }) => {
+    test("recognizes closed review markers in multi mode", async ({ magi }) => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
 
       config.mode = "multi"
@@ -900,7 +878,7 @@ describe("Review", () => {
 
   describe("checkCi", () => {
     test("saves an empty check result when no required checks are reported", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review } = createReviewFixture(magi)
 
@@ -913,7 +891,7 @@ describe("Review", () => {
     })
 
     test("classifies excluded, failed, passed, and pending checks", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, exec, review } = createReviewFixture(magi)
 
@@ -969,7 +947,7 @@ describe("Review", () => {
     })
 
     test("supports regular expressions when excluding checks", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, exec, review } = createReviewFixture(magi)
 
@@ -991,9 +969,7 @@ describe("Review", () => {
       expect(review.state.pr?.checks?.excluded[0]?.name).toBe("generated-docs")
     })
 
-    test("surfaces unexpected GitHub check errors", async ({
-      magiFixture: { magi },
-    }) => {
+    test("surfaces unexpected GitHub check errors", async ({ magi }) => {
       const { exec, review } = createReviewFixture(magi)
 
       exec.mockRejectedValue(new Error("GitHub unavailable"))
@@ -1003,9 +979,7 @@ describe("Review", () => {
   })
 
   describe("classifyChecks", () => {
-    test("skips classification when no checks failed", async ({
-      magiFixture: { magi },
-    }) => {
+    test("skips classification when no checks failed", async ({ magi }) => {
       const { review, updateEvent, updateState } = createReviewFixture(magi)
 
       review.state.pr!.checks = createChecks()
@@ -1017,7 +991,7 @@ describe("Review", () => {
     })
 
     test("uses majority reviewer votes to classify failed checks", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { review, updateEvent } = createReviewFixture(magi)
       const prompt = {
@@ -1081,7 +1055,7 @@ describe("Review", () => {
       ["metadata", "PR metadata not found."],
       ["worktree", "PR worktree not found."],
     ])("requires pull request %s", (target, message) => {
-      test("rejects incomplete state", async ({ magiFixture: { magi } }) => {
+      test("rejects incomplete state", async ({ magi }) => {
         const { review } = createReviewFixture(magi)
 
         review.state.pr = {
@@ -1112,7 +1086,7 @@ describe("Review", () => {
     })
 
     test("requires a reviewer session for CI classification", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { review } = createReviewFixture(magi)
       const prompt = {
@@ -1148,7 +1122,7 @@ describe("Review", () => {
     })
 
     test("blocks after invalid CI classification output exhausts retries", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, review, updateEvent } = createReviewFixture(magi)
       const prompt = {
@@ -1195,7 +1169,7 @@ describe("Review", () => {
 
   describe("rerunChecks", () => {
     test("moves out-of-scope failures to passed checks during a dry run", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review } = createReviewFixture(magi)
       const check = {
@@ -1223,14 +1197,14 @@ describe("Review", () => {
       expect(exec).not.toHaveBeenCalled()
     })
 
-    test("requires pull request checks", async ({ magiFixture: { magi } }) => {
+    test("requires pull request checks", async ({ magi }) => {
       const { review } = createReviewFixture(magi)
 
       await expect(review.rerunChecks()).rejects.toThrow("PR checks not found.")
     })
 
     test("preserves and reports an out-of-scope check that still fails", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, exec, review, updateEvent } = createReviewFixture(magi)
       const check = {
@@ -1286,7 +1260,7 @@ describe("Review", () => {
 
   describe("fetchReviewContext", () => {
     test("fetches context and builds right-side inline comment targets", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review } = createReviewFixture(magi)
 
@@ -1318,9 +1292,7 @@ describe("Review", () => {
       })
     })
 
-    test("preserves a non-JSON quoted diff path", async ({
-      magiFixture: { magi },
-    }) => {
+    test("preserves a non-JSON quoted diff path", async ({ magi }) => {
       const { exec, review } = createReviewFixture(magi)
 
       review.state.reviewers = { one: { status: "initial" } }
@@ -1343,7 +1315,7 @@ describe("Review", () => {
     })
 
     test("requires every diff commit to be available after fetching", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review } = createReviewFixture(magi)
 
@@ -1367,7 +1339,7 @@ describe("Review", () => {
     })
 
     test("builds separate inline targets for a rereview commit", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review } = createReviewFixture(magi)
 
@@ -1412,7 +1384,7 @@ describe("Review", () => {
     })
 
     test("requires a previous commit for rereview diff targets", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { review } = createReviewFixture(magi)
 
@@ -1430,7 +1402,7 @@ describe("Review", () => {
       ["metadata", "PR metadata not found."],
       ["worktree", "PR worktree not found."],
     ])("requires %s for inline targets", (target, message) => {
-      test("rejects incomplete state", async ({ magiFixture: { magi } }) => {
+      test("rejects incomplete state", async ({ magi }) => {
         const { review } = createReviewFixture(magi)
 
         review.state.reviewers = { one: { status: "initial" } }
@@ -1446,7 +1418,7 @@ describe("Review", () => {
     })
 
     test("filters null closing issues and comments from context", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, graphqlMocks, review } = createReviewFixture(magi)
 
@@ -1487,7 +1459,7 @@ describe("Review", () => {
 
   describe("review", () => {
     test("skips reviewers whose existing reviews are current", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { review, updateEvent } = createReviewFixture(magi)
 
@@ -1517,7 +1489,7 @@ describe("Review", () => {
     })
 
     test("validates and saves reviewer findings and thread actions", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, review } = createReviewFixture(magi)
       const output = {
@@ -1586,7 +1558,7 @@ describe("Review", () => {
         "Missing previous review commit for reviewer one.",
       ],
     ])("requires %s", (target, message) => {
-      test("rejects incomplete state", async ({ magiFixture: { magi } }) => {
+      test("rejects incomplete state", async ({ magi }) => {
         const { config, review } = createReviewFixture(magi)
 
         config.review.reviewers = config.review.reviewers!.slice(0, 1)
@@ -1620,9 +1592,7 @@ describe("Review", () => {
       })
     })
 
-    test("blocks findings outside the right-side diff", async ({
-      magiFixture: { magi },
-    }) => {
+    test("blocks findings outside the right-side diff", async ({ magi }) => {
       const { config, review, updateEvent } = createReviewFixture(magi)
       const prompt = {
         create: vi.fn().mockResolvedValue("review-task"),
@@ -1662,7 +1632,7 @@ describe("Review", () => {
     })
 
     test("blocks follow-ups targeting another reviewer's thread", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, review } = createReviewFixture(magi)
       const prompt = {
@@ -1696,9 +1666,7 @@ describe("Review", () => {
       )
     })
 
-    test("blocks a mismatched thread resolution", async ({
-      magiFixture: { magi },
-    }) => {
+    test("blocks a mismatched thread resolution", async ({ magi }) => {
       const { config, review } = createReviewFixture(magi)
       const prompt = {
         create: vi.fn().mockResolvedValue("review-task"),
@@ -1743,9 +1711,7 @@ describe("Review", () => {
       ["a reversed line range", { line: 1, startLine: 2 }],
       ["a line outside a diff hunk", { line: 3 }],
     ])("blocks %s", (_label, target) => {
-      test("rejects the semantic finding target", async ({
-        magiFixture: { magi },
-      }) => {
+      test("rejects the semantic finding target", async ({ magi }) => {
         const { config, review } = createReviewFixture(magi)
         const prompt = {
           create: vi.fn().mockResolvedValue("review-task"),
@@ -1790,7 +1756,7 @@ describe("Review", () => {
 
   describe("validateFindings", () => {
     test("skips validation when reviewers have no findings", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { review, updateEvent, updateState } = createReviewFixture(magi)
 
@@ -1808,7 +1774,7 @@ describe("Review", () => {
       ["configured reviewers", "No reviewers configured."],
       ["reviewer state", "Reviewers not found."],
     ])("requires %s", (target, message) => {
-      test("rejects incomplete state", async ({ magiFixture: { magi } }) => {
+      test("rejects incomplete state", async ({ magi }) => {
         const { config, review } = createReviewFixture(magi)
 
         if (target === "configured reviewers") config.review.reviewers = []
@@ -1819,7 +1785,7 @@ describe("Review", () => {
     })
 
     test("accepts findings with majority support and discards the rest", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { review, updateEvent } = createReviewFixture(magi)
       const prompt = {
@@ -1905,7 +1871,7 @@ describe("Review", () => {
     })
 
     test("requires a session from every configured reviewer", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { review } = createReviewFixture(magi)
 
@@ -1941,9 +1907,7 @@ describe("Review", () => {
       ["a duplicate vote", "duplicate"],
       ["a missing vote", "missing"],
     ])("blocks %s", (_label, failure) => {
-      test("rejects the invalid finding ballot", async ({
-        magiFixture: { magi },
-      }) => {
+      test("rejects the invalid finding ballot", async ({ magi }) => {
         const { config, review, updateEvent } = createReviewFixture(magi)
         const validVote = {
           comment: "Vote.",
@@ -2012,7 +1976,7 @@ describe("Review", () => {
 
   describe("reconsiderClose", () => {
     test("skips reconsideration under the majority policy", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { review, updateEvent, updateState } = createReviewFixture(magi)
 
@@ -2026,7 +1990,7 @@ describe("Review", () => {
       ["configured reviewers", "No reviewers configured."],
       ["reviewer state", "Reviewers not found."],
     ])("requires %s", (target, message) => {
-      test("rejects incomplete state", async ({ magiFixture: { magi } }) => {
+      test("rejects incomplete state", async ({ magi }) => {
         const { config, review } = createReviewFixture(magi)
 
         config.review.merge.approvalPolicy = "unanimous"
@@ -2047,9 +2011,7 @@ describe("Review", () => {
         "Missing previous review commit for reviewer one.",
       ],
     ])("requires %s", (_label, target, message) => {
-      test("rejects incomplete reconsideration state", async ({
-        magiFixture: { magi },
-      }) => {
+      test("rejects incomplete reconsideration state", async ({ magi }) => {
         const { config, review } = createReviewFixture(magi)
         const prompt = { create: vi.fn().mockResolvedValue("reconsider-task") }
 
@@ -2076,7 +2038,7 @@ describe("Review", () => {
     })
 
     test("blocks after invalid reconsideration output exhausts retries", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, review, updateEvent } = createReviewFixture(magi)
       const prompt = {
@@ -2111,7 +2073,7 @@ describe("Review", () => {
     })
 
     test("validates findings returned during close reconsideration", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, review } = createReviewFixture(magi)
       const prompt = {
@@ -2195,9 +2157,7 @@ describe("Review", () => {
   })
 
   describe("postReviews", () => {
-    test("skips posting during a dry run", async ({
-      magiFixture: { magi },
-    }) => {
+    test("skips posting during a dry run", async ({ magi }) => {
       const { octokitMocks, review, updateEvent } = createReviewFixture(magi)
 
       review.state.dryRun = true
@@ -2213,9 +2173,7 @@ describe("Review", () => {
       ["reviewer state", "Reviewers not found."],
       ["pull request verdict", "PR verdict not found."],
     ])("requires %s", (target, message) => {
-      test("blocks incomplete posting state", async ({
-        magiFixture: { magi },
-      }) => {
+      test("blocks incomplete posting state", async ({ magi }) => {
         const { config, review } = createReviewFixture(magi)
 
         if (target === "configured reviewers") config.review.reviewers = []
@@ -2228,7 +2186,7 @@ describe("Review", () => {
     })
 
     test("posts one marked review with thread actions in single mode", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { graphql, graphqlMocks, octokit, octokitMocks, review } =
         createReviewFixture(magi)
@@ -2274,9 +2232,7 @@ describe("Review", () => {
       )
     })
 
-    test("posts accepted finding ranges in single mode", async ({
-      magiFixture: { magi },
-    }) => {
+    test("posts accepted finding ranges in single mode", async ({ magi }) => {
       const { graphql, octokit, octokitMocks, review } =
         createReviewFixture(magi)
       const prompt = {
@@ -2331,7 +2287,7 @@ describe("Review", () => {
     })
 
     test("posts accepted findings with the reviewer account in multi mode", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, octokit, octokitMocks, review } =
         createReviewFixture(magi)
@@ -2388,7 +2344,7 @@ describe("Review", () => {
     })
 
     test("does not post a changes-requested review without accepted findings", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { graphql, octokit, octokitMocks, review, updateEvent } =
         createReviewFixture(magi)
@@ -2424,7 +2380,7 @@ describe("Review", () => {
     })
 
     test("requires an operator session to report a closed verdict", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { graphql, octokit, review } = createReviewFixture(magi)
 
@@ -2441,7 +2397,7 @@ describe("Review", () => {
     })
 
     test("blocks after invalid operator output exhausts retries", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, graphql, octokit, review, updateEvent } =
         createReviewFixture(magi)
@@ -2473,7 +2429,7 @@ describe("Review", () => {
     })
 
     test("skips an existing review and posts multi-mode thread actions", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, graphql, graphqlMocks, octokit, octokitMocks, review } =
         createReviewFixture(magi)
@@ -2517,7 +2473,7 @@ describe("Review", () => {
     })
 
     test("requires output from an active multi-mode reviewer", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, review } = createReviewFixture(magi)
 
@@ -2532,7 +2488,7 @@ describe("Review", () => {
 
   describe("automate", () => {
     test("skips automation for a changes-requested verdict", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review, updateState } = createReviewFixture(magi)
 
@@ -2549,7 +2505,7 @@ describe("Review", () => {
       ["verdict", "PR verdict not found."],
       ["checks", "PR checks not found."],
     ])("requires pull request %s", (target, message) => {
-      test("rejects incomplete state", async ({ magiFixture: { magi } }) => {
+      test("rejects incomplete state", async ({ magi }) => {
         const { review } = createReviewFixture(magi)
 
         review.state.operator = { account: "review-bot" }
@@ -2565,7 +2521,7 @@ describe("Review", () => {
     })
 
     test("skips approved automation while checks remain unresolved", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review } = createReviewFixture(magi)
 
@@ -2596,9 +2552,7 @@ describe("Review", () => {
       expect(exec).not.toHaveBeenCalled()
     })
 
-    test("skips automation when a condition fails", async ({
-      magiFixture: { magi },
-    }) => {
+    test("skips automation when a condition fails", async ({ magi }) => {
       const { config, exec, review } = createReviewFixture(magi)
       const metadata = createMetadata()
 
@@ -2620,7 +2574,7 @@ describe("Review", () => {
     })
 
     test("enables automation when a condition does not match", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, exec, review } = createReviewFixture(magi)
       const metadata = createMetadata()
@@ -2646,7 +2600,7 @@ describe("Review", () => {
     })
 
     test("skips merge automation after an editor commit when configured", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, exec, review } = createReviewFixture(magi)
 
@@ -2675,7 +2629,7 @@ describe("Review", () => {
     })
 
     test("detects a merge conflict before starting automation", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review } = createReviewFixture(magi)
 
@@ -2705,7 +2659,7 @@ describe("Review", () => {
     })
 
     test("blocks direct merge when branch rules require a merge queue", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review } = createReviewFixture(magi)
 
@@ -2725,7 +2679,7 @@ describe("Review", () => {
     })
 
     test("blocks auto-merge after the latest required check fails", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review } = createReviewFixture(magi)
 
@@ -2770,9 +2724,7 @@ describe("Review", () => {
       )
     })
 
-    test("skips enabled automation during a dry run", async ({
-      magiFixture: { magi },
-    }) => {
+    test("skips enabled automation during a dry run", async ({ magi }) => {
       const { review, updateEvent } = createReviewFixture(magi)
 
       review.state.dryRun = true
@@ -2792,7 +2744,7 @@ describe("Review", () => {
     })
 
     test("reports a conflict discovered while waiting for auto-merge", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review } = createReviewFixture(magi)
 
@@ -2824,7 +2776,7 @@ describe("Review", () => {
     })
 
     test("updates a behind branch while waiting for auto-merge", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review, updateEvent } = createReviewFixture(magi)
 
@@ -2878,7 +2830,7 @@ describe("Review", () => {
     })
 
     test("updates an out-of-date branch and retries direct auto-merge", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review, updateEvent } = createReviewFixture(magi)
 
@@ -2928,7 +2880,7 @@ describe("Review", () => {
     })
 
     test("reports a conflict while waiting after retrying an out-of-date auto-merge", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review } = createReviewFixture(magi)
 
@@ -2972,9 +2924,7 @@ describe("Review", () => {
       expect(review.state.pr.automation).toBe("CONFLICT")
     })
 
-    test("re-enqueues after failed merge-queue checks", async ({
-      magiFixture: { magi },
-    }) => {
+    test("re-enqueues after failed merge-queue checks", async ({ magi }) => {
       const { config, graphqlMocks, review, updateEvent } =
         createReviewFixture(magi)
       const enqueuePullRequest = vi
@@ -3062,7 +3012,7 @@ describe("Review", () => {
     })
 
     test("blocks when the merge queue status is unavailable", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, graphqlMocks, octokit, review } =
         createReviewFixture(magi)
@@ -3089,7 +3039,7 @@ describe("Review", () => {
     })
 
     test("reports a conflict after leaving the merge queue", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, exec, graphqlMocks, octokit, review } =
         createReviewFixture(magi)
@@ -3164,7 +3114,7 @@ describe("Review", () => {
     })
 
     test("blocks after merge-queue check retries are exhausted", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, graphqlMocks, octokit, review } =
         createReviewFixture(magi)
@@ -3232,7 +3182,7 @@ describe("Review", () => {
     })
 
     test("blocks after leaving the merge queue without a failed-check reason", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, graphqlMocks, octokit, review } =
         createReviewFixture(magi)
@@ -3293,9 +3243,7 @@ describe("Review", () => {
       ["merge", "--merge"],
       ["rebase", "--rebase"],
     ])("uses the %s merge method", (method, flag) => {
-      test("passes the selected method to GitHub CLI", async ({
-        magiFixture: { magi },
-      }) => {
+      test("passes the selected method to GitHub CLI", async ({ magi }) => {
         const { config, exec, review } = createReviewFixture(magi)
 
         config.review.merge.auto = false
@@ -3321,9 +3269,7 @@ describe("Review", () => {
       })
     })
 
-    test("blocks when auto-merge is no longer enabled", async ({
-      magiFixture: { magi },
-    }) => {
+    test("blocks when auto-merge is no longer enabled", async ({ magi }) => {
       const { exec, review } = createReviewFixture(magi)
 
       review.state.operator = { account: "review-bot" }
@@ -3355,7 +3301,7 @@ describe("Review", () => {
     })
 
     test("reports a conflict returned by the merge command", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review } = createReviewFixture(magi)
 
@@ -3382,7 +3328,7 @@ describe("Review", () => {
     })
 
     test("blocks a dirty worktree before merge automation", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { exec, review } = createReviewFixture(magi)
 
@@ -3402,7 +3348,7 @@ describe("Review", () => {
     })
 
     test("completes when the pull request was merged before queueing", async ({
-      magiFixture: { magi },
+      magi,
     }) => {
       const { config, graphqlMocks, octokit, review } =
         createReviewFixture(magi)
@@ -3445,15 +3391,15 @@ describe("Review", () => {
 
   describe("createReport", () => {
     test("writes a completed report and updates the review status", async ({
-      magiFixture: { magi },
-      temporaryDirectory,
+      magi,
+      tmpDir,
     }) => {
       const { getEvents, review, updateState } = createReviewFixture(magi)
       const events = [
         { createdAt: "2026-07-23T00:00:00.000Z", message: "Finished." },
       ]
 
-      review.state.output = temporaryDirectory
+      review.state.output = tmpDir
       getEvents.mockResolvedValue(events)
       vi.useFakeTimers()
       vi.setSystemTime("2026-07-23T02:00:00.000Z")
@@ -3468,10 +3414,10 @@ describe("Review", () => {
 
       expect(report).toContain("- **Status**: Completed")
       expect(report).toContain("- **Last action**: Finished.")
-      await expect(
-        readFile(join(temporaryDirectory, "report.md"), "utf8"),
-      ).resolves.toBe(`${report}\n`)
-      expect(updateState).toHaveBeenCalledWith(temporaryDirectory, {
+      await expect(readFile(join(tmpDir, "report.md"), "utf8")).resolves.toBe(
+        `${report}\n`,
+      )
+      expect(updateState).toHaveBeenCalledWith(tmpDir, {
         completedAt: "2026-07-23T02:00:00.000Z",
         status: "completed",
       })

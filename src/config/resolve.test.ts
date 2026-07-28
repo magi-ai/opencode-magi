@@ -80,12 +80,10 @@ describe("resolve", () => {
   })
 
   describe("getConfig", () => {
-    test("merges global and project configs", async ({
-      temporaryDirectory,
-    }) => {
-      const projectPath = join(temporaryDirectory, CONFIG_PATH.PROJECT)
+    test("merges global and project configs", async ({ tmpDir }) => {
+      const projectPath = join(tmpDir, CONFIG_PATH.PROJECT)
 
-      CONFIG_PATH.GLOBAL = join(temporaryDirectory, "global.json")
+      CONFIG_PATH.GLOBAL = join(tmpDir, "global.json")
       await writeConfig(CONFIG_PATH.GLOBAL, {
         github: {
           host: "git.example.com",
@@ -102,7 +100,7 @@ describe("resolve", () => {
         language: "ja",
       })
 
-      const config = await getConfig(createInput(temporaryDirectory))
+      const config = await getConfig(createInput(tmpDir))
 
       expect(config.language).toBe("ja")
       expect(config.github).toMatchObject({
@@ -119,11 +117,11 @@ describe("resolve", () => {
     })
 
     test("resolves agents, references, permissions, accounts, and models", async ({
-      temporaryDirectory,
+      tmpDir,
     }) => {
-      CONFIG_PATH.GLOBAL = join(temporaryDirectory, "global.json")
+      CONFIG_PATH.GLOBAL = join(tmpDir, "global.json")
       mocks.getModels.mockResolvedValue(["provider/string", "provider/object"])
-      await writeConfig(join(temporaryDirectory, CONFIG_PATH.PROJECT), {
+      await writeConfig(join(tmpDir, CONFIG_PATH.PROJECT), {
         account: "root-account",
         agents: {
           permissions: {
@@ -177,7 +175,7 @@ describe("resolve", () => {
         },
       })
 
-      const config = await getConfig(createInput(temporaryDirectory))
+      const config = await getConfig(createInput(tmpDir))
 
       expect(
         config.review.reviewers?.map(({ account, id, model }) => ({
@@ -260,9 +258,9 @@ describe("resolve", () => {
     })
 
     test("uses scalar base permissions and default editor permissions", async ({
-      temporaryDirectory,
+      tmpDir,
     }) => {
-      CONFIG_PATH.GLOBAL = join(temporaryDirectory, "global.json")
+      CONFIG_PATH.GLOBAL = join(tmpDir, "global.json")
       await writeConfig(CONFIG_PATH.GLOBAL, {
         agents: { permissions: "ask" },
         github: { owner: "magi-ai", repo: "opencode-magi" },
@@ -290,7 +288,7 @@ describe("resolve", () => {
         },
       })
 
-      const config = await getConfig(createInput(temporaryDirectory))
+      const config = await getConfig(createInput(tmpDir))
 
       expect(config.review.reviewers?.[0]?.permissions).toStrictEqual({
         read: "deny",
@@ -304,40 +302,38 @@ describe("resolve", () => {
       })
     })
 
-    test("rejects an empty model list", async ({ temporaryDirectory }) => {
-      CONFIG_PATH.GLOBAL = join(temporaryDirectory, "global.json")
+    test("rejects an empty model list", async ({ tmpDir }) => {
+      CONFIG_PATH.GLOBAL = join(tmpDir, "global.json")
       mocks.getModels.mockResolvedValue([])
 
-      await expect(getConfig(createInput(temporaryDirectory))).rejects.toThrow(
+      await expect(getConfig(createInput(tmpDir))).rejects.toThrow(
         "No OpenCode models found.",
       )
     })
 
-    test("rejects missing config files", async ({ temporaryDirectory }) => {
-      CONFIG_PATH.GLOBAL = join(temporaryDirectory, "global.json")
+    test("rejects missing config files", async ({ tmpDir }) => {
+      CONFIG_PATH.GLOBAL = join(tmpDir, "global.json")
 
-      await expect(getConfig(createInput(temporaryDirectory))).rejects.toThrow(
-        `No Magi config found. Expected ${CONFIG_PATH.GLOBAL} or ${join(temporaryDirectory, CONFIG_PATH.PROJECT)}.`,
+      await expect(getConfig(createInput(tmpDir))).rejects.toThrow(
+        `No Magi config found. Expected ${CONFIG_PATH.GLOBAL} or ${join(tmpDir, CONFIG_PATH.PROJECT)}.`,
       )
     })
 
-    test("rethrows malformed config JSON", async ({ temporaryDirectory }) => {
-      CONFIG_PATH.GLOBAL = join(temporaryDirectory, "global.json")
+    test("rethrows malformed config JSON", async ({ tmpDir }) => {
+      CONFIG_PATH.GLOBAL = join(tmpDir, "global.json")
       await mkdir(dirname(CONFIG_PATH.GLOBAL), { recursive: true })
       await writeFile(CONFIG_PATH.GLOBAL, "not json")
 
-      await expect(
-        getConfig(createInput(temporaryDirectory)),
-      ).rejects.toBeInstanceOf(SyntaxError)
+      await expect(getConfig(createInput(tmpDir))).rejects.toBeInstanceOf(
+        SyntaxError,
+      )
     })
 
-    test("rejects config values that are not objects", async ({
-      temporaryDirectory,
-    }) => {
-      CONFIG_PATH.GLOBAL = join(temporaryDirectory, "global.json")
+    test("rejects config values that are not objects", async ({ tmpDir }) => {
+      CONFIG_PATH.GLOBAL = join(tmpDir, "global.json")
       await writeConfig(CONFIG_PATH.GLOBAL, [])
 
-      await expect(getConfig(createInput(temporaryDirectory))).rejects.toThrow(
+      await expect(getConfig(createInput(tmpDir))).rejects.toThrow(
         `Config must be a JSON object: ${CONFIG_PATH.GLOBAL}`,
       )
     })

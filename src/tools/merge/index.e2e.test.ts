@@ -257,16 +257,16 @@ interface PreparedReplyScenario {
 
 async function prepareReplyScenario(
   createMagi: CreateMagi,
-  temporaryDirectory: string,
+  tmpDir: string,
   editorOutputs: string[],
   finalOutputs: string[],
   repairAttempts = 1,
 ): Promise<PreparedReplyScenario> {
-  const repository = await createRepository(temporaryDirectory)
-  const config = createPullRequestConfig(temporaryDirectory, "single")
-  const metadata = createPullRequestMetadata(temporaryDirectory, repository)
+  const repository = await createRepository(tmpDir)
+  const config = createPullRequestConfig(tmpDir, "single")
+  const metadata = createPullRequestMetadata(tmpDir, repository)
   const github = createGitHubFixture(metadata, PULL_REQUEST)
-  const { client, magi } = createMagi({ directory: temporaryDirectory })
+  const { client, magi } = createMagi({ dir: tmpDir })
   const ghCommands: string[] = []
 
   config.merge.maxThreadResolutionCycles = 1
@@ -297,15 +297,15 @@ describe("magi:merge", () => {
   describe.each(["single", "multi"] as const)("%s mode", (mode) => {
     test("completes an approved run without an edit cycle", async ({
       createMagi,
-      temporaryDirectory,
+      tmpDir,
     }) => {
-      const repository = await createRepository(temporaryDirectory)
-      const config = createPullRequestConfig(temporaryDirectory, mode)
+      const repository = await createRepository(tmpDir)
+      const config = createPullRequestConfig(tmpDir, mode)
       const github = createGitHubFixture(
-        createPullRequestMetadata(temporaryDirectory, repository),
+        createPullRequestMetadata(tmpDir, repository),
         PULL_REQUEST,
       )
-      const { client, magi } = createMagi({ directory: temporaryDirectory })
+      const { client, magi } = createMagi({ dir: tmpDir })
       const ghCommands: string[] = []
       const rawReview = JSON.stringify({ verdict: "APPROVED" })
       const context = {
@@ -456,7 +456,7 @@ describe("magi:merge", () => {
 
   test("completes an editor reply cycle and rereviews the owning reviewer", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
     const editorOutput = JSON.stringify({
       mode: "REPLIED",
@@ -470,7 +470,7 @@ describe("magi:merge", () => {
     })
     const { client, config, github, magi } = await prepareReplyScenario(
       createMagi,
-      temporaryDirectory,
+      tmpDir,
       [editorOutput],
       [approvedOutput(), ...remainingFindingValidationOutputs()],
     )
@@ -520,15 +520,15 @@ describe("magi:merge", () => {
 
   test("creates edit-cycle resources after reusing changes-requested reviews", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
     const github = createGitHubFixture(
-      createPullRequestMetadata(temporaryDirectory, repository),
+      createPullRequestMetadata(tmpDir, repository),
       PULL_REQUEST,
     )
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
     const reviewBody = marker.stringify(
       ...REVIEWERS.map((reviewer) => ({
@@ -635,7 +635,7 @@ describe("magi:merge", () => {
 
   test("repairs invalid editor output within the full edit cycle", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
     const editorOutput = JSON.stringify({
       mode: "REPLIED",
@@ -649,7 +649,7 @@ describe("magi:merge", () => {
     })
     const { config, magi } = await prepareReplyScenario(
       createMagi,
-      temporaryDirectory,
+      tmpDir,
       ["not json", editorOutput],
       [approvedOutput(), ...remainingFindingValidationOutputs()],
       2,
@@ -674,11 +674,11 @@ describe("magi:merge", () => {
 
   test("blocks and cleans up when editor repair attempts are exhausted", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
     const { config, github, magi } = await prepareReplyScenario(
       createMagi,
-      temporaryDirectory,
+      tmpDir,
       ["not json"],
       [],
     )
@@ -699,11 +699,11 @@ describe("magi:merge", () => {
 
   test("fails the scenario when posting an editor reply fails", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
     const { config, github, magi } = await prepareReplyScenario(
       createMagi,
-      temporaryDirectory,
+      tmpDir,
       [
         JSON.stringify({
           mode: "REPLIED",
@@ -738,11 +738,11 @@ describe("magi:merge", () => {
 
   test("blocks after a complete edit cycle still requests changes", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
     const { config, github, magi } = await prepareReplyScenario(
       createMagi,
-      temporaryDirectory,
+      tmpDir,
       [
         JSON.stringify({
           mode: "REPLIED",
@@ -786,15 +786,15 @@ describe("magi:merge", () => {
 
   test("pushes an editor commit, rechecks CI, and rereviews all reviewers", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
     const github = createGitHubFixture(
-      createPullRequestMetadata(temporaryDirectory, repository),
+      createPullRequestMetadata(tmpDir, repository),
       PULL_REQUEST,
     )
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
     const pushed: { command: string; env?: { [key: string]: string } }[] = []
     const editorOutput = JSON.stringify({
@@ -886,15 +886,15 @@ describe("magi:merge", () => {
 
   test("uses synthetic threads for an edited dry-run cycle without pushing", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
     const github = createGitHubFixture(
-      createPullRequestMetadata(temporaryDirectory, repository),
+      createPullRequestMetadata(tmpDir, repository),
       PULL_REQUEST,
     )
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
     const commands: string[] = []
 
@@ -956,15 +956,15 @@ describe("magi:merge", () => {
 
   test("applies merge command options during a complete dry run", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
     const github = createGitHubFixture(
-      createPullRequestMetadata(temporaryDirectory, repository),
+      createPullRequestMetadata(tmpDir, repository),
       PULL_REQUEST,
     )
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
 
     magi.exec = createScenarioExec(repository, ghCommands)
@@ -1021,15 +1021,15 @@ describe("magi:merge", () => {
 
   test("merges an approved run after the review pipeline", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
     const github = createGitHubFixture(
-      createPullRequestMetadata(temporaryDirectory, repository),
+      createPullRequestMetadata(tmpDir, repository),
       PULL_REQUEST,
     )
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
 
     config.merge.automation.merge = [[true, { edited: false }]]
@@ -1068,15 +1068,15 @@ describe("magi:merge", () => {
 
   test("enqueues and merges an approved run through the merge queue", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
     const github = createGitHubFixture(
-      createPullRequestMetadata(temporaryDirectory, repository),
+      createPullRequestMetadata(tmpDir, repository),
       PULL_REQUEST,
     )
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
     const enqueuePullRequest = vi.fn().mockResolvedValue({})
     const mergeQueueStatus = vi.fn().mockResolvedValue({
@@ -1127,15 +1127,15 @@ describe("magi:merge", () => {
 
   test("resolves an automation conflict, rereviews, and merges", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
     const github = createGitHubFixture(
-      createPullRequestMetadata(temporaryDirectory, repository),
+      createPullRequestMetadata(tmpDir, repository),
       PULL_REQUEST,
     )
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
 
     let diffChecks = 0
@@ -1228,15 +1228,15 @@ describe("magi:merge", () => {
 
   test("cancels an aborted edit scenario and removes its worktree", async ({
     createMagi,
-    temporaryDirectory,
+    tmpDir,
   }) => {
-    const repository = await createRepository(temporaryDirectory)
-    const config = createPullRequestConfig(temporaryDirectory, "single")
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
     const github = createGitHubFixture(
-      createPullRequestMetadata(temporaryDirectory, repository),
+      createPullRequestMetadata(tmpDir, repository),
       PULL_REQUEST,
     )
-    const { client, magi } = createMagi({ directory: temporaryDirectory })
+    const { client, magi } = createMagi({ dir: tmpDir })
     const ghCommands: string[] = []
     const controller = new AbortController()
 

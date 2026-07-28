@@ -34,7 +34,7 @@ export interface MagiFixture {
 }
 
 export interface CreateMagiOptions {
-  directory?: string
+  dir?: string
   fetch?: typeof globalThis.fetch
   options?: PluginOptions
 }
@@ -43,16 +43,15 @@ export interface CreateMagi {
   (options?: CreateMagiOptions): MagiFixture
 }
 
-interface Fixtures {
+interface Fixtures extends MagiFixture {
   createMagi: CreateMagi
-  magiFixture: MagiFixture
-  temporaryDirectory: string
+  tmpDir: string
 }
 
 const createOpencodeClientMock = vi.mocked(createOpencodeClient)
 
 function instantiateMagi({
-  directory = "/test",
+  dir = "/test",
   fetch,
   options,
 }: CreateMagiOptions = {}): MagiFixture {
@@ -81,7 +80,7 @@ function instantiateMagi({
         },
       },
     },
-    directory,
+    directory: dir,
     serverUrl: new URL("http://localhost"),
   } as unknown as OriginalPluginInput
 
@@ -93,21 +92,24 @@ function instantiateMagi({
 }
 
 export const test = base.extend<Fixtures>({
+  client: async ({ magi }, use) => {
+    await use(magi.input.client as unknown as ClientMocks)
+  },
   createMagi: async ({ task: _task }, use) => {
     createOpencodeClientMock.mockReset()
 
     await use(instantiateMagi)
   },
-  magiFixture: async ({ createMagi }, use) => {
-    await use(createMagi())
+  magi: async ({ createMagi }, use) => {
+    await use(createMagi().magi)
   },
-  temporaryDirectory: async ({ task: _task }, use) => {
-    const directory = await mkdtemp(join(tmpdir(), "opencode-magi-test-"))
+  tmpDir: async ({ task: _task }, use) => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "opencode-magi-test-"))
 
     try {
-      await use(directory)
+      await use(tmpDir)
     } finally {
-      await rm(directory, {
+      await rm(tmpDir, {
         force: true,
         recursive: true,
       })
