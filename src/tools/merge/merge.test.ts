@@ -10,7 +10,6 @@ import { join } from "node:path"
 import { test } from "#/fixtures/magi"
 import {
   createConfig,
-  createMetadata,
   createReviewFixture,
   createState,
 } from "#/fixtures/review"
@@ -351,7 +350,6 @@ describe("Merge", () => {
 
       merge.state.editor = { outputs: [createEditOutput()] }
       merge.state.reviewers = { one: { status: "initial" } }
-      merge.state.pr!.metadata = createMetadata()
       merge.state.worktree = { path: "/tmp/worktree" }
       exec.mockImplementation((command) => {
         if (command.includes("git diff "))
@@ -416,7 +414,6 @@ describe("Merge", () => {
           ],
         },
       }
-      merge.state.pr!.metadata = createMetadata()
       merge.state.worktree = { path: "/tmp/worktree" }
       exec.mockResolvedValue("")
 
@@ -782,7 +779,6 @@ describe("Merge", () => {
         author: { email: "editor@example.com", name: "Editor" },
         sessionId: "editor-session",
       }
-      merge.state.pr!.metadata = createMetadata()
       merge.state.worktree = { path: "/tmp/worktree" }
 
       await expect(merge.resolveConflict()).rejects.toThrow(
@@ -807,6 +803,7 @@ describe("Merge", () => {
         author: { email: "editor@example.com", name: "Editor" },
         sessionId: "editor-session",
       }
+      merge.state.pr!.metadata = undefined
       merge.state.worktree = { path: "/tmp/worktree" }
 
       await expect(merge.resolveConflict()).rejects.toThrow(
@@ -823,7 +820,6 @@ describe("Merge", () => {
         author: { email: "editor@example.com", name: "Editor" },
         sessionId: "editor-session",
       }
-      merge.state.pr!.metadata = createMetadata()
       merge.state.worktree = { path: "/tmp/worktree" }
       exec.mockImplementation((command) => {
         if (command.includes("git merge --no-commit"))
@@ -865,7 +861,6 @@ describe("Merge", () => {
           author: { email: "editor@example.com", name: "Editor" },
           sessionId: "editor-session",
         }
-        merge.state.pr!.metadata = createMetadata()
         merge.state.worktree = { path: "/tmp/worktree" }
         exec.mockImplementation((command) => {
           if (command.includes("git merge --no-commit"))
@@ -930,7 +925,6 @@ describe("Merge", () => {
       merge.state.pr = {
         ...merge.state.pr!,
         files: ["README.md"],
-        metadata: createMetadata(),
       }
       merge.state.worktree = { path: "/tmp/worktree" }
       exec.mockImplementation((command) => {
@@ -977,7 +971,6 @@ describe("Merge", () => {
         author: { email: "editor@example.com", name: "Editor" },
         sessionId: "editor-session",
       }
-      merge.state.pr!.metadata = createMetadata()
       merge.state.worktree = { path: "/tmp/worktree" }
       exec.mockImplementation((command) => {
         if (command.includes("git merge --no-commit"))

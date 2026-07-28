@@ -50,32 +50,6 @@ export interface ReviewFixture<T extends Review> {
   updateState: ReturnType<typeof vi.fn<Magi["updateState"]>>
 }
 
-export function createMetadata(): PullRequestMetadata {
-  return {
-    author_association: "NONE",
-    base: {
-      ref: "main",
-      repo: { clone_url: "https://github.com/magi-ai/opencode-magi.git" },
-      sha: "base-sha",
-    },
-    changed_files: 1,
-    draft: false,
-    head: {
-      ref: "feature",
-      repo: {
-        clone_url: "https://github.com/octocat/opencode-magi.git",
-        name: "opencode-magi",
-        owner: { login: "octocat" },
-      },
-      sha: "head-sha",
-    },
-    labels: [],
-    node_id: "pr-node",
-    state: "open",
-    user: { login: "octocat" },
-  } as unknown as PullRequestMetadata
-}
-
 export function createConfig(): Config.Root {
   const config = structuredClone(DEFAULT_CONFIG)
 
@@ -106,6 +80,30 @@ export function createState(overrides: Partial<State> = {}): State {
     id: "run-1",
     output: "/tmp/review-run",
     pr: {
+      checks: { excluded: [], failed: [], passed: [], pending: [] },
+      metadata: {
+        author_association: "NONE",
+        base: {
+          ref: "main",
+          repo: { clone_url: "https://github.com/magi-ai/opencode-magi.git" },
+          sha: "base-sha",
+        },
+        changed_files: 1,
+        draft: false,
+        head: {
+          ref: "feature",
+          repo: {
+            clone_url: "https://github.com/octocat/opencode-magi.git",
+            name: "opencode-magi",
+            owner: { login: "octocat" },
+          },
+          sha: "head-sha",
+        },
+        labels: [],
+        node_id: "pr-node",
+        state: "open",
+        user: { login: "octocat" },
+      } as unknown as PullRequestMetadata,
       number: 42,
       url: "https://github.com/magi-ai/opencode-magi/pull/42",
     },
@@ -135,10 +133,11 @@ export function createReviewFixture<T extends Review>(
     sessionID: "parent-session",
   } as ToolContext
   const exec = vi.fn<Exec>().mockResolvedValue("")
+  const state = createState(stateOverrides)
   const octokitMocks: OctokitMocks = {
     createReplyForReviewComment: vi.fn(),
     createReview: vi.fn(),
-    get: vi.fn().mockResolvedValue({ data: createMetadata() }),
+    get: vi.fn().mockResolvedValue({ data: state.pr?.metadata }),
     listComments: vi.fn(),
     listCommits: vi.fn(),
     listFiles: vi.fn(),
@@ -182,7 +181,6 @@ export function createReviewFixture<T extends Review>(
   })
 
   const graphql = graphqlMocks as unknown as Graphql
-  const state = createState(stateOverrides)
 
   magi.exec = exec
 

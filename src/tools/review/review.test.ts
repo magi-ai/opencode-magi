@@ -1,27 +1,18 @@
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { Octokit } from "octokit"
-import type {
-  PullRequestChecks,
-  PullRequestReview,
-  PullRequestReviewThread,
-} from "."
+import type { PullRequestReview, PullRequestReviewThread } from "."
 import type { Graphql } from "@/graphql"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { test } from "#/fixtures/magi"
 import {
   createConfig,
-  createMetadata,
   createReviewFixture,
   createState,
 } from "#/fixtures/review"
 import { Prompt } from "@/prompts"
 import { marker } from "@/utils"
 import { Review } from "./review"
-
-function createChecks(): PullRequestChecks {
-  return { excluded: [], failed: [], passed: [], pending: [] }
-}
 
 describe("Review", () => {
   describe("init", () => {
@@ -464,13 +455,18 @@ describe("Review", () => {
       magiFixture: { magi },
     }) => {
       const { octokitMocks, review } = createReviewFixture(magi)
+      const metadata = {
+        ...review.state.pr!.metadata!,
+        changed_files: 2,
+      }
 
+      octokitMocks.get.mockResolvedValue({ data: metadata })
       octokitMocks.paginate.mockResolvedValue([{ filename: "src/index.ts" }])
 
       await review.checkPr()
 
       expect(review.state.status).toBe("running")
-      expect(review.state.pr?.metadata).toStrictEqual(createMetadata())
+      expect(review.state.pr?.metadata).toStrictEqual(metadata)
       expect(review.state.pr?.files).toStrictEqual(["src/index.ts"])
       expect(octokitMocks.get).toHaveBeenCalledWith({
         owner: "magi-ai",
@@ -483,7 +479,7 @@ describe("Review", () => {
       magiFixture: { magi },
     }) => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
-      const metadata = createMetadata()
+      const metadata = review.state.pr!.metadata!
 
       metadata.changed_files = 2
       metadata.labels = []
@@ -513,7 +509,7 @@ describe("Review", () => {
       magiFixture: { magi },
     }) => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
-      const metadata = createMetadata()
+      const metadata = review.state.pr!.metadata!
 
       config.review.safety = [[true, { labels: { include: ["reviewable"] } }]]
       metadata.labels = [{ name: "unrelated" }] as typeof metadata.labels
@@ -528,7 +524,7 @@ describe("Review", () => {
       magiFixture: { magi },
     }) => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
-      const metadata = createMetadata()
+      const metadata = review.state.pr!.metadata!
 
       config.review.safety = [[true, { roles: { include: ["MEMBER"] } }]]
       octokitMocks.get.mockResolvedValue({ data: metadata })
@@ -542,7 +538,7 @@ describe("Review", () => {
       magiFixture: { magi },
     }) => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
-      const metadata = createMetadata()
+      const metadata = review.state.pr!.metadata!
 
       metadata.base.ref = "main"
       metadata.head.ref = "feature/automation"
@@ -574,7 +570,7 @@ describe("Review", () => {
       magiFixture: { magi },
     }) => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
-      const metadata = createMetadata()
+      const metadata = review.state.pr!.metadata!
 
       config.review.safety = [
         [
@@ -600,7 +596,7 @@ describe("Review", () => {
       magiFixture: { magi },
     }) => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
-      const metadata = createMetadata()
+      const metadata = review.state.pr!.metadata!
 
       config.mode = "multi"
       metadata.user.login = "reviewer-one"
@@ -618,17 +614,16 @@ describe("Review", () => {
 
     test("blocks a closed pull request", async ({ magiFixture: { magi } }) => {
       const { octokitMocks, review } = createReviewFixture(magi)
-      const metadata = createMetadata()
 
-      metadata.state = "closed"
-      octokitMocks.get.mockResolvedValue({ data: metadata })
+      review.state.pr!.metadata!.state = "closed"
+      octokitMocks.get.mockResolvedValue({ data: review.state.pr!.metadata })
 
       await expect(review.checkPr()).rejects.toThrow("PR is not open.")
     })
 
     test("blocks a draft pull request", async ({ magiFixture: { magi } }) => {
       const { octokitMocks, review } = createReviewFixture(magi)
-      const metadata = createMetadata()
+      const metadata = review.state.pr!.metadata!
 
       metadata.draft = true
       octokitMocks.get.mockResolvedValue({ data: metadata })
@@ -640,7 +635,7 @@ describe("Review", () => {
       magiFixture: { magi },
     }) => {
       const { config, octokitMocks, review } = createReviewFixture(magi)
-      const metadata = createMetadata()
+      const metadata = review.state.pr!.metadata!
 
       metadata.user.login = config.account!
       octokitMocks.get.mockResolvedValue({ data: metadata })
@@ -656,8 +651,6 @@ describe("Review", () => {
       magiFixture: { magi },
     }) => {
       const { review } = createReviewFixture(magi)
-
-      review.state.pr!.metadata = createMetadata()
 
       await expect(review.checkExistingReviews()).resolves.toBeFalsy()
       expect(review.state.reviewers).toStrictEqual({
@@ -676,7 +669,6 @@ describe("Review", () => {
         0,
         1,
       )
-      review.state.pr!.metadata = createMetadata()
       octokitMocks.paginate.mockImplementation((request) => {
         if (request === octokitMocks.listReviews)
           return Promise.resolve([
@@ -728,7 +720,6 @@ describe("Review", () => {
         0,
         1,
       )
-      review.state.pr!.metadata = createMetadata()
       octokitMocks.paginate.mockImplementation((request) => {
         if (request === octokitMocks.listReviews)
           return Promise.resolve([
@@ -786,6 +777,8 @@ describe("Review", () => {
     }) => {
       const { review } = createReviewFixture(magi)
 
+      review.state.pr!.metadata = undefined
+
       await expect(review.checkExistingReviews()).rejects.toThrow(
         "PR metadata not found.",
       )
@@ -795,8 +788,6 @@ describe("Review", () => {
       const { config, review } = createReviewFixture(magi)
 
       config.review.reviewers = []
-      review.state.pr!.metadata = createMetadata()
-
       await expect(review.checkExistingReviews()).rejects.toThrow(
         "No reviewers configured.",
       )
@@ -811,7 +802,6 @@ describe("Review", () => {
         0,
         1,
       )
-      review.state.pr!.metadata = createMetadata()
       octokitMocks.paginate.mockImplementation((request) => {
         if (request === octokitMocks.listReviews)
           return Promise.resolve([
@@ -852,7 +842,6 @@ describe("Review", () => {
 
       config.mode = "multi"
       config.review.reviewers = config.review.reviewers!.slice(0, 1)
-      review.state.pr!.metadata = createMetadata()
       octokitMocks.paginate.mockImplementation((request) => {
         if (request === octokitMocks.listReviews)
           return Promise.resolve([
@@ -908,7 +897,12 @@ describe("Review", () => {
 
       await review.checkCi(false)
 
-      expect(review.state.pr?.checks).toStrictEqual(createChecks())
+      expect(review.state.pr?.checks).toStrictEqual({
+        excluded: [],
+        failed: [],
+        passed: [],
+        pending: [],
+      })
       expect(exec).toHaveBeenCalledOnce()
     })
 
@@ -1008,8 +1002,6 @@ describe("Review", () => {
     }) => {
       const { review, updateEvent, updateState } = createReviewFixture(magi)
 
-      review.state.pr!.checks = createChecks()
-
       await review.classifyChecks()
 
       expect(updateEvent).not.toHaveBeenCalled()
@@ -1053,7 +1045,6 @@ describe("Review", () => {
           passed: [],
           pending: [],
         },
-        metadata: createMetadata(),
       }
       review.state.reviewers = {
         one: { sessionId: "reviewer-one-session" },
@@ -1101,7 +1092,7 @@ describe("Review", () => {
             passed: [],
             pending: [],
           },
-          metadata: target === "metadata" ? undefined : createMetadata(),
+          ...(target === "metadata" ? { metadata: undefined } : {}),
         }
 
         if (target !== "worktree")
@@ -1136,7 +1127,6 @@ describe("Review", () => {
           passed: [],
           pending: [],
         },
-        metadata: createMetadata(),
       }
       review.state.reviewers = { one: {} }
       review.state.worktree = { path: "/tmp/worktree" }
@@ -1176,7 +1166,6 @@ describe("Review", () => {
           passed: [],
           pending: [],
         },
-        metadata: createMetadata(),
       }
       review.state.reviewers = { one: { sessionId: "reviewer-one-session" } }
       review.state.worktree = { path: "/tmp/worktree" }
@@ -1225,6 +1214,8 @@ describe("Review", () => {
 
     test("requires pull request checks", async ({ magiFixture: { magi } }) => {
       const { review } = createReviewFixture(magi)
+
+      review.state.pr!.checks = undefined
 
       await expect(review.rerunChecks()).rejects.toThrow("PR checks not found.")
     })
@@ -1291,7 +1282,6 @@ describe("Review", () => {
       const { exec, review } = createReviewFixture(magi)
 
       review.state.reviewers = { one: { status: "initial" } }
-      review.state.pr!.metadata = createMetadata()
       review.state.worktree = { path: "/tmp/worktree" }
       exec.mockImplementation((command) => {
         if (command.includes("git diff "))
@@ -1324,7 +1314,6 @@ describe("Review", () => {
       const { exec, review } = createReviewFixture(magi)
 
       review.state.reviewers = { one: { status: "initial" } }
-      review.state.pr!.metadata = createMetadata()
       review.state.worktree = { path: "/tmp/worktree" }
       exec.mockImplementation((command) => {
         if (command.includes("git diff "))
@@ -1348,7 +1337,6 @@ describe("Review", () => {
       const { exec, review } = createReviewFixture(magi)
 
       review.state.reviewers = { one: { status: "initial" } }
-      review.state.pr!.metadata = createMetadata()
       review.state.worktree = { path: "/tmp/worktree" }
       exec.mockImplementation((command) => {
         if (command.includes("git cat-file"))
@@ -1377,7 +1365,6 @@ describe("Review", () => {
           status: "rereview",
         },
       }
-      review.state.pr!.metadata = createMetadata()
       review.state.worktree = { path: "/tmp/worktree" }
       exec.mockImplementation((command) => {
         if (command.includes("previous-head-sha...head-sha"))
@@ -1417,7 +1404,6 @@ describe("Review", () => {
       const { review } = createReviewFixture(magi)
 
       review.state.reviewers = { one: { status: "rereview" } }
-      review.state.pr!.metadata = createMetadata()
       review.state.worktree = { path: "/tmp/worktree" }
 
       await expect(review.fetchReviewContext()).rejects.toThrow(
@@ -1434,7 +1420,6 @@ describe("Review", () => {
         const { review } = createReviewFixture(magi)
 
         review.state.reviewers = { one: { status: "initial" } }
-        review.state.pr!.metadata = createMetadata()
         review.state.worktree = { path: "/tmp/worktree" }
 
         if (target === "reviewers") review.state.reviewers = undefined
@@ -1451,7 +1436,6 @@ describe("Review", () => {
       const { exec, graphqlMocks, review } = createReviewFixture(magi)
 
       review.state.reviewers = { one: { status: "initial" } }
-      review.state.pr!.metadata = createMetadata()
       review.state.worktree = { path: "/tmp/worktree" }
       graphqlMocks.paginate.mockImplementation((request) => {
         if (request === graphqlMocks.closingIssues)
@@ -1493,8 +1477,6 @@ describe("Review", () => {
 
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         threads: [],
       }
       review.state.reviewers = {
@@ -1549,11 +1531,9 @@ describe("Review", () => {
       config.review.reviewers = config.review.reviewers!.slice(0, 1)
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
         inlineCommentTargets: {
           "base-sha": { "src/index.ts": [1, 2] },
         },
-        metadata: createMetadata(),
         threads: [thread],
       }
       review.state.reviewers = {
@@ -1592,8 +1572,6 @@ describe("Review", () => {
         config.review.reviewers = config.review.reviewers!.slice(0, 1)
         review.state.pr = {
           ...review.state.pr!,
-          checks: createChecks(),
-          metadata: createMetadata(),
           threads: [],
         }
         review.state.reviewers = {
@@ -1640,9 +1618,7 @@ describe("Review", () => {
       config.review.reviewers = config.review.reviewers!.slice(0, 1)
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
         inlineCommentTargets: { "base-sha": { "src/index.ts": [1, 2] } },
-        metadata: createMetadata(),
         threads: [],
       }
       review.state.reviewers = {
@@ -1680,8 +1656,6 @@ describe("Review", () => {
       config.review.reviewers = config.review.reviewers!.slice(0, 1)
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         threads: [],
       }
       review.state.reviewers = {
@@ -1715,8 +1689,6 @@ describe("Review", () => {
       config.review.reviewers = config.review.reviewers!.slice(0, 1)
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         threads: [
           {
             comments: [{ author: { login: "reviewer-one" }, databaseId: 101 }],
@@ -1767,11 +1739,9 @@ describe("Review", () => {
         config.review.reviewers = config.review.reviewers!.slice(0, 1)
         review.state.pr = {
           ...review.state.pr!,
-          checks: createChecks(),
           inlineCommentTargets: {
             "base-sha": { "src/index.ts": [1, 2] },
           },
-          metadata: createMetadata(),
           threads: [],
         }
         review.state.reviewers = {
@@ -2054,8 +2024,9 @@ describe("Review", () => {
         const prompt = { create: vi.fn().mockResolvedValue("reconsider-task") }
 
         config.review.merge.approvalPolicy = "unanimous"
-        review.state.pr!.metadata =
-          target === "metadata" ? undefined : createMetadata()
+
+        if (target === "metadata") review.state.pr!.metadata = undefined
+
         review.state.reviewers = {
           one: {
             outputs: [{ comment: "Close.", verdict: "CLOSED" }],
@@ -2088,7 +2059,6 @@ describe("Review", () => {
 
       config.output.repairAttempts = 1
       config.review.merge.approvalPolicy = "unanimous"
-      review.state.pr!.metadata = createMetadata()
       review.state.reviewers = {
         one: {
           outputs: [{ comment: "Close.", verdict: "CLOSED" }],
@@ -2147,7 +2117,6 @@ describe("Review", () => {
       review.state.pr = {
         ...review.state.pr!,
         inlineCommentTargets: { "base-sha": { "src/index.ts": [1] } },
-        metadata: createMetadata(),
       }
       review.state.reviewers = {
         one: {
@@ -2536,7 +2505,6 @@ describe("Review", () => {
     }) => {
       const { exec, review, updateState } = createReviewFixture(magi)
 
-      review.state.pr!.metadata = createMetadata()
       review.state.pr!.verdict = "CHANGES_REQUESTED"
 
       await expect(review.automate()).resolves.toBe("SKIPPED")
@@ -2555,8 +2523,8 @@ describe("Review", () => {
         review.state.operator = { account: "review-bot" }
         review.state.pr = {
           ...review.state.pr!,
-          checks: target === "checks" ? undefined : createChecks(),
-          metadata: target === "metadata" ? undefined : createMetadata(),
+          ...(target === "checks" ? { checks: undefined } : {}),
+          ...(target === "metadata" ? { metadata: undefined } : {}),
           verdict: target === "verdict" ? undefined : "APPROVED",
         }
 
@@ -2587,7 +2555,6 @@ describe("Review", () => {
             },
           ],
         },
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
 
@@ -2600,7 +2567,7 @@ describe("Review", () => {
       magiFixture: { magi },
     }) => {
       const { config, exec, review } = createReviewFixture(magi)
-      const metadata = createMetadata()
+      const metadata = review.state.pr!.metadata!
 
       metadata.labels = [{ name: "do-not-merge" }] as typeof metadata.labels
       config.review.automation.merge = [
@@ -2610,7 +2577,6 @@ describe("Review", () => {
       review.state.operator = { account: "review-bot" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
         metadata,
         verdict: "APPROVED",
       }
@@ -2623,7 +2589,7 @@ describe("Review", () => {
       magiFixture: { magi },
     }) => {
       const { config, exec, review } = createReviewFixture(magi)
-      const metadata = createMetadata()
+      const metadata = review.state.pr!.metadata!
 
       config.review.automation.merge = [
         [true, { authors: { include: [metadata.user.login] } }],
@@ -2633,7 +2599,6 @@ describe("Review", () => {
       review.state.operator = { account: "review-bot" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
         metadata,
         verdict: "APPROVED",
       }
@@ -2665,8 +2630,6 @@ describe("Review", () => {
       review.state.operator = { account: "review-bot" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
 
@@ -2682,8 +2645,6 @@ describe("Review", () => {
       review.state.operator = { account: "review-bot" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
       review.state.worktree = { path: "/tmp/worktree" }
@@ -2712,8 +2673,6 @@ describe("Review", () => {
       review.state.operator = { account: "review-bot" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
       vi.spyOn(magi, "getGhToken").mockResolvedValue("token")
@@ -2732,8 +2691,6 @@ describe("Review", () => {
       review.state.operator = { account: "review-bot" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
       vi.spyOn(magi, "getGhToken").mockResolvedValue("token")
@@ -2779,8 +2736,6 @@ describe("Review", () => {
       review.state.operator = { account: "review-bot" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
 
@@ -2799,8 +2754,6 @@ describe("Review", () => {
       review.state.operator = { account: "review-bot" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
       vi.spyOn(magi, "getGhToken").mockResolvedValue("token")
@@ -2833,8 +2786,6 @@ describe("Review", () => {
       review.state.operator = { account: "review-bot" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
       vi.spyOn(magi, "getGhToken").mockResolvedValue("token")
@@ -2887,8 +2838,6 @@ describe("Review", () => {
       review.state.operator = { account: "review-bot" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
       vi.spyOn(magi, "getGhToken").mockResolvedValue("token")
@@ -2937,8 +2886,6 @@ describe("Review", () => {
       review.state.operator = { account: "review-bot" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
       vi.spyOn(magi, "getGhToken").mockResolvedValue("token")
@@ -3034,8 +2981,6 @@ describe("Review", () => {
       review.state.operator = { account: "review-bot" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
       Object.assign(graphqlMocks, { enqueuePullRequest, mergeQueueStatus })
@@ -3071,8 +3016,6 @@ describe("Review", () => {
       review.state.operator = { account: "reviewer-one" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
       graphqlMocks.enqueuePullRequest.mockResolvedValue(undefined)
@@ -3111,8 +3054,6 @@ describe("Review", () => {
       review.state.operator = { account: "reviewer-one" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
       review.state.worktree = { path: "/tmp/worktree" }
@@ -3191,8 +3132,6 @@ describe("Review", () => {
       review.state.operator = { account: "reviewer-one" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
       graphqlMocks.enqueuePullRequest.mockResolvedValue(undefined)
@@ -3251,8 +3190,6 @@ describe("Review", () => {
       review.state.operator = { account: "reviewer-one" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
       graphqlMocks.enqueuePullRequest.mockResolvedValue(undefined)
@@ -3304,8 +3241,6 @@ describe("Review", () => {
         review.state.operator = { account: "review-bot" }
         review.state.pr = {
           ...review.state.pr!,
-          checks: createChecks(),
-          metadata: createMetadata(),
           verdict: "APPROVED",
         }
         vi.spyOn(magi, "getGhToken").mockResolvedValue("token")
@@ -3329,8 +3264,6 @@ describe("Review", () => {
       review.state.operator = { account: "review-bot" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
       vi.spyOn(magi, "getGhToken").mockResolvedValue("token")
@@ -3362,8 +3295,6 @@ describe("Review", () => {
       review.state.operator = { account: "review-bot" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
       vi.spyOn(magi, "getGhToken").mockResolvedValue("token")
@@ -3389,8 +3320,6 @@ describe("Review", () => {
       review.state.operator = { account: "review-bot" }
       review.state.pr = {
         ...review.state.pr!,
-        checks: createChecks(),
-        metadata: createMetadata(),
         verdict: "APPROVED",
       }
       review.state.worktree = { path: "/tmp/worktree" }
@@ -3410,8 +3339,6 @@ describe("Review", () => {
       config.review.automation.merge = true
       config.review.merge.queue = true
       review.state.operator = { account: "reviewer-one" }
-      review.state.pr!.checks = createChecks()
-      review.state.pr!.metadata = createMetadata()
       review.state.pr!.verdict = "APPROVED"
       graphqlMocks.enqueuePullRequest.mockRejectedValue(
         new Error("Pull request is closed"),
