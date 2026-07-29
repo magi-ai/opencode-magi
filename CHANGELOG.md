@@ -1,5 +1,19 @@
 # opencode-magi
 
+## 0.13.0
+
+### Minor Changes
+
+- [#445](https://github.com/magi-ai/opencode-magi/pull/445) [`1abec9f`](https://github.com/magi-ai/opencode-magi/commit/1abec9f1598074e272d783046b91670f9bd1f3b0) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Add pull request author association filters to review conditions.
+
+### Patch Changes
+
+- [#443](https://github.com/magi-ai/opencode-magi/pull/443) [`474375f`](https://github.com/magi-ai/opencode-magi/commit/474375f77b02d1af8c05f6a4b4984cc2a2cc5f49) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Use the configured editor credentials when pushing changes from GitHub Actions.
+
+- [#440](https://github.com/magi-ai/opencode-magi/pull/440) [`1625e6a`](https://github.com/magi-ai/opencode-magi/commit/1625e6a48b99ce0c998e64b850dc703115098388) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Remove redundant reviewer configuration guards.
+
+- [#449](https://github.com/magi-ai/opencode-magi/pull/449) [`eed531a`](https://github.com/magi-ai/opencode-magi/commit/eed531acdb4c3fb16bbe295eb70b880fbafe5a74) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Retry pull requests removed from the merge queue after checks time out.
+
 ## 0.12.0
 
 ### Minor Changes
