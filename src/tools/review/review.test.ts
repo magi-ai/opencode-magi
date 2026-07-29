@@ -2,6 +2,7 @@ import type { ToolContext } from "@opencode-ai/plugin"
 import type { Octokit } from "octokit"
 import type { PullRequestReview, PullRequestReviewThread } from "."
 import type { Graphql } from "@/graphql"
+import type { Magi } from "@/magi"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { test } from "#/fixtures/magi"
@@ -2871,7 +2872,10 @@ describe("Review", () => {
       expect(review.state.pr.automation).toBe("CONFLICT")
     })
 
-    test("re-enqueues after failed merge-queue checks", async ({ magi }) => {
+    async function reenqueueAfterMergeQueueRemoval(
+      magi: Magi,
+      reason: "checks_timed_out" | "failed_checks",
+    ): Promise<void> {
       const { config, graphqlMocks, review, updateEvent } =
         createReviewFixture(magi)
       const enqueuePullRequest = vi
@@ -2909,7 +2913,7 @@ describe("Review", () => {
                 nodes: [
                   {
                     createdAt: "2026-07-23T01:00:00.000Z",
-                    reason: "failed_checks",
+                    reason,
                   },
                 ],
               },
@@ -2954,6 +2958,14 @@ describe("Review", () => {
         review.state.output,
         "Attempt 1 failed to merge from the merge queue. Retrying...",
       )
+    }
+
+    test("re-enqueues after failed merge-queue checks", async ({ magi }) => {
+      await reenqueueAfterMergeQueueRemoval(magi, "failed_checks")
+    })
+
+    test("re-enqueues after timed out merge-queue checks", async ({ magi }) => {
+      await reenqueueAfterMergeQueueRemoval(magi, "checks_timed_out")
     })
 
     test("blocks when the merge queue status is unavailable", async ({

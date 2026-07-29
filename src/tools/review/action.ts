@@ -685,7 +685,8 @@ async function waitMergeQueue(
     const removedFromQueue = timelineItems.nodes?.at(-1)
 
     if (
-      removedFromQueue?.reason === "failed_checks" &&
+      (removedFromQueue?.reason === "checks_timed_out" ||
+        removedFromQueue?.reason === "failed_checks") &&
       Date.parse(removedFromQueue.createdAt) >= Date.parse(enqueuedAt)
     ) {
       if (retries >= this.config.review.checks.retryFailedJobs)
