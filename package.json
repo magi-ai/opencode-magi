@@ -1,6 +1,6 @@
 {
   "name": "opencode-magi",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Multi-agent PR review and merge orchestration plugin for OpenCode.",
   "license": "MIT",
   "author": "Hirotomo Yamada <hirotomo.yamada@avap.co.jp>",
