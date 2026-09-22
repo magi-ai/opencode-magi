@@ -10,7 +10,7 @@
         "account": "melchior-magi",
         "model": [
           {
-            "id": "opencode-go/minimax-m3",
+            "id": "opencode-go/mimo-v2.6-pro",
             "variant": "high"
           }
         ]
@@ -20,7 +20,8 @@
         "account": "balthasar-magi",
         "model": [
           {
-            "id": "opencode-go/mimo-v2.5-pro"
+            "id": "opencode-go/glm-5.3-flash",
+            "variant": "high"
           }
         ]
       },
@@ -29,7 +30,7 @@
         "account": "caspar-magi",
         "model": [
           {
-            "id": "opencode-go/qwen3.7-plus",
+            "id": "opencode-go/qwen3.8-flash",
             "variant": "high"
           }
         ]
