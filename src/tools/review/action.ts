@@ -755,7 +755,17 @@ async function isConflict(this: Review): Promise<boolean> {
   try {
     try {
       await this.exec(
-        command("git", "merge", "--no-commit", "--no-ff", "FETCH_HEAD"),
+        command(
+          "git",
+          "-c",
+          "user.name=magi",
+          "-c",
+          "user.email=magi@localhost",
+          "merge",
+          "--no-commit",
+          "--no-ff",
+          "FETCH_HEAD",
+        ),
         options,
       )
     } catch (e) {
