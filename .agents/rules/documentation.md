@@ -1,5 +1,7 @@
 # Documentation Rules
 
+For documentation maintained in both Japanese and English, create, update, or delete the corresponding versions in the same PR. Verify that both versions cover the same items, meaning, examples, and options. This does not require adding translations for documents maintained in only one language, such as internal rules.
+
 Use plain filenames for same-directory links. Use relative paths without a leading `./` for links within the current directory tree. Use repository-root absolute paths when a link would otherwise need to traverse up with `../`.
 
 For same-directory links, omit the `./` prefix. For example, write `[Commit Rules](commit.md)` instead of `[Commit Rules](./commit.md)`.

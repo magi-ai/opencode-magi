@@ -3,7 +3,7 @@ import type { Octokit } from "octokit"
 import type { PullRequestReview, PullRequestReviewThread } from "."
 import type { Graphql } from "@/graphql"
 import type { Magi } from "@/magi"
-import { readFile } from "node:fs/promises"
+import { readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { test } from "#/fixtures/magi"
 import {
@@ -12,7 +12,7 @@ import {
   createState,
 } from "#/fixtures/review"
 import { Prompt } from "@/prompts"
-import { marker } from "@/utils"
+import { execAsync, marker } from "@/utils"
 import { Review } from "./review"
 
 describe("Review", () => {
@@ -2592,6 +2592,76 @@ describe("Review", () => {
       expect(exec).not.toHaveBeenCalled()
     })
 
+    describe.each([
+      ["a clean merge", false],
+      ["conflicts", true],
+    ])("with %s", (_label, conflict) => {
+      test("checks for conflicts without a configured Git identity", async ({
+        magi,
+        tmpDir,
+      }) => {
+        const { exec, review } = createReviewFixture(magi)
+
+        async function git(command: string): Promise<string> {
+          const { stdout } = await execAsync(command, {
+            cwd: tmpDir,
+            env: {
+              GIT_CONFIG_COUNT: "1",
+              GIT_CONFIG_GLOBAL: "/dev/null",
+              GIT_CONFIG_KEY_0: "user.useConfigOnly",
+              GIT_CONFIG_NOSYSTEM: "1",
+              GIT_CONFIG_VALUE_0: "true",
+              HOME: tmpDir,
+              PATH: process.env.PATH,
+            },
+          })
+
+          return stdout.trim()
+        }
+
+        await git("git init --initial-branch=main")
+        await writeFile(join(tmpDir, "shared.txt"), "base\n")
+        await git("git add .")
+        await git(
+          "git -c user.name=fixture -c user.email=fixture@localhost commit -m base",
+        )
+        await git("git checkout -b feature")
+        await writeFile(join(tmpDir, "shared.txt"), "feature\n")
+        await git(
+          "git -c user.name=fixture -c user.email=fixture@localhost commit -am feature",
+        )
+        await git("git checkout main")
+        await writeFile(
+          join(tmpDir, conflict ? "shared.txt" : "other.txt"),
+          "main\n",
+        )
+        await git("git add .")
+        await git(
+          "git -c user.name=fixture -c user.email=fixture@localhost commit -m main",
+        )
+        await git("git checkout feature")
+
+        const head = await git("git rev-parse HEAD")
+        const config = await readFile(join(tmpDir, ".git/config"), "utf8")
+
+        review.state.dryRun = true
+        review.state.operator = { account: "review-bot" }
+        review.state.pr!.verdict = "APPROVED"
+        review.state.pr!.metadata!.base.repo.clone_url = tmpDir
+        review.state.worktree = { path: tmpDir }
+        exec.mockImplementation(git)
+
+        await expect(review.automate()).resolves.toBe(
+          conflict ? "CONFLICT" : "SKIPPED",
+        )
+        await expect(git("git status --porcelain")).resolves.toBe("")
+        await expect(git("git rev-parse HEAD")).resolves.toBe(head)
+        await expect(
+          readFile(join(tmpDir, ".git/config"), "utf8"),
+        ).resolves.toBe(config)
+      })
+    })
+
     test("detects a merge conflict before starting automation", async ({
       magi,
     }) => {
@@ -2604,7 +2674,7 @@ describe("Review", () => {
       }
       review.state.worktree = { path: "/tmp/worktree" }
       exec.mockImplementation((command) => {
-        if (command.includes("git merge --no-commit"))
+        if (command.includes("merge --no-commit"))
           return Promise.reject(new Error("merge failed"))
         if (command.includes("git diff --name-only"))
           return Promise.resolve("src/index.ts")
@@ -2614,6 +2684,10 @@ describe("Review", () => {
 
       await expect(review.automate()).resolves.toBe("CONFLICT")
       expect(review.state.pr.automation).toBe("CONFLICT")
+      expect(exec).toHaveBeenCalledWith(
+        "git -c user.name=magi -c user.email=magi@localhost merge --no-commit --no-ff FETCH_HEAD",
+        expect.objectContaining({ cwd: "/tmp/worktree" }),
+      )
       expect(exec).toHaveBeenCalledWith(
         "git merge --abort",
         expect.objectContaining({ cwd: "/tmp/worktree" }),
@@ -3034,7 +3108,7 @@ describe("Review", () => {
         .mockResolvedValueOnce(leftQueue)
         .mockResolvedValueOnce(leftQueue)
       exec.mockImplementation((command) => {
-        if (command.includes("git merge --no-commit")) {
+        if (command.includes("merge --no-commit")) {
           mergeAttempts += 1
 
           if (mergeAttempts > 1)
