@@ -46,9 +46,9 @@ Run the following command in OpenCode.
 - The PR does not meet the conditions in the `review.safety` configuration.
 - The PR author is the account used for reviews.
 
-3. Check existing reviews. If there are no new changes or replies after a review, skip that reviewer's review and use their existing decision. If all reviewers are skipped, skip steps 5 through 8 and 10.
-4. Inspect the checks.
-5. Reviewers determine whether check failures are caused by the PR's changes. Rerun checks whose failures are not caused by the PR's changes.
+3. Check existing reviews on the PR. If there are no new changes or replies after a review, skip that reviewer's review and use their existing decision. If all reviewers are skipped, skip steps 5 through 8 and 10.
+4. Inspect the PR's checks.
+5. Reviewers determine whether failures in the PR's checks are caused by the PR's changes. Rerun checks whose failures are not caused by the PR's changes.
 6. Reviewers who are not skipped review or re-review the PR. Each reviewer decides to approve, request changes, or close.
 7. Reviewers validate findings from reviewers who requested changes and accept findings supported by a majority. If none of a reviewer's findings are accepted, treat that reviewer's decision as approval.
 8. If `review.merge.approvalPolicy` is set to `"unanimous"` and reviewers who decided to close are in the minority, have those reviewers reconsider and choose either approval or a change request. If they request changes, validate their findings as in step 7.
@@ -59,8 +59,8 @@ Run the following command in OpenCode.
 - Merge
   - The command's decision is not approval.
   - The conditions in the `review.automation.merge` configuration are not met.
-  - There are conflicts.
-  - Checks have failed or are pending.
+  - The PR has conflicts.
+  - The PR's checks have failed or are pending.
 - Close
   - The command's decision is not to close.
   - The conditions in the `review.automation.close` configuration are not met.
