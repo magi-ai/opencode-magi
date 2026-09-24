@@ -35,3 +35,34 @@ Run the following command in OpenCode.
 | `--concurrency-reviewers <count>`    | Overrides reviewer concurrency.                   |
 | `--concurrency-runs <count>`         | Overrides pull request run concurrency.           |
 | `--wait-checks` / `--no-wait-checks` | Overrides whether to wait for checks to complete. |
+
+## Flow
+
+1. Validate the configuration. If validation fails, exit the command.
+2. Validate the PR. If any of the following conditions apply, proceed to step 12.
+
+- The PR is closed or already merged.
+- The PR is a draft.
+- The PR does not meet the conditions in the `review.safety` configuration.
+- The PR author is the account used for reviews.
+
+3. Check existing reviews. If there are no new changes or replies after a review, skip that reviewer's review and use their existing decision. If all reviewers are skipped, skip steps 5 through 8 and 10.
+4. Inspect the checks.
+5. Reviewers determine whether check failures are caused by the PR's changes. Rerun checks whose failures are not caused by the PR's changes.
+6. Reviewers who are not skipped review or re-review the PR. Each reviewer decides to approve, request changes, or close.
+7. Reviewers validate findings from reviewers who requested changes and accept findings supported by a majority. If none of a reviewer's findings are accepted, treat that reviewer's decision as approval.
+8. If `review.merge.approvalPolicy` is set to `"unanimous"` and reviewers who decided to close are in the minority, have those reviewers reconsider and choose either approval or a change request. If they request changes, validate their findings as in step 7.
+9. Aggregate the reviewers' decisions to determine the command's decision.
+10. Post reviews to the PR.
+11. Merge or close the PR. Do not perform the respective action if any of the following conditions apply.
+
+- Merge
+  - The command's decision is not approval.
+  - The conditions in the `review.automation.merge` configuration are not met.
+  - There are conflicts.
+  - Checks have failed or are pending.
+- Close
+  - The command's decision is not to close.
+  - The conditions in the `review.automation.close` configuration are not met.
+
+12. Return the execution results as a report.
