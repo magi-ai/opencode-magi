@@ -1158,7 +1158,7 @@ describe("magi:merge", () => {
     magi.exec = createScenarioExec(repository, ghCommands, (command) => {
       if (command === "git status --porcelain") return ""
 
-      if (command === "git merge --no-commit --no-ff FETCH_HEAD") {
+      if (command.endsWith("merge --no-commit --no-ff FETCH_HEAD")) {
         mergeAttempts += 1
 
         if (mergeAttempts <= 2)
