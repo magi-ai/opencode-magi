@@ -230,6 +230,8 @@ touch .opencode/magi.json
 /magi:validate
 ```
 
+レビューを実行する前に、レポートが`Magi config validation: passed`になっていることを確認してください。検証に失敗した場合は、表示されたエラーを修正してから`/magi:validate`を再実行します。
+
 ### コマンド
 
 OpenCodeからコマンドを実行します。
