@@ -1,4 +1,4 @@
-import type { ToolContext } from "@opencode-ai/plugin"
+import type { ToolContext } from "@opencode/plugin/promise/tool"
 import type { Octokit } from "octokit"
 import type { EditOutput } from "."
 import type { ReviewFixture } from "#/fixtures/review"
@@ -44,8 +44,8 @@ describe("Merge", () => {
     }) => {
       const config = createConfig()
       const context = {
-        abort: new AbortController().signal,
         sessionID: "parent-session",
+        signal: new AbortController().signal,
       } as ToolContext
       const octokit = {} as Octokit
       const graphql = {} as Graphql
@@ -125,7 +125,7 @@ describe("Merge", () => {
         "parent-session",
         "magi merge #42 editor",
         { model: "editor-model", permissions: "allow" },
-        context.abort,
+        context.signal,
       )
       expect(updateState).toHaveBeenCalledWith(merge.state.output, {
         editor: { sessionId: "editor-session" },
@@ -273,7 +273,7 @@ describe("Merge", () => {
 
       expect(createOctokit).toHaveBeenCalledWith(
         merge.config,
-        context.abort,
+        context.signal,
         "editor",
       )
       expect(octokitMocks.createReplyForReviewComment).toHaveBeenCalledWith({
@@ -583,7 +583,7 @@ describe("Merge", () => {
       await expect(merge.edit()).resolves.toBeFalsy()
       expect(exec).toHaveBeenCalledWith("git config user.name 'Editor'", {
         cwd: "/tmp/worktree",
-        signal: merge.context.abort,
+        signal: merge.context.signal,
       })
       expect(createAgentFile).toHaveBeenCalledWith(
         merge.state.output,
@@ -770,11 +770,11 @@ describe("Merge", () => {
       )
       expect(exec).toHaveBeenCalledWith(
         "git merge --no-commit --no-ff FETCH_HEAD",
-        { cwd: "/tmp/worktree", signal: merge.context.abort },
+        { cwd: "/tmp/worktree", signal: merge.context.signal },
       )
       expect(exec).toHaveBeenCalledWith("git merge --abort", {
         cwd: "/tmp/worktree",
-        signal: merge.context.abort,
+        signal: merge.context.signal,
       })
     })
 
@@ -815,7 +815,7 @@ describe("Merge", () => {
       )
       expect(exec).toHaveBeenCalledWith("git merge --abort", {
         cwd: "/tmp/worktree",
-        signal: merge.context.abort,
+        signal: merge.context.signal,
       })
     })
 

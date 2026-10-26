@@ -1,4 +1,4 @@
-import type { ToolContext } from "@opencode-ai/plugin"
+import type { ToolContext } from "@opencode/plugin/promise/tool"
 import type { Octokit } from "octokit"
 import type { Config } from "@/config"
 import type { Graphql } from "@/graphql"
@@ -129,8 +129,8 @@ export function createReviewFixture<T extends Review>(
   const config = createConfig()
   const controller = new AbortController()
   const context = {
-    abort: controller.signal,
     sessionID: "parent-session",
+    signal: controller.signal,
   } as ToolContext
   const exec = vi.fn<Exec>().mockResolvedValue("")
   const state = createState(stateOverrides)

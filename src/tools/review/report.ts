@@ -5,7 +5,7 @@ import { MagiError } from "@/magi"
 import { filterEmpty, toTitleCase } from "@/utils"
 
 export async function createReport(this: Review, e?: unknown): Promise<string> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   if (!e) {
     const status = "completed"
@@ -24,7 +24,7 @@ export async function createReport(this: Review, e?: unknown): Promise<string> {
     const status =
       e instanceof MagiError
         ? e.status
-        : this.context.abort.aborted
+        : this.context.signal.aborted
           ? "cancelled"
           : "failed"
     const text = await createContent.call(this, { error, status })

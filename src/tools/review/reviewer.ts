@@ -26,7 +26,7 @@ interface Finding {
 }
 
 export async function review(this: Review): Promise<void> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   await this.updateEvent(`Reviewing.`)
 
@@ -173,7 +173,7 @@ export async function review(this: Review): Promise<void> {
                 const raw = await this.magi.promptSession(
                   sessionId,
                   count === 1 ? taskMessage : await prompt.repair(e),
-                  this.context.abort,
+                  this.context.signal,
                 )
 
                 await this.createAgentFile(
@@ -241,7 +241,7 @@ export async function review(this: Review): Promise<void> {
                   )
                 },
                 retries: this.config.output.repairAttempts,
-                signal: this.context.abort,
+                signal: this.context.signal,
               },
             )
 
@@ -268,7 +268,7 @@ export async function review(this: Review): Promise<void> {
 }
 
 export async function validateFindings(this: Review): Promise<void> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   if (!this.config.review.reviewers?.length)
     throw new MagiError("blocked", "No reviewers configured.")
@@ -311,7 +311,7 @@ export async function validateFindings(this: Review): Promise<void> {
 }
 
 export async function reconsiderClose(this: Review): Promise<void> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   if (this.config.review.merge.approvalPolicy !== "unanimous") return
 
@@ -381,7 +381,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
               const raw = await this.magi.promptSession(
                 sessionId,
                 count === 1 ? taskMessage : await prompt.repair(e),
-                this.context.abort,
+                this.context.signal,
               )
 
               await this.createAgentFile(
@@ -416,7 +416,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
                 )
               },
               retries: this.config.output.repairAttempts,
-              signal: this.context.abort,
+              signal: this.context.signal,
             },
           )
 
@@ -531,7 +531,7 @@ async function collectAcceptedFindings(
               const raw = await this.magi.promptSession(
                 sessionId,
                 count === 1 ? taskMessage : await prompt.repair(e),
-                this.context.abort,
+                this.context.signal,
               )
 
               await this.createAgentFile("finding-validation", id, raw, count)
@@ -574,7 +574,7 @@ async function collectAcceptedFindings(
                 )
               },
               retries: this.config.output.repairAttempts,
-              signal: this.context.abort,
+              signal: this.context.signal,
             },
           )
 

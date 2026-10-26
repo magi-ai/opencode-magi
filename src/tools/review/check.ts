@@ -150,7 +150,7 @@ function getSafetyErrors(
 }
 
 export async function checkPr(this: Review): Promise<void> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   await this.updateState({ status: "running" })
   await this.updateEvent(`Checking PR.`)
@@ -192,7 +192,7 @@ export async function checkCi(
   this: Review,
   wait = this.config.review.checks.wait,
 ): Promise<void> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   await this.updateEvent(`Checking CI.`)
 
@@ -205,7 +205,7 @@ export async function checkCi(
 }
 
 export async function classifyChecks(this: Review): Promise<void> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   if (!this.state.pr?.checks?.failed.length) return
 
@@ -256,7 +256,7 @@ export async function classifyChecks(this: Review): Promise<void> {
             const raw = await this.magi.promptSession(
               sessionId,
               count === 1 ? taskMessage : await prompt.repair(e),
-              this.context.abort,
+              this.context.signal,
             )
 
             await this.createAgentFile("ci-classification", id, raw, count)
@@ -277,7 +277,7 @@ export async function classifyChecks(this: Review): Promise<void> {
               )
             },
             retries: this.config.output.repairAttempts,
-            signal: this.context.abort,
+            signal: this.context.signal,
           },
         )
 
@@ -336,7 +336,7 @@ export async function classifyChecks(this: Review): Promise<void> {
 }
 
 export async function rerunChecks(this: Review): Promise<void> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   if (!this.state.pr?.checks)
     throw new MagiError("blocked", "PR checks not found.")
@@ -405,7 +405,7 @@ export async function rerunChecks(this: Review): Promise<void> {
             `Attempt ${count} failed to rerun checks ${label}. Retrying...`,
           ),
         retries: this.config.review.checks.retryFailedJobs,
-        signal: this.context.abort,
+        signal: this.context.signal,
       },
     )
   }
@@ -473,7 +473,7 @@ async function getChecks(this: Review): Promise<PullRequestChecks> {
         fields,
         "--required",
       ),
-      { signal: this.context.abort },
+      { signal: this.context.signal },
     )
     const data = JSON.parse(raw) as PullRequestCheck[]
 
@@ -514,7 +514,7 @@ async function getCheckLog(this: Review, id: string): Promise<string> {
       quote(id),
       "--log-failed",
     ),
-    { signal: this.context.abort },
+    { signal: this.context.signal },
   )
 
   return (
@@ -538,7 +538,7 @@ async function rerunCheck(this: Review, id: string): Promise<void> {
       "--job",
       quote(id),
     ),
-    { signal: this.context.abort },
+    { signal: this.context.signal },
   )
 }
 
@@ -555,7 +555,7 @@ async function watchChecks(this: Review): Promise<void> {
         "--watch",
         "--required",
       ),
-      { signal: this.context.abort },
+      { signal: this.context.signal },
     )
   } catch {}
 }

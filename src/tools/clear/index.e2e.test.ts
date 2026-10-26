@@ -1,4 +1,4 @@
-import type { ToolContext } from "@opencode-ai/plugin"
+import type { ToolContext } from "@opencode/plugin/promise/tool"
 import type { Config } from "@/config"
 import type { Magi, State } from "@/magi"
 import type { Exec } from "@/utils"
@@ -46,14 +46,14 @@ async function executeClear(magi: Magi): Promise<string> {
   if (!clearTool) throw new Error("Clear tool not found.")
 
   const result = await clearTool.execute({}, {
-    abort: new AbortController().signal,
     sessionID: "parent-session",
+    signal: new AbortController().signal,
   } as ToolContext)
 
-  if (typeof result !== "string")
+  if (typeof result.content !== "string")
     throw new Error("Clear tool did not return a summary.")
 
-  return result
+  return result.content
 }
 
 describe("magi:clear", () => {
@@ -76,7 +76,7 @@ describe("magi:clear", () => {
       ].join("\n"),
     )
     expect(getConfig).toHaveBeenCalledWith()
-    expect(client.session.delete).not.toHaveBeenCalled()
+    expect(client.session.remove).not.toHaveBeenCalled()
     expect(exec).not.toHaveBeenCalled()
   })
 
@@ -95,7 +95,7 @@ describe("magi:clear", () => {
     const exec = vi.fn<Exec>().mockResolvedValue("")
 
     magi.exec = exec
-    client.session.delete.mockResolvedValue({ data: true })
+    client.session.remove.mockResolvedValue(undefined)
     vi.spyOn(magi, "getConfig").mockResolvedValue(config)
 
     await Promise.all([
@@ -158,7 +158,7 @@ describe("magi:clear", () => {
       ].join("\n"),
     )
     expect(
-      client.session.delete.mock.calls
+      client.session.remove.mock.calls
         .map(([value]) => value.sessionID)
         .sort((first, second) => first.localeCompare(second)),
     ).toStrictEqual([
@@ -220,7 +220,7 @@ describe("magi:clear", () => {
         "Outputs deleted: 0",
       ].join("\n"),
     )
-    expect(client.session.delete).not.toHaveBeenCalled()
+    expect(client.session.remove).not.toHaveBeenCalled()
     expect(exec).not.toHaveBeenCalled()
     await expect(access(output)).resolves.toBeUndefined()
     await expect(access(worktree)).resolves.toBeUndefined()
@@ -235,7 +235,7 @@ describe("magi:clear", () => {
     const { client, magi } = createMagi({ dir: tmpDir })
 
     vi.spyOn(magi, "exec").mockRejectedValue(new Error("exec failed"))
-    client.session.delete.mockRejectedValue(new Error("delete failed"))
+    client.session.remove.mockRejectedValue(new Error("delete failed"))
     vi.spyOn(magi, "getConfig").mockResolvedValue(config)
     await writeState(
       scanDirectory,
@@ -254,7 +254,7 @@ describe("magi:clear", () => {
         "Outputs deleted: 0",
       ].join("\n"),
     )
-    expect(client.session.delete).toHaveBeenCalledWith({
+    expect(client.session.remove).toHaveBeenCalledWith({
       sessionID: "parent-session",
     })
   })
@@ -284,7 +284,7 @@ describe("magi:clear", () => {
     await writeFile(join(output, "state.json"), "not json")
 
     await expect(executeClear(magi)).rejects.toThrow(SyntaxError)
-    expect(client.session.delete).not.toHaveBeenCalled()
+    expect(client.session.remove).not.toHaveBeenCalled()
     expect(exec).not.toHaveBeenCalled()
     await expect(access(output)).resolves.toBeUndefined()
   })

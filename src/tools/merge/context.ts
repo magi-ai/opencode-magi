@@ -13,7 +13,7 @@ import {
 import { marker } from "@/utils"
 
 export async function fetchMergeContext(this: Merge): Promise<void> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   const output = this.state.editor?.outputs?.at(-1)
 
@@ -45,7 +45,7 @@ export async function fetchMergeContext(this: Merge): Promise<void> {
 }
 
 export async function markRepliedReviewers(this: Merge): Promise<void> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   await this.updateEvent(`Marking replied reviewers.`)
 

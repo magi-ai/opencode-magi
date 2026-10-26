@@ -1,4 +1,4 @@
-import type { ToolContext } from "@opencode-ai/plugin"
+import type { ToolContext } from "@opencode/plugin/promise/tool"
 import type { Config } from "@/config"
 import type { Magi } from "@/magi"
 import { join } from "node:path"
@@ -61,7 +61,7 @@ export class Merge extends Review {
   public resolveConflict = resolveConflict
 
   public async createSession(): Promise<void> {
-    this.context.abort.throwIfAborted()
+    this.context.signal.throwIfAborted()
 
     if (!this.state.editor) throw new MagiError("blocked", "Editor not found.")
 
@@ -75,7 +75,7 @@ export class Merge extends Review {
           model: this.state.editor.model,
           permissions: this.state.editor.permissions,
         },
-        this.context.abort,
+        this.context.signal,
       ),
     }
 

@@ -1,6 +1,5 @@
 import type { Config } from "@/config"
 import type { Tool } from "@/magi"
-import { tool } from "@opencode-ai/plugin"
 import { parsePrs, split, Worker } from "@/utils"
 import { Review } from "./review"
 
@@ -74,13 +73,9 @@ function overrideConfig(
 
 export const review: Tool = function (magi) {
   return {
-    magi_review: tool({
-      args: {
-        dryRun: tool.schema.boolean().optional(),
-        prs: tool.schema.string(),
-      },
+    magi_review: {
       description: "Review one or more pull requests and post the reviews.",
-      async execute(args, context) {
+      async execute(args: { dryRun?: boolean; prs: string }, context) {
         const prs = parsePrs(args.prs)
         const { config, dryRun } = overrideConfig(
           await magi.getConfig({ reviewers: true }),
@@ -92,7 +87,7 @@ export const review: Tool = function (magi) {
         )
         const reports = await Promise.all(
           prs.map(async (pr) => {
-            context.abort.throwIfAborted()
+            context.signal.throwIfAborted()
 
             return worker.run(async () => {
               const run = await Review.init(pr, magi, config, context, {
@@ -137,8 +132,15 @@ export const review: Tool = function (magi) {
         if (errors.length)
           throw new Error(errors.map(({ report }) => report).join("\n\n"))
 
-        return reports.map(({ report }) => report).join("\n\n")
+        return { content: reports.map(({ report }) => report).join("\n\n") }
       },
-    }),
+      input: {
+        additionalProperties: false,
+        properties: { dryRun: { type: "boolean" }, prs: { type: "string" } },
+        required: ["prs"],
+        type: "object",
+      },
+      name: "magi_review",
+    },
   }
 }

@@ -34,7 +34,7 @@ OpenCode Magiは、人間がGitHub上で行っているレビューサイクル�
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-magi"]
+  "plugins": ["opencode-magi"]
 }
 ```
 

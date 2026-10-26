@@ -7,7 +7,7 @@ export async function editCycles(
   this: Merge,
   cb: (cycle: number) => Promise<PullRequestVerdict>,
 ): Promise<void> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   const error = new Error("Continue edit cycle.")
   const verdict = await retry<PullRequestVerdict>(
@@ -27,7 +27,7 @@ export async function editCycles(
         )
       },
       retries: this.config.merge.maxThreadResolutionCycles,
-      signal: this.context.abort,
+      signal: this.context.signal,
     },
   )
 
@@ -36,7 +36,7 @@ export async function editCycles(
 }
 
 export async function postReplies(this: Merge): Promise<void> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   if (this.state.dryRun) return
 
@@ -53,7 +53,7 @@ export async function postReplies(this: Merge): Promise<void> {
 
   const octokit = await this.magi.createOctokit(
     this.config,
-    this.context.abort,
+    this.context.signal,
     this.state.editor.account,
   )
   const args = {

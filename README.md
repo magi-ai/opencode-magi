@@ -34,7 +34,7 @@ Add the plugin to `opencode.json`.
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-magi"]
+  "plugins": ["opencode-magi"]
 }
 ```
 

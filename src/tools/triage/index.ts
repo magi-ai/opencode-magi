@@ -1,20 +1,22 @@
 import type { Tool } from "@/magi"
-import { tool } from "@opencode-ai/plugin"
 
 export const triage: Tool = function (magi) {
   return {
-    magi_triage: tool({
-      args: {
-        dryRun: tool.schema.boolean().optional(),
-        issues: tool.schema.string(),
-      },
+    magi_triage: {
       description:
         "Triage one or more issues with configured Magi triage voters.",
-      async execute({ dryRun: _dryRun = false, issues: _issues }) {
+      async execute() {
         const _config = await magi.getConfig({ creator: true, voters: true })
 
-        return ""
+        return { content: "" }
       },
-    }),
+      input: {
+        additionalProperties: false,
+        properties: { dryRun: { type: "boolean" }, issues: { type: "string" } },
+        required: ["issues"],
+        type: "object",
+      },
+      name: "magi_triage",
+    },
   }
 }

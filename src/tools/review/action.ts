@@ -35,7 +35,7 @@ const events = {
 const mergeWorker = new Worker<PullRequestAutomation | void>(1)
 
 export async function postReviews(this: Review): Promise<void> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   if (this.state.dryRun) return
 
@@ -58,7 +58,7 @@ export async function postReviews(this: Review): Promise<void> {
 
     const octokit = await this.magi.createOctokit(
       this.config,
-      this.context.abort,
+      this.context.signal,
       this.config.account,
     )
     const graphql = this.magi.createGraphql(octokit)
@@ -153,7 +153,7 @@ export async function postReviews(this: Review): Promise<void> {
           const raw = await this.magi.promptSession(
             this.state.operator!.sessionId!,
             count === 1 ? taskMessage : await prompt.repair(e),
-            this.context.abort,
+            this.context.signal,
           )
 
           await this.createAgentFile("comment", "operator", raw, count)
@@ -174,7 +174,7 @@ export async function postReviews(this: Review): Promise<void> {
             )
           },
           retries: this.config.output.repairAttempts,
-          signal: this.context.abort,
+          signal: this.context.signal,
         },
       )
 
@@ -237,7 +237,7 @@ export async function postReviews(this: Review): Promise<void> {
 
               const octokit = await this.magi.createOctokit(
                 this.config,
-                this.context.abort,
+                this.context.signal,
                 account,
               )
               const graphql = this.magi.createGraphql(octokit)
@@ -306,7 +306,7 @@ export async function postReviews(this: Review): Promise<void> {
 }
 
 export async function automate(this: Review): Promise<PullRequestAutomation> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   if (!this.state.pr?.metadata)
     throw new MagiError("blocked", "PR metadata not found.")
@@ -362,7 +362,7 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
     return "SKIPPED"
   }
 
-  const token = await this.magi.getGhToken(account, this.context.abort)
+  const token = await this.magi.getGhToken(account, this.context.signal)
 
   if (action === "merge" && !this.config.review.merge.queue) {
     const rules = JSON.parse(
@@ -376,7 +376,7 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
         ),
         {
           env: { GH_TOKEN: token },
-          signal: this.context.abort,
+          signal: this.context.signal,
         },
       ),
     )
@@ -405,7 +405,7 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
   if (action === "merge" && this.config.review.merge.queue) {
     const octokit = await this.magi.createOctokit(
       this.config,
-      this.context.abort,
+      this.context.signal,
       account,
     )
     const graphql = this.magi.createGraphql(octokit)
@@ -453,10 +453,10 @@ export async function automate(this: Review): Promise<PullRequestAutomation> {
       if (this.config.review.merge.deleteBranch) args.push("--delete-branch")
     }
 
-    const options = { env: { GH_TOKEN: token }, signal: this.context.abort }
+    const options = { env: { GH_TOKEN: token }, signal: this.context.signal }
     const waitMerge = async (): Promise<PullRequestAutomation> => {
       return await loop<PullRequestAutomation>(async () => {
-        this.context.abort.throwIfAborted()
+        this.context.signal.throwIfAborted()
 
         const data = await this.exec(
           command(
@@ -652,7 +652,7 @@ async function waitMergeQueue(
   leftMergeQueue = false,
   retries = 0,
 ): Promise<PullRequestAutomation> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   if (!this.state.pr?.metadata)
     throw new MagiError("blocked", "PR metadata not found.")
@@ -719,7 +719,7 @@ async function waitMergeQueue(
     throw new MagiError("blocked", `PR left the merge queue before merging.`)
   }
 
-  await wait(30_000, this.context.abort)
+  await wait(30_000, this.context.signal)
 
   return await waitMergeQueue.call(
     this,
@@ -732,7 +732,7 @@ async function waitMergeQueue(
 async function isConflict(this: Review): Promise<boolean> {
   if (!this.state.worktree) return false
 
-  const options = { cwd: this.state.worktree.path, signal: this.context.abort }
+  const options = { cwd: this.state.worktree.path, signal: this.context.signal }
   const status = await this.exec(
     command("git", "status", "--porcelain"),
     options,

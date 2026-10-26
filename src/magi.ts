@@ -1,10 +1,6 @@
 import type { ThrottlingOptions } from "@octokit/plugin-throttling"
-import type {
-  PluginInput as OriginalPluginInput,
-  PluginOptions,
-  ToolDefinition,
-} from "@opencode-ai/plugin"
-import type { Event as OpenCodeEvent } from "@opencode-ai/sdk/v2"
+import type { Plugin, PluginOptions } from "@opencode/plugin"
+import type { Info as ToolDefinition } from "@opencode/plugin/promise/tool"
 import type { DocumentNode } from "graphql"
 import type { EditOutput } from "./tools/merge"
 import type { Config, ConfigValidationOptions } from "@/config"
@@ -23,7 +19,6 @@ import type {
   ReviewOutput,
 } from "@/tools/review"
 import type { DeepPartial, Dict, Exec, PluginInput } from "@/utils"
-import { createOpencodeClient } from "@opencode-ai/sdk/v2"
 import { print } from "graphql"
 import { randomUUID } from "node:crypto"
 import {
@@ -44,7 +39,6 @@ import {
   isArray,
   isNumber,
   isObject,
-  isUndefined,
   merge,
   quote,
   rm,
@@ -145,20 +139,10 @@ export class Magi {
   public options: PluginOptions | undefined
   public exec: Exec
 
-  constructor(input: OriginalPluginInput, options?: PluginOptions) {
-    const client = createOpencodeClient({
-      baseUrl: input.serverUrl.toString(),
-      directory: input.directory,
-      fetch: (
-        input.client.session as unknown as {
-          _client: { getConfig(): { fetch?: typeof fetch } }
-        }
-      )._client.getConfig().fetch,
-    })
-
-    this.input = { ...input, client }
-    this.options = options
-    this.exec = createExec(input.directory)
+  constructor(context: Plugin.Context) {
+    this.input = { client: context, directory: context.location.directory }
+    this.options = context.options
+    this.exec = createExec(context.location.directory)
   }
 
   public getGhToken(account?: string, signal?: AbortSignal): Promise<string> {
@@ -421,23 +405,13 @@ export class Magi {
           variant,
         },
         parentID,
-        permission: resolvePermissions(permissions),
+        permissions: resolvePermissions(permissions),
         title,
       },
       { signal },
     )
 
-    if (result.error) {
-      if (!isUndefined(result.response) && result.response.statusText)
-        throw new Error(result.response.statusText)
-      else if (result.error instanceof Error)
-        throw new Error(result.error.message)
-      else throw new Error(JSON.stringify(result.error))
-    } else {
-      const id = result.data.id
-
-      return id
-    }
+    return result.id
   }
 
   public async promptSession(
@@ -445,87 +419,104 @@ export class Magi {
     text: string,
     signal?: AbortSignal,
   ): Promise<string> {
+    signal?.throwIfAborted()
+
     const controller = new AbortController()
-    const events = await this.input.client.event.subscribe(undefined, {
+    const cancelled = Promise.withResolvers<never>()
+    const abort = (): void => cancelled.reject(signal?.reason)
+    const events = this.input.client.event.subscribe({
       signal: controller.signal,
     })
 
+    signal?.addEventListener("abort", abort, { once: true })
+
     try {
-      const result = await Promise.race([
-        this.input.client.session.prompt(
-          {
-            parts: [{ text, type: "text" }],
-            sessionID,
-          },
-          { signal },
+      return await Promise.race([
+        cancelled.promise,
+        this.monitorSession(sessionID, events),
+        this.readSessionOutput(
+          sessionID,
+          text,
+          signal
+            ? AbortSignal.any([signal, controller.signal])
+            : controller.signal,
         ),
-        this.monitorSession(sessionID, events.stream),
       ])
-
-      if (result.error) {
-        if (!isUndefined(result.response) && result.response.statusText)
-          throw new Error(result.response.statusText)
-        else if (result.error instanceof Error)
-          throw new Error(result.error.message)
-        else throw new Error(JSON.stringify(result.error))
-      } else {
-        const output = result.data.parts
-          .filter((part) => part.type === "text")
-          .map((part) => part.text)
-          .join("\n")
-
-        if (!output)
-          throw new Error("OpenCode session.prompt did not return text output.")
-
-        return output
-      }
     } catch (e) {
-      if (e instanceof MagiError)
-        await this.input.client.session.abort({ sessionID })
+      if (e instanceof MagiError || signal?.aborted)
+        await this.input.client.session.interrupt({ resume: false, sessionID })
 
       throw e
     } finally {
+      signal?.removeEventListener("abort", abort)
       controller.abort()
     }
   }
 
+  private async readSessionOutput(
+    sessionID: string,
+    text: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    const prompt = await this.input.client.session.prompt(
+      { sessionID, text },
+      { signal },
+    )
+
+    await this.input.client.session.wait({ sessionID }, { signal })
+
+    const messages = await this.input.client.session.context(
+      { sessionID },
+      { signal },
+    )
+    const response = messages.findLast(
+      (message) => message.type === "assistant",
+    )
+
+    if (!response || response.time.created < prompt.time.created)
+      throw new Error("OpenCode session.prompt did not return text output.")
+    if (response.error) throw new Error(response.error.message)
+
+    const output = response.content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n")
+
+    if (!output)
+      throw new Error("OpenCode session.prompt did not return text output.")
+
+    return output
+  }
+
   private async monitorSession(
     sessionID: string,
-    events: AsyncIterable<OpenCodeEvent>,
+    events: ReturnType<Plugin.Context["event"]["subscribe"]>,
   ): Promise<never> {
     for await (const ev of events) {
-      if (
-        ev.type === "permission.asked" &&
-        ev.properties.sessionID === sessionID
-      ) {
-        const { id, patterns, permission } = ev.properties
-        const result = await this.input.client.permission.reply({
-          reply: "reject",
-          requestID: id,
-        })
+      if (ev.type === "permission.asked" && ev.data.sessionID === sessionID) {
+        const { action, id, resources } = ev.data
 
-        if (result.error)
-          throw new MagiError("blocked", "Could not reject permission request.")
+        await this.input.client.permission
+          .reply({
+            decision: "reject",
+            requestID: id,
+            sessionID,
+          })
+          .catch(() => {
+            throw new MagiError(
+              "blocked",
+              "Could not reject permission request.",
+            )
+          })
 
         throw new MagiError(
           "blocked",
-          `OpenCode session requested ${permission} permission for ${patterns.join(", ")}.`,
+          `OpenCode session requested ${action} permission for ${resources.join(", ")}.`,
         )
       }
 
-      if (
-        ev.type === "question.asked" &&
-        ev.properties.sessionID === sessionID
-      ) {
-        const result = await this.input.client.question.reject({
-          requestID: ev.properties.id,
-        })
-
-        if (result.error)
-          throw new MagiError("blocked", "Could not reject user question.")
-
+      if (ev.type === "form.created" && ev.data.form.sessionID === sessionID)
         throw new MagiError("blocked", "OpenCode session requested user input.")
-      }
     }
 
     return new Promise<never>(() => {})
@@ -538,7 +529,7 @@ export class Magi {
 
     for (const sessionID of sessionIds)
       try {
-        await this.input.client.session.delete({ sessionID })
+        await this.input.client.session.remove({ sessionID })
 
         count += 1
       } catch {}

@@ -14,7 +14,7 @@ type EditPromptOutput = Omit<EditOutput, "filesTouched"> & {
 }
 
 export async function edit(this: Merge): Promise<boolean> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   await this.updateEvent(`Editing.`)
 
@@ -48,7 +48,7 @@ export async function edit(this: Merge): Promise<boolean> {
       const raw = await this.magi.promptSession(
         this.state.editor!.sessionId!,
         count === 1 ? taskMessage : await prompt.repair(e),
-        this.context.abort,
+        this.context.signal,
       )
 
       await this.createAgentFile("edit", "editor", raw, count, cycle)
@@ -66,7 +66,7 @@ export async function edit(this: Merge): Promise<boolean> {
       if (output.mode === "EDITED") {
         const head = await this.exec(command("git", "rev-parse", "HEAD"), {
           cwd: this.state.worktree!.path,
-          signal: this.context.abort,
+          signal: this.context.signal,
         })
 
         if (head !== output.commitSha)
@@ -84,7 +84,7 @@ export async function edit(this: Merge): Promise<boolean> {
         await this.updateEvent(`Attempt ${count} failed to edit. Retrying...`)
       },
       retries: this.config.output.repairAttempts,
-      signal: this.context.abort,
+      signal: this.context.signal,
     },
   )
 
@@ -140,14 +140,17 @@ export async function edit(this: Merge): Promise<boolean> {
 }
 
 export async function resolveConflict(this: Merge): Promise<void> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   await this.updateEvent(`Resolving merge conflicts.`)
 
   if (!this.state.pr?.metadata)
     throw new MagiError("blocked", "PR metadata not found.")
 
-  const options = { cwd: this.state.worktree!.path, signal: this.context.abort }
+  const options = {
+    cwd: this.state.worktree!.path,
+    signal: this.context.signal,
+  }
 
   await setAccount.call(this)
   await this.exec(
@@ -186,7 +189,7 @@ export async function resolveConflict(this: Merge): Promise<void> {
       const raw = await this.magi.promptSession(
         this.state.editor!.sessionId!,
         count === 1 ? taskMessage : await prompt.repair(e),
-        this.context.abort,
+        this.context.signal,
       )
 
       await this.createAgentFile("conflict", "editor", raw, count, cycle)
@@ -241,7 +244,7 @@ export async function resolveConflict(this: Merge): Promise<void> {
         )
       },
       retries: this.config.output.repairAttempts,
-      signal: this.context.abort,
+      signal: this.context.signal,
     },
   )
 
@@ -284,7 +287,7 @@ async function setAccount(this: Merge): Promise<void> {
   if (!this.state.worktree)
     throw new MagiError("blocked", "PR worktree not found.")
 
-  const options = { cwd: this.state.worktree.path, signal: this.context.abort }
+  const options = { cwd: this.state.worktree.path, signal: this.context.signal }
 
   await this.exec(
     command("git", "config", "user.name", quote(this.state.editor.author.name)),
@@ -306,7 +309,7 @@ async function push(
 ): Promise<{ files: string[]; metadata: PullRequestMetadata }> {
   const token = await this.magi.getGhToken(
     this.state.editor!.account,
-    this.context.abort,
+    this.context.signal,
   )
   const url = `https://${this.config.github.host}/${this.state.pr!.metadata!.head.repo.owner.login}/${this.state.pr!.metadata!.head.repo.name}.git`
   const ref = `HEAD:refs/heads/${this.state.pr!.metadata!.head.ref}`
@@ -325,14 +328,17 @@ async function push(
       GIT_PASSWORD: token,
       GIT_TERMINAL_PROMPT: "0",
     },
-    signal: this.context.abort,
+    signal: this.context.signal,
   })
 
   return getMetadata.call(this)
 }
 
 async function getConflictedFiles(this: Merge): Promise<string[]> {
-  const options = { cwd: this.state.worktree!.path, signal: this.context.abort }
+  const options = {
+    cwd: this.state.worktree!.path,
+    signal: this.context.signal,
+  }
 
   try {
     await this.exec(

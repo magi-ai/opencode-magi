@@ -1,4 +1,4 @@
-import type { ToolContext } from "@opencode-ai/plugin"
+import type { ToolContext } from "@opencode/plugin/promise/tool"
 import type { Octokit } from "octokit"
 import type { PullRequestVerdict } from "."
 import type { Config } from "@/config"
@@ -86,7 +86,7 @@ export class Review {
     sessionId: string
   }> {
     const url = `${config.github.url}/pull/${number}`
-    const octokit = await magi.createOctokit(config, context.abort)
+    const octokit = await magi.createOctokit(config, context.signal)
     const graphql = magi.createGraphql(octokit)
     const reviewers = Object.fromEntries(
       config.review.reviewers!.map(
@@ -134,7 +134,7 @@ export class Review {
 
   public async cleanup(): Promise<void> {
     if (
-      this.context.abort.aborted &&
+      this.context.signal.aborted &&
       ["preparing", "running"].includes(this.state.status)
     )
       await this.updateState({
@@ -176,7 +176,7 @@ export class Review {
   }
 
   public async createSessions(): Promise<void> {
-    this.context.abort.throwIfAborted()
+    this.context.signal.throwIfAborted()
 
     if (!this.state.reviewers)
       throw new MagiError("blocked", "Reviewers not found.")
@@ -194,7 +194,7 @@ export class Review {
                   this.state.sessionId,
                   `magi review #${this.number} ${id}`,
                   { model, permissions },
-                  this.context.abort,
+                  this.context.signal,
                 ),
               },
             ] as const,
@@ -209,7 +209,7 @@ export class Review {
           model: this.state.operator.model,
           permissions: this.state.operator.permissions,
         },
-        this.context.abort,
+        this.context.signal,
       ),
     }
 
@@ -217,7 +217,7 @@ export class Review {
   }
 
   public async createWorktree(): Promise<void> {
-    this.context.abort.throwIfAborted()
+    this.context.signal.throwIfAborted()
 
     await this.updateEvent(`Creating worktree.`)
 
@@ -225,7 +225,7 @@ export class Review {
       this.config.review.worktree,
       this.number,
       this.state.id,
-      this.context.abort,
+      this.context.signal,
     )
 
     await this.updateState({ worktree })

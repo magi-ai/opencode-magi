@@ -1,11 +1,10 @@
-import type { ToolContext } from "@opencode-ai/plugin"
+import type { ToolContext } from "@opencode/plugin/promise/tool"
 import type { ClientMocks, CreateMagi } from "#/fixtures/magi"
 import type { Config } from "@/config"
 import type { Event, Magi, State } from "@/magi"
 import type { Exec } from "@/utils"
 import { access, readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
-import { Readable } from "node:stream"
 import { test } from "#/fixtures/magi"
 import {
   createGitHubFixture,
@@ -35,25 +34,28 @@ interface RunArtifacts {
 
 function mockSessions(client: ClientMocks): void {
   client.session.create
-    .mockResolvedValueOnce({ data: { id: "reviewer-one-session" } })
-    .mockResolvedValueOnce({ data: { id: "reviewer-two-session" } })
-    .mockResolvedValueOnce({ data: { id: "reviewer-three-session" } })
-    .mockResolvedValueOnce({ data: { id: "operator-session" } })
-    .mockResolvedValueOnce({ data: { id: "editor-session" } })
+    .mockResolvedValueOnce({ id: "reviewer-one-session" })
+    .mockResolvedValueOnce({ id: "reviewer-two-session" })
+    .mockResolvedValueOnce({ id: "reviewer-three-session" })
+    .mockResolvedValueOnce({ id: "operator-session" })
+    .mockResolvedValueOnce({ id: "editor-session" })
 }
 
 function mockPromptOutputs(client: ClientMocks, outputs: string[]): void {
-  // Each prompt needs a fresh stream to avoid accumulating event listeners.
-  // oxlint-disable-next-line vitest/prefer-mock-promise-shorthand
-  client.event.subscribe.mockImplementation(() =>
-    Promise.resolve({ stream: Readable.from([]) }),
-  )
-  client.session.prompt.mockImplementation(() => {
+  client.session.context.mockImplementation(() => {
     const text = outputs.shift()
 
     if (text == null) return Promise.reject(new Error("Prompt output missing."))
 
-    return Promise.resolve({ data: { parts: [{ text, type: "text" }] } })
+    return Promise.resolve([
+      { id: "prompt-id", type: "user" },
+      {
+        content: [{ text, type: "text" }],
+        id: "response",
+        time: { created: 2 },
+        type: "assistant",
+      },
+    ])
   })
 }
 
@@ -67,8 +69,8 @@ function mockGitHub(
 
 function createContext(controller = new AbortController()): ToolContext {
   return {
-    abort: controller.signal,
     sessionID: "parent-session",
+    signal: controller.signal,
   } as ToolContext
 }
 
@@ -83,10 +85,10 @@ async function executeMerge(
 
   const result = await mergeTool.execute({ prs }, context)
 
-  if (typeof result !== "string")
+  if (typeof result.content !== "string")
     throw new Error("Merge tool did not return a report.")
 
-  return result
+  return result.content
 }
 
 async function getRunOutput(config: Config.Root): Promise<string> {
@@ -309,19 +311,25 @@ describe("magi:merge", () => {
       const ghCommands: string[] = []
       const rawReview = JSON.stringify({ verdict: "APPROVED" })
       const context = {
-        abort: new AbortController().signal,
         sessionID: "parent-session",
+        signal: new AbortController().signal,
       } as ToolContext
 
       magi.exec = createPullRequestExec(repository, PULL_REQUEST, ghCommands)
       client.session.create
-        .mockResolvedValueOnce({ data: { id: "reviewer-one-session" } })
-        .mockResolvedValueOnce({ data: { id: "reviewer-two-session" } })
-        .mockResolvedValueOnce({ data: { id: "reviewer-three-session" } })
-        .mockResolvedValueOnce({ data: { id: "operator-session" } })
-      client.session.prompt.mockResolvedValue({
-        data: { parts: [{ text: rawReview, type: "text" }] },
-      })
+        .mockResolvedValueOnce({ id: "reviewer-one-session" })
+        .mockResolvedValueOnce({ id: "reviewer-two-session" })
+        .mockResolvedValueOnce({ id: "reviewer-three-session" })
+        .mockResolvedValueOnce({ id: "operator-session" })
+      client.session.context.mockResolvedValue([
+        { id: "prompt-id", type: "user" },
+        {
+          content: [{ text: rawReview, type: "text" }],
+          id: "response",
+          time: { created: 2 },
+          type: "assistant",
+        },
+      ])
 
       const getConfig = vi.spyOn(magi, "getConfig").mockResolvedValue(config)
       const createOctokit = vi
@@ -339,10 +347,10 @@ describe("magi:merge", () => {
         context,
       )
 
-      if (typeof result !== "string")
+      if (typeof result.content !== "string")
         throw new Error("Merge tool did not return a report.")
 
-      const report = result
+      const report = result.content
       const numberOutput = join(
         config.review.output,
         PULL_REQUEST.number.toString(),
@@ -364,7 +372,7 @@ describe("magi:merge", () => {
       expect(createGraphql).toHaveBeenCalledTimes(mode === "single" ? 2 : 4)
       expect(client.session.create).toHaveBeenCalledTimes(4)
       expect(client.session.prompt).toHaveBeenCalledTimes(3)
-      expect(client.session.prompt.mock.calls[0]![0].parts[0]!.text).toContain(
+      expect(client.session.prompt.mock.calls[0]![0].text).toContain(
         "<output_contract>",
       )
       expect(github.createReview).toHaveBeenCalledTimes(

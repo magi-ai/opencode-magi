@@ -14,7 +14,7 @@ import { MagiError } from "@/magi"
 import { command, filterEmpty, marker, quote } from "@/utils"
 
 export async function checkExistingReviews(this: Review): Promise<boolean> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   await this.updateEvent(`Fetching existing reviews.`)
 
@@ -139,7 +139,7 @@ export async function checkExistingReviews(this: Review): Promise<boolean> {
 }
 
 export async function fetchReviewContext(this: Review): Promise<void> {
-  this.context.abort.throwIfAborted()
+  this.context.signal.throwIfAborted()
 
   await this.updateEvent(`Fetching review context.`)
 
@@ -262,7 +262,7 @@ export async function getInlineCommentTargets(
           quote(url),
           quote(`refs/heads/${ref}`),
         ),
-        { cwd: this.state.worktree!.path, signal: this.context.abort },
+        { cwd: this.state.worktree!.path, signal: this.context.signal },
       )
     }
 
@@ -288,7 +288,7 @@ export async function getInlineCommentTargets(
         "--unified=3",
         quote(`${fromSha}...${toSha}`),
       ),
-      { cwd: this.state.worktree!.path, signal: this.context.abort },
+      { cwd: this.state.worktree!.path, signal: this.context.signal },
     )
 
     let path: string | undefined
@@ -368,7 +368,7 @@ async function hasCommit(this: Review, sha: string): Promise<boolean> {
       command("git", "cat-file", "-e", quote(`${sha}^{commit}`)),
       {
         cwd: this.state.worktree!.path,
-        signal: this.context.abort,
+        signal: this.context.signal,
       },
     )
 

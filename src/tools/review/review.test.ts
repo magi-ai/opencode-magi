@@ -1,4 +1,4 @@
-import type { ToolContext } from "@opencode-ai/plugin"
+import type { ToolContext } from "@opencode/plugin/promise/tool"
 import type { Octokit } from "octokit"
 import type { PullRequestReview, PullRequestReviewThread } from "."
 import type { Graphql } from "@/graphql"
@@ -22,8 +22,8 @@ describe("Review", () => {
     }) => {
       const config = createConfig()
       const context = {
-        abort: new AbortController().signal,
         sessionID: "parent-session",
+        signal: new AbortController().signal,
       } as ToolContext
       const octokit = {} as Octokit
       const graphql = {} as Graphql
@@ -85,8 +85,8 @@ describe("Review", () => {
     }) => {
       const config = createConfig()
       const context = {
-        abort: new AbortController().signal,
         sessionID: "parent-session",
+        signal: new AbortController().signal,
       } as ToolContext
       const state = createState()
       const createStateSpy = vi
@@ -237,19 +237,19 @@ describe("Review", () => {
         "parent-session",
         "magi review #42 one",
         { model: "model-one", permissions: "allow" },
-        context.abort,
+        context.signal,
       )
       expect(createSession).toHaveBeenCalledWith(
         "parent-session",
         "magi review #42 two",
         { model: "model-two", permissions: "deny" },
-        context.abort,
+        context.signal,
       )
       expect(createSession).toHaveBeenCalledWith(
         "parent-session",
         "magi review #42 operator",
         { model: "operator-model", permissions: "ask" },
-        context.abort,
+        context.signal,
       )
       expect(updateState).toHaveBeenCalledWith(review.state.output, {
         operator: { sessionId: "operator-session" },
@@ -306,7 +306,7 @@ describe("Review", () => {
         config.review.worktree,
         42,
         review.state.id,
-        context.abort,
+        context.signal,
       )
       expect(updateState).toHaveBeenCalledWith(review.state.output, {
         worktree,
@@ -2296,7 +2296,7 @@ describe("Review", () => {
 
       expect(createOctokit).toHaveBeenCalledWith(
         config,
-        review.context.abort,
+        review.context.signal,
         "reviewer-one",
       )
       expect(octokitMocks.createReview).toHaveBeenCalledWith(

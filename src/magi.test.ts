@@ -1,9 +1,8 @@
-import type { PluginOptions } from "@opencode-ai/plugin"
+import type { PluginOptions } from "@opencode/plugin"
 import type { Octokit } from "octokit"
 import type { State } from "./magi"
 import type { Config } from "@/config"
 import type { Exec } from "@/utils"
-import { createOpencodeClient } from "@opencode-ai/sdk/v2"
 import { print } from "graphql"
 import { access, mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -33,8 +32,6 @@ vi.mock("octokit", () => ({
     }
   },
 }))
-
-const createOpencodeClientMock = vi.mocked(createOpencodeClient)
 
 function createConfig(directory: string): Config.Root {
   const config = structuredClone(DEFAULT_CONFIG)
@@ -80,20 +77,13 @@ describe("Magi", () => {
   })
 
   describe("constructor", () => {
-    test("creates an SDK client from the plugin input", ({ createMagi }) => {
-      const fetch = vi.fn<typeof globalThis.fetch>()
+    test("uses the v2 plugin context", ({ createMagi }) => {
       const options = {} as PluginOptions
       const { client, magi } = createMagi({
         dir: "/repository",
-        fetch,
         options,
       })
 
-      expect(createOpencodeClientMock).toHaveBeenCalledWith({
-        baseUrl: "http://localhost/",
-        directory: "/repository",
-        fetch,
-      })
       expect(magi.input.client).toBe(client)
       expect(magi.input.directory).toBe("/repository")
       expect(magi.options).toBe(options)
@@ -225,7 +215,7 @@ describe("Magi", () => {
       const exec = vi.fn<Exec>().mockResolvedValue("")
 
       magi.exec = exec
-      client.session.delete.mockResolvedValue({ data: true })
+      client.session.remove.mockResolvedValue(undefined)
       await writeState(output, state)
       await writeState(activeOutput, activeState)
       await mkdir(worktree, { recursive: true })
@@ -241,7 +231,7 @@ describe("Magi", () => {
         worktree: 1,
       })
       expect(
-        client.session.delete.mock.calls.map(([value]) => value),
+        client.session.remove.mock.calls.map(([value]) => value),
       ).toStrictEqual([
         { sessionID: "parent-session" },
         { sessionID: "editor-session" },
@@ -274,7 +264,7 @@ describe("Magi", () => {
       })
 
       vi.spyOn(magi, "exec").mockRejectedValue(new Error("exec failed"))
-      client.session.delete.mockRejectedValue(new Error("delete failed"))
+      client.session.remove.mockRejectedValue(new Error("delete failed"))
       await writeState(scanDirectory, state)
 
       await expect(magi.clear(config)).resolves.toStrictEqual({
@@ -313,7 +303,7 @@ describe("Magi", () => {
         skipped: 0,
         worktree: 0,
       })
-      expect(client.session.delete).not.toHaveBeenCalled()
+      expect(client.session.remove).not.toHaveBeenCalled()
       expect(exec).not.toHaveBeenCalled()
       await expect(access(output)).resolves.toBeUndefined()
     })
@@ -519,7 +509,7 @@ describe("Magi", () => {
     }) => {
       const signal = new AbortController().signal
 
-      client.session.create.mockResolvedValue({ data: { id: "child-session" } })
+      client.session.create.mockResolvedValue({ id: "child-session" })
 
       await expect(
         magi.createSession(
@@ -545,11 +535,11 @@ describe("Magi", () => {
             variant: "high",
           },
           parentID: "parent-session",
-          permission: [
+          permissions: [
             {
-              action: "allow",
-              pattern: "*",
-              permission: "read",
+              action: "read",
+              effect: "allow",
+              resource: "*",
             },
           ],
           title: "Reviewer",
@@ -575,14 +565,8 @@ describe("Magi", () => {
       expect(client.session.create).not.toHaveBeenCalled()
     })
 
-    test("uses the response status text for an API error", async ({
-      client,
-      magi,
-    }) => {
-      client.session.create.mockResolvedValue({
-        error: new Error("request failed"),
-        response: { statusText: "Bad Gateway" },
-      })
+    test("propagates a server error", async ({ client, magi }) => {
+      client.session.create.mockRejectedValue(new Error("Bad Gateway"))
 
       await expect(
         magi.createSession("parent-session", "Reviewer", {
@@ -592,27 +576,13 @@ describe("Magi", () => {
     })
 
     test("uses an Error message for an API error", async ({ client, magi }) => {
-      client.session.create.mockResolvedValue({
-        error: new Error("connection refused"),
-      })
+      client.session.create.mockRejectedValue(new Error("connection refused"))
 
       await expect(
         magi.createSession("parent-session", "Reviewer", {
           model: { id: "provider/model" },
         }),
       ).rejects.toThrow("connection refused")
-    })
-
-    test("serializes a non-Error API failure", async ({ client, magi }) => {
-      client.session.create.mockResolvedValue({
-        error: { code: "ECONNRESET" },
-      })
-
-      await expect(
-        magi.createSession("parent-session", "Reviewer", {
-          model: { id: "provider/model" },
-        }),
-      ).rejects.toThrow('{"code":"ECONNRESET"}')
     })
   })
 
@@ -623,77 +593,103 @@ describe("Magi", () => {
     }) => {
       const signal = new AbortController().signal
 
-      client.session.prompt.mockResolvedValue({
-        data: {
-          parts: [
+      client.session.context.mockResolvedValue([
+        {
+          content: [{ text: "Stale", type: "text" }],
+          id: "old-response",
+          time: { created: 0 },
+          type: "assistant",
+        },
+        { id: "prompt-id", type: "user" },
+        {
+          content: [
             { text: "First", type: "text" },
             { type: "tool" },
             { text: "Second", type: "text" },
           ],
+          id: "response",
+          time: { created: 2 },
+          type: "assistant",
         },
-      })
+      ])
 
       await expect(
         magi.promptSession("session", "Review this PR", signal),
       ).resolves.toBe("First\nSecond")
-      expect(client.event.subscribe).toHaveBeenCalledWith(undefined, {
+      expect(client.event.subscribe).toHaveBeenCalledWith({
         signal: expect.any(AbortSignal),
       })
       expect(client.session.prompt).toHaveBeenCalledWith(
         {
-          parts: [{ text: "Review this PR", type: "text" }],
           sessionID: "session",
+          text: "Review this PR",
         },
-        { signal },
+        { signal: expect.any(AbortSignal) },
+      )
+      expect(client.session.wait).toHaveBeenCalledWith(
+        { sessionID: "session" },
+        { signal: expect.any(AbortSignal) },
+      )
+      expect(client.session.context).toHaveBeenCalledWith(
+        { sessionID: "session" },
+        { signal: expect.any(AbortSignal) },
       )
 
-      const subscriptionSignal = client.event.subscribe.mock.calls[0]![1].signal
+      const subscriptionSignal = client.event.subscribe.mock.calls[0]![0].signal
 
       expect(subscriptionSignal.aborted).toBeTruthy()
     })
 
     test("rejects an empty text response", async ({ client, magi }) => {
-      client.session.prompt.mockResolvedValue({
-        data: { parts: [{ type: "tool" }] },
-      })
+      client.session.context.mockResolvedValue([
+        { id: "prompt-id", type: "user" },
+        {
+          content: [{ type: "tool" }],
+          id: "response",
+          time: { created: 2 },
+          type: "assistant",
+        },
+      ])
 
       await expect(magi.promptSession("session", "text")).rejects.toThrow(
         "OpenCode session.prompt did not return text output.",
       )
-      expect(client.session.abort).not.toHaveBeenCalled()
+      expect(client.session.interrupt).not.toHaveBeenCalled()
     })
 
-    test("uses the response status text for an API error", async ({
-      client,
-      magi,
-    }) => {
-      client.session.prompt.mockResolvedValue({
-        error: new Error("request failed"),
-        response: { statusText: "Bad Gateway" },
-      })
+    test("propagates prompt admission errors", async ({ client, magi }) => {
+      client.session.prompt.mockRejectedValue(new Error("Bad Gateway"))
 
       await expect(magi.promptSession("session", "text")).rejects.toThrow(
         "Bad Gateway",
       )
     })
 
-    test("uses an Error message for an API error", async ({ client, magi }) => {
-      client.session.prompt.mockResolvedValue({
-        error: new Error("connection refused"),
-      })
+    test("propagates session wait errors", async ({ client, magi }) => {
+      client.session.wait.mockRejectedValue(new Error("connection refused"))
 
       await expect(magi.promptSession("session", "text")).rejects.toThrow(
         "connection refused",
       )
     })
 
-    test("serializes a non-Error API failure", async ({ client, magi }) => {
-      client.session.prompt.mockResolvedValue({
-        error: { code: "ECONNRESET" },
-      })
+    test("propagates model errors instead of returning partial output", async ({
+      client,
+      magi,
+    }) => {
+      client.session.context.mockResolvedValue([
+        { id: "prompt-id", type: "user" },
+        {
+          content: [{ text: "Partial", type: "text" }],
+          error: { message: "Model failed" },
+          id: "response",
+          time: { created: 2 },
+          type: "assistant",
+        },
+      ])
 
       await expect(magi.promptSession("session", "text")).rejects.toThrow(
-        '{"code":"ECONNRESET"}',
+        "Model failed",
       )
     })
 
@@ -701,74 +697,72 @@ describe("Magi", () => {
       client,
       magi,
     }) => {
-      client.event.subscribe.mockResolvedValue({
-        stream: createEventStream([
+      client.event.subscribe.mockReturnValue(
+        createEventStream([
           {
-            properties: {
+            data: {
+              action: "shell",
               id: "ignored-permission",
-              patterns: ["git status"],
-              permission: "bash",
+              resources: ["git status"],
               sessionID: "other-session",
             },
             type: "permission.asked",
           },
           {
-            properties: {
-              id: "ignored-question",
-              sessionID: "other-session",
+            data: {
+              form: { id: "ignored-question", sessionID: "other-session" },
             },
-            type: "question.asked",
+            type: "form.created",
           },
-          { properties: {}, type: "session.updated" },
+          { data: {}, type: "session.updated" },
           {
-            properties: {
+            data: {
+              action: "shell",
               id: "permission-request",
-              patterns: ["git push", "git tag"],
-              permission: "bash",
+              resources: ["git push", "git tag"],
               sessionID: "session",
             },
             type: "permission.asked",
           },
         ]),
-      })
-      client.permission.reply.mockResolvedValue({ data: true })
-      client.session.abort.mockResolvedValue({ data: true })
+      )
+      client.permission.reply.mockResolvedValue(undefined)
       client.session.prompt.mockReturnValue(new Promise(() => {}))
 
       await expect(magi.promptSession("session", "text")).rejects.toMatchObject(
         {
           message:
-            "OpenCode session requested bash permission for git push, git tag.",
+            "OpenCode session requested shell permission for git push, git tag.",
           name: "MagiError",
           status: "blocked",
         },
       )
       expect(client.permission.reply).toHaveBeenCalledWith({
-        reply: "reject",
+        decision: "reject",
         requestID: "permission-request",
+        sessionID: "session",
       })
-      expect(client.question.reject).not.toHaveBeenCalled()
-      expect(client.session.abort).toHaveBeenCalledWith({
+      expect(client.session.interrupt).toHaveBeenCalledWith({
+        resume: false,
         sessionID: "session",
       })
     })
 
     test("reports a permission rejection failure", async ({ client, magi }) => {
-      client.event.subscribe.mockResolvedValue({
-        stream: createEventStream([
+      client.event.subscribe.mockReturnValue(
+        createEventStream([
           {
-            properties: {
+            data: {
+              action: "shell",
               id: "permission-request",
-              patterns: ["git push"],
-              permission: "bash",
+              resources: ["git push"],
               sessionID: "session",
             },
             type: "permission.asked",
           },
         ]),
-      })
-      client.permission.reply.mockResolvedValue({ error: "failed" })
-      client.session.abort.mockResolvedValue({ data: true })
+      )
+      client.permission.reply.mockRejectedValue(new Error("failed"))
       client.session.prompt.mockReturnValue(new Promise(() => {}))
 
       await expect(magi.promptSession("session", "text")).rejects.toMatchObject(
@@ -777,28 +771,24 @@ describe("Magi", () => {
           status: "blocked",
         },
       )
-      expect(client.session.abort).toHaveBeenCalledWith({
+      expect(client.session.interrupt).toHaveBeenCalledWith({
+        resume: false,
         sessionID: "session",
       })
     })
 
-    test("rejects questions and aborts the session", async ({
+    test("interrupts sessions requesting user input", async ({
       client,
       magi,
     }) => {
-      client.event.subscribe.mockResolvedValue({
-        stream: createEventStream([
+      client.event.subscribe.mockReturnValue(
+        createEventStream([
           {
-            properties: {
-              id: "question-request",
-              sessionID: "session",
-            },
-            type: "question.asked",
+            data: { form: { id: "question-request", sessionID: "session" } },
+            type: "form.created",
           },
         ]),
-      })
-      client.question.reject.mockResolvedValue({ data: true })
-      client.session.abort.mockResolvedValue({ data: true })
+      )
       client.session.prompt.mockReturnValue(new Promise(() => {}))
 
       await expect(magi.promptSession("session", "text")).rejects.toMatchObject(
@@ -807,39 +797,95 @@ describe("Magi", () => {
           status: "blocked",
         },
       )
-      expect(client.question.reject).toHaveBeenCalledWith({
-        requestID: "question-request",
-      })
-      expect(client.session.abort).toHaveBeenCalledWith({
+      expect(client.session.interrupt).toHaveBeenCalledWith({
+        resume: false,
         sessionID: "session",
       })
     })
 
-    test("reports a question rejection failure", async ({ client, magi }) => {
-      client.event.subscribe.mockResolvedValue({
-        stream: createEventStream([
-          {
-            properties: {
-              id: "question-request",
-              sessionID: "session",
-            },
-            type: "question.asked",
-          },
-        ]),
-      })
-      client.question.reject.mockResolvedValue({ error: "failed" })
-      client.session.abort.mockResolvedValue({ data: true })
-      client.session.prompt.mockReturnValue(new Promise(() => {}))
+    test("interrupts the child session even when the v2 adapter ignores the signal", async ({
+      client,
+      magi,
+    }) => {
+      const controller = new AbortController()
 
-      await expect(magi.promptSession("session", "text")).rejects.toMatchObject(
-        {
-          message: "Could not reject user question.",
-          status: "blocked",
-        },
-      )
-      expect(client.session.abort).toHaveBeenCalledWith({
+      client.session.wait.mockImplementation(() => {
+        controller.abort(new DOMException("Aborted", "AbortError"))
+
+        return new Promise(() => {})
+      })
+
+      await expect(
+        magi.promptSession("session", "text", controller.signal),
+      ).rejects.toThrow("Aborted")
+      expect(client.session.interrupt).toHaveBeenCalledWith({
+        resume: false,
         sessionID: "session",
       })
+      expect(client.session.context).not.toHaveBeenCalled()
+    })
+
+    test("does not return stale output when the prompt is missing from context", async ({
+      client,
+      magi,
+    }) => {
+      client.session.context.mockResolvedValue([
+        {
+          content: [{ text: "Stale", type: "text" }],
+          id: "old-response",
+          time: { created: 0 },
+          type: "assistant",
+        },
+      ])
+
+      await expect(magi.promptSession("session", "text")).rejects.toThrow(
+        "did not return text output",
+      )
+    })
+
+    test("rejects a turn with no assistant response", async ({
+      client,
+      magi,
+    }) => {
+      client.session.context.mockResolvedValue([
+        { id: "prompt-id", type: "user" },
+      ])
+
+      await expect(magi.promptSession("session", "text")).rejects.toThrow(
+        "did not return text output",
+      )
+    })
+
+    test("returns the response after compaction removes the user prompt", async ({
+      client,
+      magi,
+    }) => {
+      client.session.context.mockResolvedValue([
+        { id: "compaction", type: "compaction.completed" },
+        {
+          content: [{ text: "Review completed", type: "text" }],
+          id: "response",
+          time: { created: 2 },
+          type: "assistant",
+        },
+      ])
+
+      await expect(magi.promptSession("session", "text")).resolves.toBe(
+        "Review completed",
+      )
+    })
+
+    test("does not submit a prompt when already cancelled", async ({
+      client,
+      magi,
+    }) => {
+      const signal = AbortSignal.abort(new Error("Cancelled"))
+
+      await expect(
+        magi.promptSession("session", "text", signal),
+      ).rejects.toThrow("Cancelled")
+      expect(client.session.prompt).not.toHaveBeenCalled()
+      expect(client.event.subscribe).not.toHaveBeenCalled()
     })
   })
 

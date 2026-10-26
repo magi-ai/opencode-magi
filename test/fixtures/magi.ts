@@ -1,8 +1,4 @@
-import type {
-  PluginInput as OriginalPluginInput,
-  PluginOptions,
-} from "@opencode-ai/plugin"
-import { createOpencodeClient } from "@opencode-ai/sdk/v2"
+import type { Plugin, PluginOptions } from "@opencode/plugin"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -17,14 +13,13 @@ export interface ClientMocks {
   permission: {
     reply: ReturnType<typeof vi.fn>
   }
-  question: {
-    reject: ReturnType<typeof vi.fn>
-  }
   session: {
-    abort: ReturnType<typeof vi.fn>
+    context: ReturnType<typeof vi.fn>
     create: ReturnType<typeof vi.fn>
-    delete: ReturnType<typeof vi.fn>
+    interrupt: ReturnType<typeof vi.fn>
     prompt: ReturnType<typeof vi.fn>
+    remove: ReturnType<typeof vi.fn>
+    wait: ReturnType<typeof vi.fn>
   }
 }
 
@@ -35,7 +30,6 @@ export interface MagiFixture {
 
 export interface CreateMagiOptions {
   dir?: string
-  fetch?: typeof globalThis.fetch
   options?: PluginOptions
 }
 
@@ -48,47 +42,35 @@ interface Fixtures extends MagiFixture {
   tmpDir: string
 }
 
-const createOpencodeClientMock = vi.mocked(createOpencodeClient)
-
 function instantiateMagi({
   dir = "/test",
-  fetch,
   options,
 }: CreateMagiOptions = {}): MagiFixture {
   const client: ClientMocks = {
     event: {
-      subscribe: vi.fn().mockResolvedValue({ stream: Readable.from([]) }),
+      subscribe: vi.fn(() => Readable.from([])),
     },
     permission: {
       reply: vi.fn(),
     },
-    question: {
-      reject: vi.fn(),
-    },
     session: {
-      abort: vi.fn(),
+      context: vi.fn(),
       create: vi.fn(),
-      delete: vi.fn(),
-      prompt: vi.fn(),
+      interrupt: vi.fn(),
+      prompt: vi
+        .fn()
+        .mockResolvedValue({ id: "prompt-id", time: { created: 1 } }),
+      remove: vi.fn(),
+      wait: vi.fn(),
     },
   }
   const input = {
-    client: {
-      session: {
-        _client: {
-          getConfig: () => ({ fetch }),
-        },
-      },
-    },
-    directory: dir,
-    serverUrl: new URL("http://localhost"),
-  } as unknown as OriginalPluginInput
+    ...client,
+    location: { directory: dir },
+    options: options ?? {},
+  } as unknown as Plugin.Context
 
-  createOpencodeClientMock.mockReturnValue(
-    client as unknown as ReturnType<typeof createOpencodeClient>,
-  )
-
-  return { client, magi: new Magi(input, options) }
+  return { client: input as unknown as ClientMocks, magi: new Magi(input) }
 }
 
 export const test = base.extend<Fixtures>({
@@ -96,8 +78,6 @@ export const test = base.extend<Fixtures>({
     await use(magi.input.client as unknown as ClientMocks)
   },
   createMagi: async ({ task: _task }, use) => {
-    createOpencodeClientMock.mockReset()
-
     await use(instantiateMagi)
   },
   magi: async ({ createMagi }, use) => {

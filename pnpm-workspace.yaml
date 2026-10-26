@@ -1,3 +1,6 @@
 allowBuilds:
   lefthook: true
   msgpackr-extract: true
+enablePrePostScripts: true
+strictPeerDependencies: false
+strictDepBuilds: true

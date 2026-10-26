@@ -1,5 +1,4 @@
 import type { Tool } from "@/magi"
-import { tool } from "@opencode-ai/plugin"
 import { getConfig, validateConfig } from "@/config"
 
 function createReport(errors: string[]): string {
@@ -13,8 +12,7 @@ function createReport(errors: string[]): string {
 
 export const validate: Tool = function (magi) {
   return {
-    magi_validate: tool({
-      args: {},
+    magi_validate: {
       description:
         "Validate global and project Magi config presence, merged settings, reviewer rules, model IDs, and account authentication.",
       async execute() {
@@ -22,11 +20,13 @@ export const validate: Tool = function (magi) {
           const config = await getConfig(magi.input)
           const errors = await validateConfig(config, { exec: magi.exec })
 
-          return createReport(errors)
+          return { content: createReport(errors) }
         } catch (e) {
-          return createReport([(e as Error).message])
+          return { content: createReport([(e as Error).message]) }
         }
       },
-    }),
+      input: { additionalProperties: false, properties: {}, type: "object" },
+      name: "magi_validate",
+    },
   }
 }

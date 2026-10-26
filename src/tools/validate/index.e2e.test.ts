@@ -1,4 +1,4 @@
-import type { ToolContext } from "@opencode-ai/plugin"
+import type { ToolContext } from "@opencode/plugin/promise/tool"
 import type { Magi } from "@/magi"
 import type { Exec } from "@/utils"
 import { mkdir, writeFile } from "node:fs/promises"
@@ -29,14 +29,14 @@ async function executeValidate(magi: Magi): Promise<string> {
   if (!validateTool) throw new Error("Validate tool not found.")
 
   const result = await validateTool.execute({}, {
-    abort: new AbortController().signal,
     sessionID: "parent-session",
+    signal: new AbortController().signal,
   } as ToolContext)
 
-  if (typeof result !== "string")
+  if (typeof result.content !== "string")
     throw new Error("Validate tool did not return a report.")
 
-  return result
+  return result.content
 }
 
 describe("magi:validate", () => {

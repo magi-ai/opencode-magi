@@ -46,18 +46,18 @@ describe("resolve", () => {
           "edit",
           "glob",
           "grep",
-          "bash",
-          "task",
+          "shell",
+          "subagent",
           "skill",
           "lsp",
           "webfetch",
           "websearch",
           "external_directory",
           "doom_loop",
-        ].map((permission) => ({
-          action: "allow",
-          pattern: "*",
-          permission,
+        ].map((action) => ({
+          action,
+          effect: "allow",
+          resource: "*",
         })),
       )
     })
@@ -72,9 +72,9 @@ describe("resolve", () => {
           read: "ask",
         }),
       ).toStrictEqual([
-        { action: "deny", pattern: "*", permission: "bash" },
-        { action: "allow", pattern: "git status*", permission: "bash" },
-        { action: "ask", pattern: "*", permission: "read" },
+        { action: "shell", effect: "deny", resource: "*" },
+        { action: "shell", effect: "allow", resource: "git status*" },
+        { action: "read", effect: "ask", resource: "*" },
       ])
     })
   })

@@ -1,6 +1,6 @@
-import type { Config } from "@opencode-ai/plugin"
-
-export const commands: Config["command"] = {
+export const commands: {
+  [key: string]: { description: string; template: string }
+} = {
   "magi:clear": {
     description: [
       "Clear inactive Magi runs, sessions, worktrees, and outputs",

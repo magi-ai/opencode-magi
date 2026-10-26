@@ -14,9 +14,9 @@ import {
 } from "@/utils"
 
 type PermissionRuleset = {
-  action: Config.PermissionAction
-  pattern: string
-  permission: string
+  action: string
+  effect: Config.PermissionAction
+  resource: string
 }[]
 
 export function resolvePermissions(
@@ -30,27 +30,32 @@ export function resolvePermissions(
       "edit",
       "glob",
       "grep",
-      "bash",
-      "task",
+      "shell",
+      "subagent",
       "skill",
       "lsp",
       "webfetch",
       "websearch",
       "external_directory",
       "doom_loop",
-    ].map((permission) => ({
-      action: permissions,
-      pattern: "*",
-      permission,
+    ].map((action) => ({
+      action,
+      effect: permissions,
+      resource: "*",
     }))
   else
     return Object.entries(permissions).flatMap(([permission, rule]) => {
-      if (isString(rule)) return [{ action: rule, pattern: "*", permission }]
+      const action =
+        { bash: "shell", patch: "edit", task: "subagent", write: "edit" }[
+          permission
+        ] ?? permission
+
+      if (isString(rule)) return [{ action, effect: rule, resource: "*" }]
       else
-        return Object.entries(rule).map(([pattern, action]) => ({
+        return Object.entries(rule).map(([resource, effect]) => ({
           action,
-          pattern,
-          permission,
+          effect,
+          resource,
         }))
     })
 }
