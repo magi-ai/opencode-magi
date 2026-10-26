@@ -37,7 +37,7 @@
           "type": "integer",
           "minimum": 0,
           "default": 3,
-          "description": "Number of retry attempts for GitHub CLI API calls that fail with rate limit errors."
+          "description": "Number of retry attempts for GitHub CLI rate limit errors and invalid ZIP cache errors when fetching failed run logs."
         },
         "owner": { "type": "string", "minLength": 1 },
         "repo": { "type": "string", "minLength": 1 },

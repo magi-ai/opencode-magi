@@ -65,6 +65,11 @@ describe("createExecWithGitHubApiRetry", () => {
       new Error("rate limit exceeded"),
     ],
     ["a non-rate-limit error", "gh api repos/example", new Error("not found")],
+    [
+      "a run log error unrelated to the cache",
+      "gh run view --job 12 --log-failed",
+      new Error("log not found"),
+    ],
     ["a primitive error", "gh api repos/example", "not found"],
   ])("propagates %s without retrying", async (_label, command, error) => {
     const exec = vi.fn<Exec>().mockRejectedValue(error)
@@ -93,6 +98,71 @@ describe("createExecWithGitHubApiRetry", () => {
 
     await expect(result).resolves.toBe("output")
     expect(exec).toHaveBeenCalledTimes(3)
+  })
+
+  test.each([
+    new Error(
+      "failed to get run log: opening cache entry: zip: not a valid zip file",
+    ),
+    {
+      stderr:
+        "failed to get run log: opening cache entry: zip: not a valid zip file",
+    },
+    "failed to get run log: opening cache entry: zip: not a valid zip file",
+  ])("retries run log cache errors with backoff: %j", async (error) => {
+    const exec = vi
+      .fn<Exec>()
+      .mockRejectedValueOnce(error)
+      .mockRejectedValueOnce(error)
+      .mockResolvedValue("failed log")
+    const retryingExec = createExecWithGitHubApiRetry(exec, 2, 100)
+    const command = "gh run view --repo 'owner/repo' --job '12' --log-failed"
+    const options = { signal: new AbortController().signal }
+    const result = retryingExec(command, options)
+
+    void result.catch(() => undefined)
+
+    await vi.advanceTimersByTimeAsync(99)
+    expect(exec).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(exec).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(199)
+    expect(exec).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1)
+
+    await expect(result).resolves.toBe("failed log")
+    expect(exec.mock.calls).toStrictEqual([
+      [command, options],
+      [command, options],
+      [command, options],
+    ])
+  })
+
+  test.each([
+    "gh run rerun --job 12",
+    "gh pr checks 12",
+    "gh run view --job 12",
+  ])("does not retry cache errors for %s", async (command) => {
+    const error = new Error("opening cache entry: zip: not a valid zip file")
+    const exec = vi.fn<Exec>().mockRejectedValue(error)
+    const retryingExec = createExecWithGitHubApiRetry(exec, 2)
+
+    await expect(retryingExec(command)).rejects.toBe(error)
+    expect(exec).toHaveBeenCalledExactlyOnceWith(command, undefined)
+  })
+
+  test.each([0, 2])("limits run log cache retries to %i", async (retries) => {
+    const error = new Error("opening cache entry: zip: not a valid zip file")
+    const exec = vi.fn<Exec>().mockRejectedValue(error)
+    const retryingExec = createExecWithGitHubApiRetry(exec, retries, 100)
+    const result = retryingExec("gh run view --job 12 --log-failed")
+
+    void result.catch(() => undefined)
+
+    await vi.runAllTimersAsync()
+
+    await expect(result).rejects.toBe(error)
+    expect(exec).toHaveBeenCalledTimes(retries + 1)
   })
 
   test("propagates the final error after retry attempts are exhausted", async () => {

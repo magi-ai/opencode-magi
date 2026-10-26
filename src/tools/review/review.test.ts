@@ -941,6 +941,58 @@ describe("Review", () => {
       })
     })
 
+    test("preserves a failed check after retrying log cache errors", async ({
+      magi,
+    }) => {
+      const { context, exec, review } = createReviewFixture(magi)
+      const check = {
+        bucket: "fail",
+        link: "https://github.com/actions/runs/1/job/12",
+        name: "test",
+        state: "FAILURE",
+        workflow: "CI",
+      }
+      const error = new Error(
+        "failed to get run log: opening cache entry: zip: not a valid zip file",
+      )
+
+      exec
+        .mockResolvedValueOnce(JSON.stringify([check]))
+        .mockRejectedValueOnce(error)
+        .mockRejectedValueOnce(error)
+        .mockResolvedValue("\u001B[31mfailure\u001B[0m\n\n")
+      vi.useFakeTimers()
+
+      try {
+        const result = review.checkCi(false)
+
+        void result.catch(() => undefined)
+
+        await vi.advanceTimersByTimeAsync(999)
+        expect(exec).toHaveBeenCalledTimes(2)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(exec).toHaveBeenCalledTimes(3)
+        await vi.advanceTimersByTimeAsync(1_999)
+        expect(exec).toHaveBeenCalledTimes(3)
+        await vi.advanceTimersByTimeAsync(1)
+        await result
+      } finally {
+        vi.useRealTimers()
+      }
+
+      expect(exec).toHaveBeenCalledTimes(4)
+      expect(exec).toHaveBeenLastCalledWith(
+        "gh run view --repo 'magi-ai/opencode-magi' --job '12' --log-failed",
+        { signal: context.signal },
+      )
+      expect(review.state.pr?.checks).toStrictEqual({
+        excluded: [],
+        failed: [{ ...check, id: "12", log: "failure" }],
+        passed: [],
+        pending: [],
+      })
+    })
+
     test("supports regular expressions when excluding checks", async ({
       magi,
     }) => {

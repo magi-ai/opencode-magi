@@ -51,8 +51,14 @@ function isGitHubCommand(command: string): boolean {
   return /(^|\s)gh\s+(api|auth|pr|run)\b/.test(command)
 }
 
-function isRateLimitError(e: unknown): boolean {
-  return /rate limit/i.test(getErrorMessage(e))
+function isRetryableError(command: string, e: unknown): boolean {
+  const message = getErrorMessage(e)
+
+  return (
+    /rate limit/i.test(message) ||
+    (/(^|\s)gh\s+run\s+view\b.*\s--log-failed\b/.test(command) &&
+      /opening cache entry: zip: not a valid zip file/i.test(message))
+  )
 }
 
 export function createExecWithGitHubApiRetry(
@@ -68,7 +74,7 @@ export function createExecWithGitHubApiRetry(
         if (
           attempt >= retryAttempts ||
           !isGitHubCommand(command) ||
-          !isRateLimitError(e)
+          !isRetryableError(command, e)
         )
           throw e
 
