@@ -700,7 +700,128 @@ describe("Merge", () => {
       expect(promptSession).toHaveBeenCalledOnce()
       expect(updateEvent).not.toHaveBeenCalledWith(
         merge.state.output,
-        "Attempt 1 failed to edit. Retrying...",
+        expect.stringContaining("Attempt 1 failed to edit."),
+      )
+    })
+
+    test("preserves the latest editor API error without saving model output", async ({
+      magi,
+    }) => {
+      const { createAgentFile, graphqlMocks, merge, updateEvent } =
+        createMergeFixture(magi)
+      const error = new Error("Provider unavailable")
+      const prompt = {
+        create: vi.fn().mockResolvedValue("edit-task"),
+        repair: vi.fn().mockResolvedValue("repaired-edit-task"),
+      }
+
+      merge.config.output.repairAttempts = 2
+      merge.state.editor = {
+        author: { email: "editor@example.com", name: "Editor" },
+        sessionId: "editor-session",
+      }
+      merge.state.worktree = { path: "/tmp/worktree" }
+      graphqlMocks.paginate.mockResolvedValue({
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [
+                {
+                  comments: { nodes: [{ databaseId: 101 }] },
+                  id: "thread-1",
+                  isResolved: false,
+                },
+              ],
+            },
+          },
+        },
+      })
+      vi.spyOn(Prompt, "init").mockResolvedValue(prompt as unknown as Prompt)
+
+      const promptSession = vi
+        .spyOn(magi, "promptSession")
+        .mockRejectedValueOnce(error)
+        .mockRejectedValueOnce("Rate limit exceeded.")
+
+      await expect(merge.edit()).rejects.toMatchObject({
+        message: "Failed to edit. Rate limit exceeded.",
+        status: "blocked",
+      })
+      expect(promptSession).toHaveBeenCalledTimes(2)
+      expect(prompt.repair).toHaveBeenCalledWith(error)
+      expect(createAgentFile).not.toHaveBeenCalled()
+      expect(merge.state.editor.outputs).toBeUndefined()
+      expect(
+        updateEvent.mock.calls.map(([, message]) => message),
+      ).toStrictEqual([
+        "Editing.",
+        "Attempt 1 failed to edit. Provider unavailable. Retrying...",
+        "Attempt 2 failed to edit. Rate limit exceeded.",
+      ])
+    })
+
+    test("recovers from an editor API error and saves only the returned text", async ({
+      magi,
+    }) => {
+      const { createAgentFile, graphqlMocks, merge, updateEvent } =
+        createMergeFixture(magi)
+      const error = new Error("Provider unavailable.")
+      const output = createEditOutput()
+      const prompt = {
+        create: vi.fn().mockResolvedValue("edit-task"),
+        parse: vi.fn().mockReturnValue(output),
+        repair: vi.fn().mockResolvedValue("repaired-edit-task"),
+        validate: vi.fn().mockReturnValue(true),
+      }
+
+      merge.config.output.repairAttempts = 2
+      merge.state.editor = {
+        author: { email: "editor@example.com", name: "Editor" },
+        sessionId: "editor-session",
+      }
+      merge.state.worktree = { path: "/tmp/worktree" }
+      graphqlMocks.paginate.mockResolvedValue({
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [
+                {
+                  comments: { nodes: [{ databaseId: 101 }] },
+                  id: "thread-1",
+                  isResolved: false,
+                },
+              ],
+            },
+          },
+        },
+      })
+      vi.spyOn(Prompt, "init").mockResolvedValue(prompt as unknown as Prompt)
+
+      const promptSession = vi
+        .spyOn(magi, "promptSession")
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce("raw-editor-output")
+
+      await expect(merge.edit()).resolves.toBeFalsy()
+      expect(promptSession).toHaveBeenNthCalledWith(
+        2,
+        "editor-session",
+        "repaired-edit-task",
+        merge.context.signal,
+      )
+      expect(prompt.repair).toHaveBeenCalledWith(error)
+      expect(createAgentFile).toHaveBeenCalledExactlyOnceWith(
+        merge.state.output,
+        "edit",
+        "editor",
+        "raw-editor-output",
+        2,
+        1,
+      )
+      expect(merge.state.editor.outputs).toStrictEqual([output])
+      expect(updateEvent).toHaveBeenCalledWith(
+        merge.state.output,
+        "Attempt 1 failed to edit. Provider unavailable. Retrying...",
       )
     })
 
@@ -749,7 +870,9 @@ describe("Merge", () => {
       vi.spyOn(Prompt, "init").mockResolvedValue(prompt as unknown as Prompt)
       vi.spyOn(magi, "promptSession").mockResolvedValue("raw-editor-output")
 
-      await expect(merge.edit()).rejects.toThrow("Invalid output for editor.")
+      await expect(merge.edit()).rejects.toThrow(
+        "Failed to edit. Editor reported commit reported-sha, but worktree HEAD is actual-sha.",
+      )
     })
   })
 
@@ -820,11 +943,15 @@ describe("Merge", () => {
     })
 
     describe.each([
-      ["invalid output", "invalid"],
-      ["remaining conflicts", "conflicts"],
-      ["missing commit", "commit"],
-      ["non-merge commit", "parents"],
-    ])("blocks conflict resolution with %s", (_label, failure) => {
+      ["invalid output", "invalid", "Invalid output."],
+      ["remaining conflicts", "conflicts", "Merge conflicts remain."],
+      ["missing commit", "commit", "Conflict editor did not create a commit."],
+      [
+        "non-merge commit",
+        "parents",
+        "Conflict editor did not create a merge commit.",
+      ],
+    ])("blocks conflict resolution with %s", (_label, failure, reason) => {
       test("rejects an incomplete resolution", async ({ magi }) => {
         const { exec, merge, updateEvent } = createMergeFixture(magi)
         const prompt = {
@@ -873,72 +1000,110 @@ describe("Merge", () => {
         vi.spyOn(magi, "promptSession").mockResolvedValue("editor-output")
 
         await expect(merge.resolveConflict()).rejects.toThrow(
-          "Invalid output for conflict editor.",
+          `Failed to resolve conflicts. ${reason}`,
         )
         expect(updateEvent).toHaveBeenCalledWith(
           merge.state.output,
-          "Attempt 1 failed to resolve conflicts. Retrying...",
+          `Attempt 1 failed to resolve conflicts. ${reason}`,
         )
       })
     })
 
-    test("saves a dry-run conflict resolution without pushing", async ({
-      magi,
-    }) => {
-      const { exec, merge, updateEvent } = createMergeFixture(magi)
-      const prompt = {
-        create: vi.fn().mockResolvedValue("conflict-task"),
-        parse: vi.fn().mockReturnValue({}),
-        repair: vi.fn().mockResolvedValue("repaired-conflict-task"),
-        validate: vi.fn().mockReturnValueOnce(false).mockReturnValue(true),
-      }
+    describe.each(["invalid output", "API error"])(
+      "recovers from %s",
+      (failure) => {
+        test("saves a dry-run conflict resolution without pushing", async ({
+          magi,
+        }) => {
+          const { createAgentFile, exec, merge, updateEvent } =
+            createMergeFixture(magi)
+          const error = new Error("Provider unavailable.")
+          const prompt = {
+            create: vi.fn().mockResolvedValue("conflict-task"),
+            parse: vi.fn().mockReturnValue({}),
+            repair: vi.fn().mockResolvedValue("repaired-conflict-task"),
+            validate: vi
+              .fn()
+              .mockReturnValueOnce(failure === "API error")
+              .mockReturnValue(true),
+          }
 
-      let conflictChecks = 0
+          let conflictChecks = 0
 
-      merge.config.output.repairAttempts = 2
-      merge.state.dryRun = true
-      merge.state.editor = {
-        author: { email: "editor@example.com", name: "Editor" },
-        outputs: [createEditOutput()],
-        sessionId: "editor-session",
-      }
-      merge.state.pr = {
-        ...merge.state.pr!,
-        files: ["README.md"],
-      }
-      merge.state.worktree = { path: "/tmp/worktree" }
-      exec.mockImplementation((command) => {
-        if (command.includes("git merge --no-commit"))
-          return Promise.reject(new Error("merge conflict"))
+          merge.config.output.repairAttempts = 2
+          merge.state.dryRun = true
+          merge.state.editor = {
+            author: { email: "editor@example.com", name: "Editor" },
+            outputs: [createEditOutput()],
+            sessionId: "editor-session",
+          }
+          merge.state.pr = {
+            ...merge.state.pr!,
+            files: ["README.md"],
+          }
+          merge.state.worktree = { path: "/tmp/worktree" }
+          exec.mockImplementation((command) => {
+            if (command.includes("git merge --no-commit"))
+              return Promise.reject(new Error("merge conflict"))
 
-        if (command.includes("git diff --name-only")) {
-          conflictChecks += 1
+            if (command.includes("git diff --name-only")) {
+              conflictChecks += 1
 
-          return Promise.resolve(conflictChecks === 1 ? "src/index.ts" : "")
-        }
+              return Promise.resolve(conflictChecks === 1 ? "src/index.ts" : "")
+            }
 
-        if (command === "git rev-parse HEAD")
-          return Promise.resolve("resolved-sha")
-        if (command.includes("git rev-list"))
-          return Promise.resolve("resolved-sha parent-one parent-two")
-        if (command.includes("git log"))
-          return Promise.resolve("Resolve conflict")
+            if (command === "git rev-parse HEAD")
+              return Promise.resolve("resolved-sha")
+            if (command.includes("git rev-list"))
+              return Promise.resolve("resolved-sha parent-one parent-two")
+            if (command.includes("git log"))
+              return Promise.resolve("Resolve conflict")
 
-        return Promise.resolve("")
-      })
-      vi.spyOn(Prompt, "init").mockResolvedValue(prompt as unknown as Prompt)
-      vi.spyOn(magi, "promptSession").mockResolvedValue("editor-output")
+            return Promise.resolve("")
+          })
+          vi.spyOn(Prompt, "init").mockResolvedValue(
+            prompt as unknown as Prompt,
+          )
 
-      await merge.resolveConflict()
+          const promptSession = vi
+            .spyOn(magi, "promptSession")
+            .mockResolvedValue("editor-output")
 
-      expect(prompt.repair).toHaveBeenCalledOnce()
-      expect(merge.state.pr.metadata?.head.sha).toBe("resolved-sha")
-      expect(merge.state.pr.files).toStrictEqual(["README.md", "src/index.ts"])
-      expect(updateEvent).toHaveBeenCalledWith(
-        merge.state.output,
-        "Skipped pushing conflict resolution during dry run.",
-      )
-    })
+          if (failure === "API error")
+            promptSession.mockRejectedValueOnce(error)
+
+          await merge.resolveConflict()
+
+          expect(prompt.repair).toHaveBeenCalledExactlyOnceWith(
+            failure === "API error" ? error : new Error("Invalid output."),
+          )
+          expect(createAgentFile).toHaveBeenCalledTimes(
+            failure === "API error" ? 1 : 2,
+          )
+          expect(createAgentFile).toHaveBeenLastCalledWith(
+            merge.state.output,
+            "conflict",
+            "editor",
+            "editor-output",
+            2,
+            2,
+          )
+          expect(updateEvent).toHaveBeenCalledWith(
+            merge.state.output,
+            `Attempt 1 failed to resolve conflicts. ${failure === "API error" ? "Provider unavailable." : "Invalid output."} Retrying...`,
+          )
+          expect(merge.state.pr.metadata?.head.sha).toBe("resolved-sha")
+          expect(merge.state.pr.files).toStrictEqual([
+            "README.md",
+            "src/index.ts",
+          ])
+          expect(updateEvent).toHaveBeenCalledWith(
+            merge.state.output,
+            "Skipped pushing conflict resolution during dry run.",
+          )
+        })
+      },
+    )
 
     test("stops retrying when the conflict editor session is blocked", async ({
       magi,
@@ -972,8 +1137,57 @@ describe("Merge", () => {
       expect(promptSession).toHaveBeenCalledOnce()
       expect(updateEvent).not.toHaveBeenCalledWith(
         merge.state.output,
-        "Attempt 1 failed to resolve conflicts. Retrying...",
+        expect.stringContaining("Attempt 1 failed to resolve conflicts."),
       )
+    })
+
+    test("preserves the latest conflict editor API error without saving model output", async ({
+      magi,
+    }) => {
+      const { createAgentFile, exec, merge, updateEvent } =
+        createMergeFixture(magi)
+      const error = new Error("Provider unavailable.")
+      const prompt = {
+        create: vi.fn().mockResolvedValue("conflict-task"),
+        repair: vi.fn().mockResolvedValue("repaired-conflict-task"),
+      }
+
+      merge.config.output.repairAttempts = 2
+      merge.state.editor = {
+        author: { email: "editor@example.com", name: "Editor" },
+        sessionId: "editor-session",
+      }
+      merge.state.worktree = { path: "/tmp/worktree" }
+      exec.mockImplementation((command) => {
+        if (command.includes("git merge --no-commit"))
+          return Promise.reject(new Error("merge conflict"))
+        if (command.includes("git diff --name-only"))
+          return Promise.resolve("src/index.ts")
+
+        return Promise.resolve("")
+      })
+      vi.spyOn(Prompt, "init").mockResolvedValue(prompt as unknown as Prompt)
+
+      const promptSession = vi
+        .spyOn(magi, "promptSession")
+        .mockRejectedValueOnce(error)
+        .mockRejectedValueOnce("Rate limit exceeded")
+
+      await expect(merge.resolveConflict()).rejects.toMatchObject({
+        message: "Failed to resolve conflicts. Rate limit exceeded.",
+        status: "blocked",
+      })
+      expect(promptSession).toHaveBeenCalledTimes(2)
+      expect(prompt.repair).toHaveBeenCalledWith(error)
+      expect(createAgentFile).not.toHaveBeenCalled()
+      expect(merge.state.editor.outputs).toBeUndefined()
+      expect(
+        updateEvent.mock.calls.map(([, message]) => message),
+      ).toStrictEqual([
+        "Resolving merge conflicts.",
+        "Attempt 1 failed to resolve conflicts. Provider unavailable. Retrying...",
+        "Attempt 2 failed to resolve conflicts. Rate limit exceeded.",
+      ])
     })
   })
 })

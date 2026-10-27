@@ -885,6 +885,76 @@ describe("magi:review", () => {
     )
   })
 
+  test("persists CI classification API failures in events and the report without model output files", async ({
+    createMagi,
+    tmpDir,
+  }) => {
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const github = createGitHubFixture(
+      createPullRequestMetadata(tmpDir, repository),
+      PULL_REQUEST,
+    )
+    const { client, magi } = createMagi({ dir: tmpDir })
+    const ghCommands: string[] = []
+    const message = "The request contains invalid parameters."
+
+    config.output.repairAttempts = 3
+    config.review.reviewers = [config.review.reviewers![0]!]
+    magi.exec = createReviewExec(repository, ghCommands, (command) => {
+      if (command.includes("gh pr checks 123") && command.includes("--json"))
+        return JSON.stringify([
+          {
+            bucket: "fail",
+            link: "https://github.com/actions/runs/1/job/11",
+            name: "test",
+            state: "FAILURE",
+            workflow: "CI",
+          },
+        ])
+      if (command.includes("gh run view") && command.includes("--log-failed"))
+        return "failed log"
+    })
+    mockSessions(client)
+    client.session.context.mockResolvedValue([
+      {
+        content: [],
+        error: { message },
+        id: "response",
+        time: { created: 2 },
+        type: "assistant",
+      },
+    ])
+    vi.spyOn(magi, "getConfig").mockResolvedValue(config)
+    mockGitHub(magi, github)
+
+    await expect(executeReview(magi, createContext())).rejects.toThrow(
+      `Failed to classify CI checks with reviewer reviewer-one. ${message}`,
+    )
+
+    const { events, output, report, state } = await readRun(config)
+
+    expect(client.session.prompt).toHaveBeenCalledTimes(3)
+    expect(events.map(({ message }) => message)).toStrictEqual(
+      expect.arrayContaining([
+        `Attempt 1 failed to classify CI checks with reviewer reviewer-one. ${message} Retrying...`,
+        `Attempt 2 failed to classify CI checks with reviewer reviewer-one. ${message} Retrying...`,
+        `Attempt 3 failed to classify CI checks with reviewer reviewer-one. ${message}`,
+      ]),
+    )
+    expect(state.status).toBe("blocked")
+    expect(report).toContain(
+      `- **Error**: Failed to classify CI checks with reviewer reviewer-one. ${message}`,
+    )
+    expect(report).not.toContain("Invalid output")
+    expect((await readdir(output)).sort()).toStrictEqual([
+      "events.jsonl",
+      "report.md",
+      "state.json",
+    ])
+    expect(github.createReview).not.toHaveBeenCalled()
+  })
+
   test("reports in-scope, pending, and excluded checks without rerunning", async ({
     createMagi,
     tmpDir,
@@ -994,7 +1064,7 @@ describe("magi:review", () => {
       readFile(join(output, "reviewer-one-review-1-2.md"), "utf8"),
     ).resolves.toBe(approvedOutput())
     expect(events.map(({ message }) => message)).toContain(
-      "Attempt 1 failed to review with reviewer reviewer-one. Retrying...",
+      "Attempt 1 failed to review with reviewer reviewer-one. Invalid output. Retrying...",
     )
   })
 
@@ -1017,7 +1087,7 @@ describe("magi:review", () => {
     mockGitHub(magi, github)
 
     await expect(executeReview(magi, createContext())).rejects.toThrow(
-      "Invalid output for reviewer reviewer-one.",
+      "Failed to review with reviewer reviewer-one. Invalid output.",
     )
 
     const { report, state } = await readRun(config)
@@ -1025,11 +1095,115 @@ describe("magi:review", () => {
     expect(state.status).toBe("blocked")
     expect(report).toContain("- **Status**: Blocked")
     expect(report).toContain(
-      "- **Error**: Invalid output for reviewer reviewer-one.",
+      "- **Error**: Failed to review with reviewer reviewer-one. Invalid output.",
     )
     expect(github.createReview).not.toHaveBeenCalled()
     await expect(access(state.worktree!.path)).rejects.toMatchObject({
       code: "ENOENT",
+    })
+  })
+
+  describe.each([
+    {
+      label: "review with reviewer reviewer-one",
+      outputs: [],
+      phase: "review",
+    },
+    {
+      label: "validate review findings with reviewer reviewer-one",
+      outputs: [
+        JSON.stringify({
+          comment: "Changes are required.",
+          findings: [{ body: "Fix this.", line: 2, path: "reviewed.txt" }],
+          verdict: "CHANGES_REQUESTED",
+        }),
+      ],
+      phase: "finding-validation",
+    },
+    {
+      label: "reconsider close verdict with reviewer reviewer-one",
+      outputs: [
+        JSON.stringify({ comment: "Close.", verdict: "CLOSED" }),
+        approvedOutput(),
+        approvedOutput(),
+      ],
+      phase: "close-reconsideration",
+    },
+    {
+      label: "generate comment by operator",
+      outputs: [JSON.stringify({ comment: "Close.", verdict: "CLOSED" })],
+      phase: "comment",
+    },
+  ])("$phase API failures", ({ label, outputs, phase }) => {
+    test("persists the request error in events and the report without a model output file", async ({
+      createMagi,
+      tmpDir,
+    }) => {
+      const repository = await createRepository(tmpDir)
+      const config = createPullRequestConfig(tmpDir, "single")
+      const github = createGitHubFixture(
+        createPullRequestMetadata(tmpDir, repository),
+        PULL_REQUEST,
+      )
+      const { client, magi } = createMagi({ dir: tmpDir })
+      const ghCommands: string[] = []
+      const message = "The request contains invalid parameters."
+
+      config.output.repairAttempts = 2
+      config.review.concurrency.reviewers = 1
+
+      if (phase === "close-reconsideration")
+        config.review.merge.approvalPolicy = "unanimous"
+      else config.review.reviewers = [config.review.reviewers![0]!]
+
+      magi.exec = createReviewExec(repository, ghCommands)
+      mockSessions(client)
+      outputs.forEach((text) => {
+        client.session.context.mockResolvedValueOnce([
+          {
+            content: [{ text, type: "text" }],
+            id: "response",
+            time: { created: 2 },
+            type: "assistant",
+          },
+        ])
+      })
+      client.session.context.mockResolvedValue([
+        {
+          content: [],
+          error: { message },
+          id: "response",
+          time: { created: 2 },
+          type: "assistant",
+        },
+      ])
+      vi.spyOn(magi, "getConfig").mockResolvedValue(config)
+      mockGitHub(magi, github)
+
+      await expect(executeReview(magi, createContext())).rejects.toThrow(
+        `Failed to ${label}. ${message}`,
+      )
+
+      const { events, output, report, state } = await readRun(config)
+
+      expect(client.session.prompt).toHaveBeenCalledTimes(outputs.length + 2)
+      expect(events.map(({ message }) => message)).toStrictEqual(
+        expect.arrayContaining([
+          `Attempt 1 failed to ${label}. ${message} Retrying...`,
+          `Attempt 2 failed to ${label}. ${message}`,
+        ]),
+      )
+      expect(state.status).toBe("blocked")
+      expect(report).toContain(`- **Error**: Failed to ${label}. ${message}`)
+      expect(report).not.toContain("Invalid output")
+      expect(
+        (await readdir(output))
+          .filter((file) => file !== "report.md" && file.endsWith(".md"))
+          .sort(),
+      ).toStrictEqual(
+        outputs.map((_, index) => `${REVIEWERS[index]}-review-1-1.md`).sort(),
+      )
+      expect(github.createReview).not.toHaveBeenCalled()
     })
   })
 

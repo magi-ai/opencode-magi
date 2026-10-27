@@ -168,6 +168,9 @@ export async function review(this: Review): Promise<void> {
                 worktreePath: this.state.worktree.path,
               }),
             )
+
+            let error = "Unknown error."
+
             const output = await retry<ReviewOutput>(
               async (count, e) => {
                 const raw = await this.magi.promptSession(
@@ -187,7 +190,7 @@ export async function review(this: Review): Promise<void> {
                 const parsed = prompt.parse(raw)
 
                 if (!prompt.validate<ReviewOutput>(parsed))
-                  throw new Error(`Invalid output for reviewer ${id}.`)
+                  throw new Error("Invalid output.")
 
                 validateThreadTargets(parsed, unresolvedThreads)
                 validateInlineCommentTargets(
@@ -236,8 +239,18 @@ export async function review(this: Review): Promise<void> {
                 error: async (e, count) => {
                   if (e instanceof MagiError) throw e
 
+                  error = e instanceof Error ? e.message : String(e)
+
+                  if (!error.endsWith(".")) error = error + "."
+
                   await this.updateEvent(
-                    `Attempt ${count} failed to ${label} with reviewer ${id}. Retrying...`,
+                    filterEmpty([
+                      `Attempt ${count} failed to ${label} with reviewer ${id}.`,
+                      error,
+                      count < this.config.output.repairAttempts
+                        ? "Retrying..."
+                        : undefined,
+                    ]).join(" "),
                   )
                 },
                 retries: this.config.output.repairAttempts,
@@ -248,7 +261,7 @@ export async function review(this: Review): Promise<void> {
             if (!output)
               throw new MagiError(
                 "blocked",
-                `Invalid output for reviewer ${id}.`,
+                `Failed to ${label} with reviewer ${id}. ${error}`,
               )
 
             output.findings = output.findings?.map((finding) => ({
@@ -376,6 +389,8 @@ export async function reconsiderClose(this: Review): Promise<void> {
             `Reconsidering close verdict with reviewer ${id}.`,
           )
 
+          let error = "Unknown error."
+
           const output = await retry<ReviewOutput>(
             async (count, e) => {
               const raw = await this.magi.promptSession(
@@ -395,9 +410,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
               const parsed = prompt.parse(raw)
 
               if (!prompt.validate<ReviewOutput>(parsed))
-                throw new Error(
-                  `Invalid close reconsideration output for reviewer ${id}.`,
-                )
+                throw new Error("Invalid output.")
 
               validateInlineCommentTargets(
                 "initial",
@@ -411,8 +424,18 @@ export async function reconsiderClose(this: Review): Promise<void> {
               error: async (e, count) => {
                 if (e instanceof MagiError) throw e
 
+                error = e instanceof Error ? e.message : String(e)
+
+                if (!error.endsWith(".")) error = error + "."
+
                 await this.updateEvent(
-                  `Attempt ${count} failed to reconsider close verdict with reviewer ${id}. Retrying...`,
+                  filterEmpty([
+                    `Attempt ${count} failed to reconsider close verdict with reviewer ${id}.`,
+                    error,
+                    count < this.config.output.repairAttempts
+                      ? "Retrying..."
+                      : undefined,
+                  ]).join(" "),
                 )
               },
               retries: this.config.output.repairAttempts,
@@ -423,7 +446,7 @@ export async function reconsiderClose(this: Review): Promise<void> {
           if (!output)
             throw new MagiError(
               "blocked",
-              `Invalid close reconsideration output for reviewer ${id}.`,
+              `Failed to reconsider close verdict with reviewer ${id}. ${error}`,
             )
 
           output.findings = output.findings?.map((finding) => ({
@@ -526,6 +549,9 @@ async function collectAcceptedFindings(
               repo: this.config.github.repo,
             },
           )
+
+          let error = "Unknown error."
+
           const output = await retry<FindingValidationOutput>(
             async (count, e) => {
               const raw = await this.magi.promptSession(
@@ -539,9 +565,7 @@ async function collectAcceptedFindings(
               const parsed = prompt.parse(raw)
 
               if (!prompt.validate<FindingValidationOutput>(parsed))
-                throw new Error(
-                  `Invalid finding validation output for reviewer ${id}.`,
-                )
+                throw new Error("Invalid output.")
 
               const seen = new Set<string>()
 
@@ -569,8 +593,18 @@ async function collectAcceptedFindings(
               error: async (e, count) => {
                 if (e instanceof MagiError) throw e
 
+                error = e instanceof Error ? e.message : String(e)
+
+                if (!error.endsWith(".")) error = error + "."
+
                 await this.updateEvent(
-                  `Attempt ${count} failed to validate review findings with reviewer ${id}. Retrying...`,
+                  filterEmpty([
+                    `Attempt ${count} failed to validate review findings with reviewer ${id}.`,
+                    error,
+                    count < this.config.output.repairAttempts
+                      ? "Retrying..."
+                      : undefined,
+                  ]).join(" "),
                 )
               },
               retries: this.config.output.repairAttempts,
@@ -581,7 +615,7 @@ async function collectAcceptedFindings(
           if (!output)
             throw new MagiError(
               "blocked",
-              `Invalid finding validation output for reviewer ${id}.`,
+              `Failed to validate review findings with reviewer ${id}. ${error}`,
             )
 
           return [id, output]

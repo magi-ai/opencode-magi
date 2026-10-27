@@ -148,6 +148,9 @@ export async function postReviews(this: Review): Promise<void> {
           verdict: this.state.pr.verdict,
         },
       )
+
+      let error = "Unknown error."
+
       const output = await retry(
         async (count, e) => {
           const raw = await this.magi.promptSession(
@@ -161,7 +164,7 @@ export async function postReviews(this: Review): Promise<void> {
           const parsed = prompt.parse(raw)
 
           if (!prompt.validate<{ comment: string }>(parsed))
-            throw new Error("Invalid output for operator.")
+            throw new Error("Invalid output.")
 
           return parsed.comment
         },
@@ -169,8 +172,18 @@ export async function postReviews(this: Review): Promise<void> {
           error: async (e, count) => {
             if (e instanceof MagiError) throw e
 
+            error = e instanceof Error ? e.message : String(e)
+
+            if (!error.endsWith(".")) error = error + "."
+
             await this.updateEvent(
-              `Attempt ${count} failed to post comment by operator. Retrying...`,
+              filterEmpty([
+                `Attempt ${count} failed to generate comment by operator.`,
+                error,
+                count < this.config.output.repairAttempts
+                  ? "Retrying..."
+                  : undefined,
+              ]).join(" "),
             )
           },
           retries: this.config.output.repairAttempts,
@@ -179,7 +192,10 @@ export async function postReviews(this: Review): Promise<void> {
       )
 
       if (!output)
-        throw new MagiError("blocked", "Invalid output for operator.")
+        throw new MagiError(
+          "blocked",
+          `Failed to generate comment by operator. ${error}`,
+        )
 
       await this.updateEvent(`Generated comment by operator.`)
 

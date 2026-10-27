@@ -256,6 +256,8 @@ export async function classifyChecks(this: Review): Promise<void> {
 
         await this.updateEvent(`Classifying CI checks with reviewer ${id}.`)
 
+        let error = "Unknown error."
+
         const output = await retry(
           async (count, e) => {
             const raw = await this.magi.promptSession(
@@ -269,7 +271,7 @@ export async function classifyChecks(this: Review): Promise<void> {
             const parsed = prompt.parse(raw)
 
             if (!prompt.validate<CiClassificationOutput>(parsed))
-              throw new Error(`Invalid output for reviewer ${id}.`)
+              throw new Error("Invalid output.")
 
             return parsed
           },
@@ -277,8 +279,18 @@ export async function classifyChecks(this: Review): Promise<void> {
             error: async (e, count) => {
               if (e instanceof MagiError) throw e
 
+              error = e instanceof Error ? e.message : String(e)
+
+              if (!error.endsWith(".")) error = error + "."
+
               await this.updateEvent(
-                `Attempt ${count} failed to classify CI checks with reviewer ${id}. Retrying...`,
+                filterEmpty([
+                  `Attempt ${count} failed to classify CI checks with reviewer ${id}.`,
+                  error,
+                  count < this.config.output.repairAttempts
+                    ? "Retrying..."
+                    : undefined,
+                ]).join(" "),
               )
             },
             retries: this.config.output.repairAttempts,
@@ -287,7 +299,10 @@ export async function classifyChecks(this: Review): Promise<void> {
         )
 
         if (!output)
-          throw new MagiError("blocked", `Invalid output for reviewer ${id}.`)
+          throw new MagiError(
+            "blocked",
+            `Failed to classify CI checks with reviewer ${id}. ${error}`,
+          )
 
         output.checks.forEach((data) => {
           classifiedChecks[data.id]![id] = {

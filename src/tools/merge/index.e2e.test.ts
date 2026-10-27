@@ -676,7 +676,7 @@ describe("magi:merge", () => {
       readFile(join(output, "editor-edit-1-2.md"), "utf8"),
     ).resolves.toBe(editorOutput)
     expect(events.map(({ message }) => message)).toContain(
-      "Attempt 1 failed to edit. Retrying...",
+      "Attempt 1 failed to edit. Invalid output. Retrying...",
     )
   })
 
@@ -692,13 +692,74 @@ describe("magi:merge", () => {
     )
 
     await expect(executeMerge(magi, createContext())).rejects.toThrow(
-      "Invalid output for editor.",
+      "Failed to edit. Invalid output.",
     )
 
     const { report, state } = await readRun(config)
 
     expect(state.status).toBe("blocked")
-    expect(report).toContain("- **Error**: Invalid output for editor.")
+    expect(report).toContain("- **Error**: Failed to edit. Invalid output.")
+    expect(github.createReplyForReviewComment).not.toHaveBeenCalled()
+    await expect(access(state.worktree!.path)).rejects.toMatchObject({
+      code: "ENOENT",
+    })
+  })
+
+  test("reports the latest editor API error and cleans up without saving error text", async ({
+    createMagi,
+    tmpDir,
+  }) => {
+    const { client, config, github, magi } = await prepareReplyScenario(
+      createMagi,
+      tmpDir,
+      [],
+      [],
+      2,
+    )
+
+    let attempts = 0
+
+    client.session.prompt.mockImplementation(({ sessionID }) => {
+      if (sessionID === "editor-session") {
+        attempts += 1
+
+        return Promise.reject(
+          new Error(
+            attempts === 1 ? "Provider unavailable" : "Rate limit exceeded.",
+          ),
+        )
+      }
+
+      return Promise.resolve({ id: "prompt-id", time: { created: 1 } })
+    })
+
+    await expect(executeMerge(magi, createContext())).rejects.toThrow(
+      "Failed to edit. Rate limit exceeded.",
+    )
+
+    const { events, output, report, state } = await readRun(config)
+
+    expect(attempts).toBe(2)
+    expect(state.status).toBe("blocked")
+    expect(state.editor?.outputs).toBeUndefined()
+    expect(report).toContain(
+      "- **Error**: Failed to edit. Rate limit exceeded.",
+    )
+    expect(
+      events
+        .map(({ message }) => message)
+        .filter(
+          (message) =>
+            message.startsWith("Attempt ") &&
+            message.includes("failed to edit."),
+        ),
+    ).toStrictEqual([
+      "Attempt 1 failed to edit. Provider unavailable. Retrying...",
+      "Attempt 2 failed to edit. Rate limit exceeded.",
+    ])
+    expect(
+      (await readdir(output)).filter((file) => file.startsWith("editor-edit-")),
+    ).toStrictEqual([])
     expect(github.createReplyForReviewComment).not.toHaveBeenCalled()
     await expect(access(state.worktree!.path)).rejects.toMatchObject({
       code: "ENOENT",
@@ -1133,7 +1194,7 @@ describe("magi:merge", () => {
     ).toBeFalsy()
   })
 
-  test("resolves an automation conflict, rereviews, and merges", async ({
+  test("recovers from a conflict editor API error, rereviews, and merges", async ({
     createMagi,
     tmpDir,
   }) => {
@@ -1154,6 +1215,7 @@ describe("magi:merge", () => {
     ]
     config.merge.automation.merge = true
     config.merge.maxThreadResolutionCycles = 1
+    config.output.repairAttempts = 2
     config.review.concurrency.reviewers = 1
     configureGraphqlPages(github, [
       "threads",
@@ -1199,6 +1261,11 @@ describe("magi:merge", () => {
         })
     })
     mockSessions(client)
+    client.session.prompt
+      .mockResolvedValueOnce({ id: "prompt-id", time: { created: 1 } })
+      .mockResolvedValueOnce({ id: "prompt-id", time: { created: 1 } })
+      .mockResolvedValueOnce({ id: "prompt-id", time: { created: 1 } })
+      .mockRejectedValueOnce(new Error("Provider unavailable."))
     mockPromptOutputs(client, [
       ...REVIEWERS.map(() => approvedOutput()),
       JSON.stringify({}),
@@ -1211,7 +1278,7 @@ describe("magi:merge", () => {
       "- **Automation**: Merged",
     )
 
-    const { events, state } = await readRun(config)
+    const { events, output, state } = await readRun(config)
 
     expect(state.pr?.automation).toBe("MERGED")
     expect(state.editor?.outputs?.[0]).toMatchObject({
@@ -1224,6 +1291,7 @@ describe("magi:merge", () => {
       expect.arrayContaining([
         "Merge automation found conflicts.",
         "Resolving merge conflicts.",
+        "Attempt 1 failed to resolve conflicts. Provider unavailable. Retrying...",
         "Finished resolving merge conflicts.",
         "Pushing conflict resolution.",
         "Finished pushing conflict resolution.",
@@ -1232,6 +1300,12 @@ describe("magi:merge", () => {
     expect(ghCommands).toContain(
       "gh pr merge 123 --repo 'magi-ai/opencode-magi' --squash --auto --delete-branch",
     )
+    await expect(
+      access(join(output, "editor-conflict-1-1.md")),
+    ).rejects.toMatchObject({ code: "ENOENT" })
+    await expect(
+      readFile(join(output, "editor-conflict-1-2.md"), "utf8"),
+    ).resolves.toBe("{}")
   })
 
   test("cancels an aborted edit scenario and removes its worktree", async ({

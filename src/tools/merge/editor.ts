@@ -43,6 +43,9 @@ export async function edit(this: Merge): Promise<boolean> {
       worktreePath: this.state.worktree!.path,
     },
   )
+
+  let error = "Unknown error."
+
   const output = await retry<EditOutput>(
     async (count, e) => {
       const raw = await this.magi.promptSession(
@@ -56,7 +59,7 @@ export async function edit(this: Merge): Promise<boolean> {
       const parsed = prompt.parse(raw)
 
       if (!prompt.validate<EditPromptOutput>(parsed))
-        throw new Error("Invalid output for editor.")
+        throw new Error("Invalid output.")
 
       const output: EditOutput = {
         ...parsed,
@@ -81,14 +84,26 @@ export async function edit(this: Merge): Promise<boolean> {
       error: async (e, count) => {
         if (e instanceof MagiError) throw e
 
-        await this.updateEvent(`Attempt ${count} failed to edit. Retrying...`)
+        error = e instanceof Error ? e.message : String(e)
+
+        if (!error.endsWith(".")) error = error + "."
+
+        await this.updateEvent(
+          filterEmpty([
+            `Attempt ${count} failed to edit.`,
+            error,
+            count < this.config.output.repairAttempts
+              ? "Retrying..."
+              : undefined,
+          ]).join(" "),
+        )
       },
       retries: this.config.output.repairAttempts,
       signal: this.context.signal,
     },
   )
 
-  if (!output) throw new MagiError("blocked", "Invalid output for editor.")
+  if (!output) throw new MagiError("blocked", `Failed to edit. ${error}`)
 
   await this.updateState({
     editor: { outputs: [...(this.state.editor!.outputs ?? []), output] },
@@ -184,6 +199,9 @@ export async function resolveConflict(this: Merge): Promise<void> {
       worktreePath: this.state.worktree!.path,
     },
   )
+
+  let error = "Unknown error."
+
   const output = await retry<EditOutput>(
     async (count, e) => {
       const raw = await this.magi.promptSession(
@@ -197,7 +215,7 @@ export async function resolveConflict(this: Merge): Promise<void> {
       const parsed = prompt.parse(raw)
 
       if (!prompt.validate<{ [key: string]: never }>(parsed))
-        throw new Error("Invalid output for conflict editor.")
+        throw new Error("Invalid output.")
 
       const diff = await this.exec(
         command("git", "diff", "--name-only", "--diff-filter=U"),
@@ -239,8 +257,18 @@ export async function resolveConflict(this: Merge): Promise<void> {
       error: async (e, count) => {
         if (e instanceof MagiError) throw e
 
+        error = e instanceof Error ? e.message : String(e)
+
+        if (!error.endsWith(".")) error = error + "."
+
         await this.updateEvent(
-          `Attempt ${count} failed to resolve conflicts. Retrying...`,
+          filterEmpty([
+            `Attempt ${count} failed to resolve conflicts.`,
+            error,
+            count < this.config.output.repairAttempts
+              ? "Retrying..."
+              : undefined,
+          ]).join(" "),
         )
       },
       retries: this.config.output.repairAttempts,
@@ -249,7 +277,7 @@ export async function resolveConflict(this: Merge): Promise<void> {
   )
 
   if (!output)
-    throw new MagiError("blocked", "Invalid output for conflict editor.")
+    throw new MagiError("blocked", `Failed to resolve conflicts. ${error}`)
 
   await this.updateState({
     editor: { outputs: [...(this.state.editor!.outputs ?? []), output] },

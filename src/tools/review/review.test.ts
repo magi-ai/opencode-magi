@@ -1204,7 +1204,8 @@ describe("Review", () => {
     test("blocks after invalid CI classification output exhausts retries", async ({
       magi,
     }) => {
-      const { config, review, updateEvent } = createReviewFixture(magi)
+      const { config, createAgentFile, review, updateEvent } =
+        createReviewFixture(magi)
       const prompt = {
         create: vi.fn().mockResolvedValue("classification-task"),
         parse: vi.fn().mockReturnValue({}),
@@ -1237,11 +1238,134 @@ describe("Review", () => {
       vi.spyOn(magi, "promptSession").mockResolvedValue("invalid-output")
 
       await expect(review.classifyChecks()).rejects.toThrow(
-        "Invalid output for reviewer one.",
+        "Failed to classify CI checks with reviewer one. Invalid output.",
       )
       expect(updateEvent).toHaveBeenCalledWith(
         review.state.output,
-        "Attempt 1 failed to classify CI checks with reviewer one. Retrying...",
+        "Attempt 1 failed to classify CI checks with reviewer one. Invalid output.",
+      )
+      expect(createAgentFile).toHaveBeenCalledExactlyOnceWith(
+        review.state.output,
+        "ci-classification",
+        "one",
+        "invalid-output",
+        1,
+        undefined,
+      )
+    })
+
+    describe.each([
+      {
+        error: new Error("The request contains invalid parameters."),
+        message: "The request contains invalid parameters.",
+      },
+      {
+        error: "The request contains invalid parameters.",
+        message: "The request contains invalid parameters.",
+      },
+      {
+        error: new Error("The request contains invalid parameters"),
+        message: "The request contains invalid parameters.",
+      },
+    ])("request failure: $error", ({ error: lastError, message }) => {
+      test("records request failures and reports the last cause without saving model output", async ({
+        magi,
+      }) => {
+        const { config, createAgentFile, review, updateEvent } =
+          createReviewFixture(magi)
+        const prompt = {
+          create: vi.fn().mockResolvedValue("classification-task"),
+          parse: vi.fn(),
+          repair: vi.fn().mockResolvedValue("repair-task"),
+        }
+        const firstError = new Error("Provider unavailable.")
+
+        config.output.repairAttempts = 2
+        review.state.pr!.checks!.failed = [
+          {
+            bucket: "fail",
+            id: "job-1",
+            link: "https://github.com/actions/runs/1/job/1",
+            name: "test",
+            state: "FAILURE",
+            workflow: "CI",
+          },
+        ]
+        review.state.reviewers = { one: { sessionId: "reviewer-one-session" } }
+        review.state.worktree = { path: "/tmp/worktree" }
+        vi.spyOn(Prompt, "init").mockResolvedValue(prompt as unknown as Prompt)
+
+        const promptSession = vi
+          .spyOn(magi, "promptSession")
+          .mockRejectedValueOnce(firstError)
+          .mockRejectedValueOnce(lastError)
+
+        await expect(review.classifyChecks()).rejects.toMatchObject({
+          message: `Failed to classify CI checks with reviewer one. ${message}`,
+          status: "blocked",
+        })
+        expect(promptSession).toHaveBeenCalledTimes(2)
+        expect(prompt.repair).toHaveBeenCalledExactlyOnceWith(firstError)
+        expect(updateEvent).toHaveBeenCalledWith(
+          review.state.output,
+          "Attempt 1 failed to classify CI checks with reviewer one. Provider unavailable. Retrying...",
+        )
+        expect(updateEvent).toHaveBeenCalledWith(
+          review.state.output,
+          "Attempt 2 failed to classify CI checks with reviewer one. The request contains invalid parameters.",
+        )
+        expect(createAgentFile).not.toHaveBeenCalled()
+        expect(prompt.parse).not.toHaveBeenCalled()
+      })
+    })
+
+    test("recovers from a CI classification request error and saves only the model response", async ({
+      magi,
+    }) => {
+      const { config, createAgentFile, review } = createReviewFixture(magi)
+      const prompt = {
+        create: vi.fn().mockResolvedValue("classification-task"),
+        parse: vi.fn().mockReturnValue({
+          checks: [
+            {
+              classification: "SCOPE_IN",
+              comment: "Introduced by this change.",
+              id: "job-1",
+            },
+          ],
+        }),
+        repair: vi.fn().mockResolvedValue("repair-task"),
+        validate: vi.fn().mockReturnValue(true),
+      }
+
+      config.output.repairAttempts = 2
+      review.state.pr!.checks!.failed = [
+        {
+          bucket: "fail",
+          id: "job-1",
+          link: "https://github.com/actions/runs/1/job/1",
+          name: "test",
+          state: "FAILURE",
+          workflow: "CI",
+        },
+      ]
+      review.state.reviewers = { one: { sessionId: "reviewer-one-session" } }
+      review.state.worktree = { path: "/tmp/worktree" }
+      vi.spyOn(Prompt, "init").mockResolvedValue(prompt as unknown as Prompt)
+      vi.spyOn(magi, "promptSession")
+        .mockRejectedValueOnce(new Error("Provider unavailable."))
+        .mockResolvedValueOnce("classification-output")
+
+      await review.classifyChecks()
+
+      expect(review.state.pr!.checks!.failed[0]?.scope).toBeTruthy()
+      expect(createAgentFile).toHaveBeenCalledExactlyOnceWith(
+        review.state.output,
+        "ci-classification",
+        "one",
+        "classification-output",
+        2,
+        undefined,
       )
     })
   })
@@ -1689,11 +1813,11 @@ describe("Review", () => {
       vi.spyOn(magi, "promptSession").mockResolvedValue("invalid-review")
 
       await expect(review.review()).rejects.toThrow(
-        "Invalid output for reviewer one.",
+        "Failed to review with reviewer one. findings[0] targets src/missing.ts:2, but path is not in the PR diff.",
       )
       expect(updateEvent).toHaveBeenCalledWith(
         review.state.output,
-        "Attempt 1 failed to review with reviewer one. Retrying...",
+        "Attempt 1 failed to review with reviewer one. findings[0] targets src/missing.ts:2, but path is not in the PR diff.",
       )
     })
 
@@ -1726,7 +1850,7 @@ describe("Review", () => {
       vi.spyOn(magi, "promptSession").mockResolvedValue("invalid-review")
 
       await expect(review.review()).rejects.toThrow(
-        "Invalid output for reviewer one.",
+        "Failed to review with reviewer one. followUps[0].commentId must target an unresolved thread owned by the reviewer.\n\nAllowed targets:\nnone",
       )
     })
 
@@ -1763,16 +1887,32 @@ describe("Review", () => {
       vi.spyOn(magi, "promptSession").mockResolvedValue("invalid-review")
 
       await expect(review.review()).rejects.toThrow(
-        "Invalid output for reviewer one.",
+        "Failed to review with reviewer one. resolves[0] must target an unresolved thread owned by the reviewer.\n\nAllowed targets:\n- 101:thread-1",
       )
     })
 
     describe.each([
-      ["a non-positive line", { line: 0 }],
-      ["a non-positive start line", { line: 1, startLine: 0 }],
-      ["a reversed line range", { line: 1, startLine: 2 }],
-      ["a line outside a diff hunk", { line: 3 }],
-    ])("blocks %s", (_label, target) => {
+      [
+        "a non-positive line",
+        { line: 0 },
+        "findings[0].line must be a positive integer.",
+      ],
+      [
+        "a non-positive start line",
+        { line: 1, startLine: 0 },
+        "findings[0].startLine must be a positive integer.",
+      ],
+      [
+        "a reversed line range",
+        { line: 1, startLine: 2 },
+        "findings[0].startLine must be before or equal to findings[0].line.",
+      ],
+      [
+        "a line outside a diff hunk",
+        { line: 3 },
+        "findings[0] targets src/index.ts:3, but line is not in a right-side PR diff hunk.",
+      ],
+    ])("blocks %s", (_label, target, message) => {
       test("rejects the semantic finding target", async ({ magi }) => {
         const { config, review } = createReviewFixture(magi)
         const prompt = {
@@ -1808,8 +1948,104 @@ describe("Review", () => {
         vi.spyOn(magi, "promptSession").mockResolvedValue("invalid-review")
 
         await expect(review.review()).rejects.toThrow(
-          "Invalid output for reviewer one.",
+          `Failed to review with reviewer one. ${message}`,
         )
+      })
+    })
+  })
+
+  describe.each([
+    ["review", "review with reviewer one"],
+    ["rereview", "rereview with reviewer one"],
+    ["validateFindings", "validate review findings with reviewer one"],
+    ["reconsiderClose", "reconsider close verdict with reviewer one"],
+    ["postReviews", "generate comment by operator"],
+  ] as const)("%s request failures", (phase, label) => {
+    describe.each(["Error", "string"])("%s rejection", (type) => {
+      test("records every failure and reports the last cause without saving model output", async ({
+        magi,
+      }) => {
+        const {
+          config,
+          createAgentFile,
+          graphql,
+          octokit,
+          octokitMocks,
+          review,
+          updateEvent,
+        } = createReviewFixture(magi)
+        const prompt = {
+          create: vi.fn().mockResolvedValue("task"),
+          parse: vi.fn(),
+          repair: vi.fn().mockResolvedValue("repair-task"),
+        }
+        const firstError = new Error("Provider unavailable")
+        const message = "The request contains invalid parameters."
+        const lastError = type === "Error" ? new Error(message) : message
+
+        config.mode = "single"
+        config.output.repairAttempts = 2
+        config.review.merge.approvalPolicy = "unanimous"
+
+        if (phase !== "reconsiderClose")
+          config.review.reviewers = config.review.reviewers!.slice(0, 1)
+
+        review.state.pr!.threads = []
+        review.state.pr!.verdict = "CLOSED"
+        review.state.worktree = { path: "/tmp/worktree" }
+        review.state.operator = { sessionId: "operator-session" }
+        review.state.reviewers = {
+          one: {
+            outputs: [
+              phase === "validateFindings"
+                ? {
+                    findings: [
+                      {
+                        body: "Finding.",
+                        line: 1,
+                        path: "src/index.ts",
+                        state: "accepted",
+                      },
+                    ],
+                    verdict: "CHANGES_REQUESTED",
+                  }
+                : { comment: "Close.", verdict: "CLOSED" },
+            ],
+            review: { commit_id: "previous-sha" } as PullRequestReview,
+            sessionId: "reviewer-one-session",
+            status: phase === "rereview" ? "rereview" : "initial",
+          },
+          three: { outputs: [{ verdict: "APPROVED" }] },
+          two: { outputs: [{ verdict: "APPROVED" }] },
+        }
+        vi.spyOn(magi, "createOctokit").mockResolvedValue(octokit)
+        vi.spyOn(magi, "createGraphql").mockReturnValue(graphql)
+        vi.spyOn(Prompt, "init").mockResolvedValue(prompt as unknown as Prompt)
+
+        const promptSession = vi
+          .spyOn(magi, "promptSession")
+          .mockRejectedValueOnce(firstError)
+          .mockRejectedValueOnce(lastError)
+
+        await expect(
+          review[phase === "rereview" ? "review" : phase](),
+        ).rejects.toMatchObject({
+          message: `Failed to ${label}. ${message}`,
+          status: "blocked",
+        })
+        expect(promptSession).toHaveBeenCalledTimes(2)
+        expect(prompt.repair).toHaveBeenCalledExactlyOnceWith(firstError)
+        expect(updateEvent).toHaveBeenCalledWith(
+          review.state.output,
+          `Attempt 1 failed to ${label}. Provider unavailable. Retrying...`,
+        )
+        expect(updateEvent).toHaveBeenCalledWith(
+          review.state.output,
+          `Attempt 2 failed to ${label}. ${message}`,
+        )
+        expect(createAgentFile).not.toHaveBeenCalled()
+        expect(prompt.parse).not.toHaveBeenCalled()
+        expect(octokitMocks.createReview).not.toHaveBeenCalled()
       })
     })
   })
@@ -1961,12 +2197,12 @@ describe("Review", () => {
     })
 
     describe.each([
-      ["schema-invalid output", "schema"],
-      ["a self vote", "self"],
-      ["an unexpected vote", "unexpected"],
-      ["a duplicate vote", "duplicate"],
-      ["a missing vote", "missing"],
-    ])("blocks %s", (_label, failure) => {
+      ["schema-invalid output", "schema", "Invalid output."],
+      ["a self vote", "self", "two must not vote on its own findings."],
+      ["an unexpected vote", "unexpected", "Unexpected finding vote: one:9."],
+      ["a duplicate vote", "duplicate", "Duplicate finding vote: one:0."],
+      ["a missing vote", "missing", "Missing finding vote: one:0."],
+    ])("blocks %s", (_label, failure, message) => {
       test("rejects the invalid finding ballot", async ({ magi }) => {
         const { config, review, updateEvent } = createReviewFixture(magi)
         const validVote = {
@@ -2024,11 +2260,11 @@ describe("Review", () => {
         )
 
         await expect(review.validateFindings()).rejects.toThrow(
-          `Invalid finding validation output for reviewer ${failure === "schema" ? "one" : "two"}.`,
+          `Failed to validate review findings with reviewer ${failure === "schema" ? "one" : "two"}. ${message}`,
         )
         expect(updateEvent).toHaveBeenCalledWith(
           review.state.output,
-          `Attempt 1 failed to validate review findings with reviewer ${failure === "schema" ? "one" : "two"}. Retrying...`,
+          `Attempt 1 failed to validate review findings with reviewer ${failure === "schema" ? "one" : "two"}. ${message}`,
         )
       })
     })
@@ -2124,11 +2360,11 @@ describe("Review", () => {
       vi.spyOn(magi, "promptSession").mockResolvedValue("invalid-output")
 
       await expect(review.reconsiderClose()).rejects.toThrow(
-        "Invalid close reconsideration output for reviewer one.",
+        "Failed to reconsider close verdict with reviewer one. Invalid output.",
       )
       expect(updateEvent).toHaveBeenCalledWith(
         review.state.output,
-        "Attempt 1 failed to reconsider close verdict with reviewer one. Retrying...",
+        "Attempt 1 failed to reconsider close verdict with reviewer one. Invalid output.",
       )
     })
 
@@ -2479,11 +2715,11 @@ describe("Review", () => {
       vi.spyOn(magi, "promptSession").mockResolvedValue("invalid-output")
 
       await expect(review.postReviews()).rejects.toThrow(
-        "Invalid output for operator.",
+        "Failed to generate comment by operator. Invalid output.",
       )
       expect(updateEvent).toHaveBeenCalledWith(
         review.state.output,
-        "Attempt 1 failed to post comment by operator. Retrying...",
+        "Attempt 1 failed to generate comment by operator. Invalid output.",
       )
     })
 
