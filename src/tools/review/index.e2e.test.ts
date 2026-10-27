@@ -1175,6 +1175,74 @@ describe("magi:review", () => {
     )
   })
 
+  test("merges an approved pull request when a required check is skipped", async ({
+    createMagi,
+    tmpDir,
+  }) => {
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "multi")
+    const metadata = createPullRequestMetadata(tmpDir, repository)
+    const github = createGitHubFixture(metadata, PULL_REQUEST)
+    const { client, magi } = createMagi({ dir: tmpDir })
+    const ghCommands: string[] = []
+
+    config.review.automation.merge = true
+    config.review.concurrency.reviewers = 1
+    magi.exec = createReviewExec(repository, ghCommands, (command) => {
+      if (command.includes("gh pr checks") && command.includes("--json"))
+        return JSON.stringify([
+          {
+            bucket: "pass",
+            link: "https://github.com/actions/runs/1/job/11",
+            name: "Changeset",
+            state: "SUCCESS",
+            workflow: "Quality",
+          },
+          {
+            bucket: "skipping",
+            link: "https://github.com/actions/runs/2/job/12",
+            name: "Changeset",
+            state: "SKIPPED",
+            workflow: "Dependabot",
+          },
+        ])
+      if (command.startsWith("gh auth token")) return "token"
+      if (command.startsWith("gh api ")) return "[]"
+      if (command.startsWith("gh pr merge")) return ""
+      if (command.startsWith("gh pr view"))
+        return JSON.stringify({
+          autoMergeRequest: {},
+          mergeStateStatus: "CLEAN",
+          state: "MERGED",
+          statusCheckRollup: [],
+        })
+    })
+    mockSessions(client)
+    mockPromptOutputs(
+      client,
+      REVIEWERS.map(() => approvedOutput()),
+    )
+    vi.spyOn(magi, "getConfig").mockResolvedValue(config)
+    mockGitHub(magi, github)
+
+    await executeReview(magi, createContext())
+
+    const { report, state } = await readRun(config)
+
+    expect(state.status).toBe("completed")
+    expect(state.pr?.verdict).toBe("APPROVED")
+    expect(state.pr?.automation).toBe("MERGED")
+    expect(state.pr?.checks?.passed).toHaveLength(2)
+    expect(state.pr?.checks?.pending).toStrictEqual([])
+    expect(github.createReview).toHaveBeenCalledTimes(3)
+    expect(ghCommands).toContain(
+      "gh pr merge 123 --repo 'magi-ai/opencode-magi' --squash --auto --delete-branch",
+    )
+    expect(report).toContain("- **Automation**: Merged")
+    expect(report).toContain("- **Check**: Pass")
+    expect(report).not.toContain("Pending")
+  })
+
   test("marks an aborted in-progress scenario as cancelled and cleans its worktree", async ({
     createMagi,
     tmpDir,

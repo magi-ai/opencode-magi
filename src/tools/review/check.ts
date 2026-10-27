@@ -38,7 +38,12 @@ const ci = {
     return check.bucket === "fail" || check.state === "FAILURE"
   },
   isPassed(check: PullRequestCheck): boolean {
-    return check.bucket === "pass" || check.state === "SUCCESS"
+    return (
+      check.bucket === "pass" ||
+      check.bucket === "skipping" ||
+      check.state === "SUCCESS" ||
+      check.state === "SKIPPED"
+    )
   },
   isPending(check: PullRequestCheck): boolean {
     return !this.isFailed(check) && !this.isPassed(check)

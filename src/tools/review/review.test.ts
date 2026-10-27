@@ -941,6 +941,43 @@ describe("Review", () => {
       })
     })
 
+    test("treats skipped checks as passed alongside successful checks with the same name", async ({
+      magi,
+    }) => {
+      const { exec, review } = createReviewFixture(magi)
+      const checks = [
+        {
+          bucket: "pass",
+          link: "https://github.com/actions/runs/1/job/11",
+          name: "Changeset",
+          state: "SUCCESS",
+          workflow: "Quality",
+        },
+        {
+          bucket: "skipping",
+          link: "https://github.com/actions/runs/2/job/12",
+          name: "Changeset",
+          state: "SKIPPED",
+          workflow: "Dependabot",
+        },
+      ]
+
+      exec.mockResolvedValue(JSON.stringify(checks))
+
+      await review.checkCi(false)
+
+      expect(review.state.pr?.checks).toStrictEqual({
+        excluded: [],
+        failed: [],
+        passed: [
+          { ...checks[0], id: "11" },
+          { ...checks[1], id: "12" },
+        ],
+        pending: [],
+      })
+      expect(exec).toHaveBeenCalledOnce()
+    })
+
     test("preserves a failed check after retrying log cache errors", async ({
       magi,
     }) => {
