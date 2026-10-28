@@ -18,6 +18,7 @@ import {
   omitNullish,
   quote,
   retry,
+  wait,
   Worker,
 } from "@/utils"
 
@@ -361,17 +362,15 @@ export async function rerunChecks(this: Review): Promise<void> {
   if (!this.state.pr?.checks)
     throw new MagiError("blocked", "PR checks not found.")
 
-  const checks = {
-    failed: this.state.pr.checks.failed,
-    passed: this.state.pr.checks.passed,
-  }
+  const previousChecks = this.state.pr.checks
+
+  let checks = { ...previousChecks }
+
   const failedChecks = checks.failed.filter(({ scope }) => !scope)
 
   if (!failedChecks.length) return
 
   await this.updateEvent(`Rerunning CI checks.`)
-
-  let label = failedChecks.map(({ name }) => name).join(", ")
 
   if (this.state.dryRun) {
     checks.passed = [
@@ -380,54 +379,70 @@ export async function rerunChecks(this: Review): Promise<void> {
     ]
     checks.failed = checks.failed.filter(({ scope }) => scope)
   } else {
-    await retry(
-      async () => {
-        await this.updateEvent(`Rerunning checks ${label}.`)
-        await Promise.all(
-          checks.failed
-            .filter(({ scope }) => !scope)
-            .map(async ({ id }) => rerunCheck.call(this, id)),
+    for (
+      let count = 1;
+      count <= this.config.review.checks.retryFailedJobs;
+      count++
+    ) {
+      const targets = checks.failed.filter(({ scope }) => !scope)
+      const label = targets.map(({ name }) => name).join(", ")
+
+      await this.updateEvent(`Rerunning checks ${label}.`)
+
+      for (const target of targets) {
+        const check = checks.failed.find(
+          ({ name, workflow }) =>
+            name === target.name && workflow === target.workflow,
         )
-        await watchChecks.call(this)
 
-        const { failed, passed } = await getChecks.call(this)
+        if (!check) continue
 
-        checks.passed = passed.map((check) => {
-          const { classifieds, scope } =
-            checks.failed.find(
-              ({ name, workflow }) =>
-                check.name === name && check.workflow === workflow,
-            ) ?? {}
+        await rerunCheck.call(this, check.id)
 
-          return omitNullish({ ...check, classifieds, scope })
-        })
-        checks.failed = failed.map((check) => {
-          const { classifieds, scope } =
-            checks.failed.find(
-              ({ name, workflow }) =>
-                check.name === name && check.workflow === workflow,
-            ) ?? {}
+        for (;;) {
+          await watchChecks.call(this)
 
-          return omitNullish({ ...check, classifieds, scope })
-        })
+          const next = await getChecks.call(this, false)
+          const result = [...next.failed, ...next.passed].find(
+            ({ name, workflow }) =>
+              name === check.name && workflow === check.workflow,
+          )
 
-        const failedChecks = checks.failed.filter(({ scope }) => !scope)
+          if (!next.pending.length && result && result.id !== check.id) {
+            await Promise.all(
+              next.failed.map(async (check) => {
+                check.log = await getCheckLog.call(this, check.id)
+              }),
+            )
 
-        if (!failedChecks.length) return
+            for (const key of ["failed", "passed"] as const)
+              next[key] = next[key].map((check) => {
+                const { classifieds, scope } =
+                  previousChecks.failed.find(
+                    ({ name, workflow }) =>
+                      check.name === name && check.workflow === workflow,
+                  ) ?? {}
 
-        label = failedChecks.map(({ name }) => name).join(", ")
+                return omitNullish({ ...check, classifieds, scope })
+              })
 
-        throw new Error(`Checks ${label} still failed.`)
-      },
-      {
-        error: (_, count) =>
-          this.updateEvent(
-            `Attempt ${count} failed to rerun checks ${label}. Retrying...`,
-          ),
-        retries: this.config.review.checks.retryFailedJobs,
-        signal: this.context.signal,
-      },
-    )
+            checks = next
+
+            break
+          }
+
+          await wait(1_000, this.context.signal)
+        }
+      }
+
+      const remaining = checks.failed.filter(({ scope }) => !scope)
+
+      if (!remaining.length) break
+
+      await this.updateEvent(
+        `Attempt ${count} failed to rerun checks ${remaining.map(({ name }) => name).join(", ")}.${count < this.config.review.checks.retryFailedJobs ? " Retrying..." : ""}`,
+      )
+    }
   }
 
   const passedChecksAfterRerun = checks.passed.filter(
@@ -471,7 +486,10 @@ export async function getMetadata(
   }
 }
 
-async function getChecks(this: Review): Promise<PullRequestChecks> {
+async function getChecks(
+  this: Review,
+  includeLogs = true,
+): Promise<PullRequestChecks> {
   const fields = "name,state,bucket,link,workflow"
   const checks: PullRequestChecks = {
     excluded: [],
@@ -504,9 +522,11 @@ async function getChecks(this: Review): Promise<PullRequestChecks> {
         if (ci.isExcluded(this.config.review.checks.exclude, check)) {
           checks.excluded.push(check)
         } else if (ci.isFailed(check)) {
-          const log = await getCheckLog.call(this, check.id)
+          const log = includeLogs
+            ? await getCheckLog.call(this, check.id)
+            : undefined
 
-          checks.failed.push({ ...check, log })
+          checks.failed.push(omitNullish({ ...check, log }))
         } else if (ci.isPassed(check)) {
           checks.passed.push(check)
         } else if (ci.isPending(check)) {

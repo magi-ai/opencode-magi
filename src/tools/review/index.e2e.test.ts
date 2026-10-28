@@ -827,7 +827,12 @@ describe("magi:review", () => {
       state: "FAILURE",
       workflow: "CI",
     }
-    const passedCheck = { ...failedCheck, bucket: "pass", state: "SUCCESS" }
+    const passedCheck = {
+      ...failedCheck,
+      bucket: "pass",
+      link: "https://github.com/actions/runs/1/job/12",
+      state: "SUCCESS",
+    }
 
     config.review.concurrency.reviewers = 1
     magi.exec = createReviewExec(repository, ghCommands, (command) => {
@@ -869,7 +874,7 @@ describe("magi:review", () => {
 
     expect(state.pr?.checks?.failed).toStrictEqual([])
     expect(state.pr?.checks?.passed[0]).toMatchObject({
-      id: "11",
+      id: "12",
       scope: false,
       state: "SUCCESS",
     })
@@ -883,6 +888,261 @@ describe("magi:review", () => {
     expect(events.map(({ message }) => message)).toContain(
       "Reran checks test passed.",
     )
+  })
+
+  describe.each([1, 2])("%i completed rerun rounds", (rounds) => {
+    test("reviews the latest failure after exhausting reruns", async ({
+      createMagi,
+      tmpDir,
+    }) => {
+      const repository = await createRepository(tmpDir)
+      const config = createPullRequestConfig(tmpDir, "single")
+      const github = createGitHubFixture(
+        createPullRequestMetadata(tmpDir, repository),
+        PULL_REQUEST,
+      )
+      const { client, magi } = createMagi({ dir: tmpDir })
+      const ghCommands: string[] = []
+      const completedBeforeRerun: number[] = []
+
+      let reruns = 0
+      let completed = 0
+
+      config.review.checks.retryFailedJobs = rounds
+      config.review.concurrency.reviewers = 1
+      magi.exec = createReviewExec(repository, ghCommands, (command) => {
+        if (
+          command.includes("gh pr checks 123") &&
+          command.includes("--json")
+        ) {
+          completed = reruns
+
+          return JSON.stringify([
+            {
+              bucket: "fail",
+              link: `https://github.com/actions/runs/1/job/${11 + completed}`,
+              name: "test",
+              state: "FAILURE",
+              workflow: "CI",
+            },
+          ])
+        }
+
+        if (command.includes("gh run view") && command.includes("--log-failed"))
+          return `failure from job ${11 + completed}`
+
+        if (command.includes("gh run rerun")) {
+          completedBeforeRerun.push(completed)
+          reruns += 1
+
+          return ""
+        }
+
+        if (command.includes("gh pr checks 123") && command.includes("--watch"))
+          return ""
+      })
+      mockSessions(client)
+      mockPromptOutputs(client, [
+        ...REVIEWERS.map(() =>
+          JSON.stringify({
+            checks: [
+              {
+                classification: "SCOPE_OUT",
+                comment: "Unrelated infrastructure failure.",
+                id: "11",
+              },
+            ],
+          }),
+        ),
+        ...REVIEWERS.map(() => approvedOutput()),
+      ])
+      vi.spyOn(magi, "getConfig").mockResolvedValue(config)
+      mockGitHub(magi, github)
+
+      await expect(executeReview(magi, createContext())).resolves.toContain(
+        "- **Verdict**: Approved",
+      )
+
+      const { events, state } = await readRun(config)
+      const finalId = String(11 + rounds)
+
+      expect(reruns).toBe(rounds)
+      expect(completed).toBe(rounds)
+      expect(completedBeforeRerun).toStrictEqual(
+        Array.from({ length: rounds }, (_, index) => index),
+      )
+      expect(
+        ghCommands.filter((command) => command.includes("gh run rerun")),
+      ).toStrictEqual(
+        Array.from(
+          { length: rounds },
+          (_, index) =>
+            `gh run rerun --repo 'magi-ai/opencode-magi' --job '${11 + index}'`,
+        ),
+      )
+      expect(
+        ghCommands.filter((command) => command.includes("--watch --required")),
+      ).toHaveLength(rounds)
+      expect(state.status).toBe("completed")
+      expect(state.pr?.checks?.failed).toMatchObject([
+        {
+          classifieds: Object.fromEntries(
+            REVIEWERS.map((reviewer) => [
+              reviewer,
+              { comment: "Unrelated infrastructure failure.", scope: false },
+            ]),
+          ),
+          id: finalId,
+          log: `failure from job ${finalId}`,
+          scope: false,
+        },
+      ])
+      expect(client.session.prompt).toHaveBeenCalledTimes(REVIEWERS.length * 2)
+
+      for (const [input] of client.session.prompt.mock.calls.slice(
+        REVIEWERS.length,
+      )) {
+        expect(input.text).toContain("<review>")
+        expect(input.text).toContain(`"id": "${finalId}"`)
+        expect(input.text).toContain(`failure from job ${finalId}`)
+        expect(input.text).not.toContain('"id": "11"')
+        expect(input.text).not.toContain("failure from job 11")
+      }
+
+      expect(github.createReview).toHaveBeenCalledTimes(1)
+      expect(events.map(({ message }) => message)).toContain(
+        "Reran checks test failed.",
+      )
+    })
+  })
+
+  test("waits for a new rerun job and all pending checks before reviewing", async ({
+    createMagi,
+    tmpDir,
+  }) => {
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const github = createGitHubFixture(
+      createPullRequestMetadata(tmpDir, repository),
+      PULL_REQUEST,
+    )
+    const { client, magi } = createMagi({ dir: tmpDir })
+    const ghCommands: string[] = []
+    const controller = new AbortController()
+    const failedCheck = {
+      bucket: "fail",
+      link: "https://github.com/actions/runs/1/job/11",
+      name: "test",
+      state: "FAILURE",
+      workflow: "CI",
+    }
+    const pendingCheck = {
+      ...failedCheck,
+      bucket: "pending",
+      link: "https://github.com/actions/runs/1/job/12",
+      state: "PENDING",
+    }
+    const passedCheck = { ...pendingCheck, bucket: "pass", state: "SUCCESS" }
+    const otherPending = {
+      ...pendingCheck,
+      link: "https://github.com/actions/runs/1/job/13",
+      name: "other",
+    }
+    const excludedCheck = {
+      ...failedCheck,
+      link: "https://github.com/actions/runs/1/job/15",
+      name: "excluded",
+    }
+    const snapshots = [
+      [failedCheck],
+      [failedCheck],
+      [pendingCheck],
+      [passedCheck, otherPending],
+      [
+        passedCheck,
+        { ...otherPending, bucket: "pass", state: "SUCCESS" },
+        excludedCheck,
+      ],
+    ]
+
+    let checks = 0
+
+    config.review.checks.exclude = ["excluded"]
+    config.review.checks.retryFailedJobs = 1
+    config.review.concurrency.reviewers = 1
+    magi.exec = createReviewExec(repository, ghCommands, (command) => {
+      if (command.includes("gh pr checks 123") && command.includes("--json")) {
+        const snapshot = snapshots[Math.min(checks, snapshots.length - 1)]
+
+        checks += 1
+
+        return JSON.stringify(snapshot)
+      }
+
+      if (command.includes("gh run view") && command.includes("--log-failed"))
+        return "old failure"
+      if (command.includes("gh run rerun")) return ""
+      if (command.includes("gh pr checks 123") && command.includes("--watch"))
+        return ""
+    })
+    mockSessions(client)
+    mockPromptOutputs(client, [
+      ...REVIEWERS.map(() =>
+        JSON.stringify({
+          checks: [
+            {
+              classification: "SCOPE_OUT",
+              comment: "Unrelated infrastructure failure.",
+              id: "11",
+            },
+          ],
+        }),
+      ),
+      ...REVIEWERS.map(() => approvedOutput()),
+    ])
+    vi.spyOn(magi, "getConfig").mockResolvedValue(config)
+    mockGitHub(magi, github)
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+
+    const result = executeReview(magi, createContext(controller))
+
+    try {
+      await vi.waitFor(() => expect(checks).toBe(2))
+
+      for (const snapshot of [3, 4]) {
+        expect(client.session.prompt).toHaveBeenCalledTimes(REVIEWERS.length)
+        expect(
+          ghCommands.filter((command) => command.includes("gh run rerun")),
+        ).toStrictEqual([
+          "gh run rerun --repo 'magi-ai/opencode-magi' --job '11'",
+        ])
+
+        await vi.advanceTimersByTimeAsync(1_000)
+        await vi.waitFor(() => expect(checks).toBe(snapshot))
+      }
+
+      expect(client.session.prompt).toHaveBeenCalledTimes(REVIEWERS.length)
+      await vi.advanceTimersByTimeAsync(1_000)
+      await expect(result).resolves.toContain("- **Verdict**: Approved")
+
+      const { state } = await readRun(config)
+
+      expect(state.pr?.checks).toMatchObject({
+        excluded: [{ id: "15", name: "excluded" }],
+        failed: [],
+        passed: [
+          { id: "12", name: "test", scope: false },
+          { id: "13", name: "other" },
+        ],
+        pending: [],
+      })
+      expect(client.session.prompt).toHaveBeenCalledTimes(REVIEWERS.length * 2)
+      expect(github.createReview).toHaveBeenCalledTimes(1)
+    } finally {
+      controller.abort()
+      vi.useRealTimers()
+      await result.catch(() => {})
+    }
   })
 
   test("filters unknown-step logs before CI classification, review, and persistence", async ({

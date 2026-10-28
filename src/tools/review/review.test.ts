@@ -1640,7 +1640,7 @@ describe("Review", () => {
       const check = {
         bucket: "fail",
         classifieds: { one: { comment: "Not caused here.", scope: false } },
-        id: "job-1",
+        id: "1",
         link: "https://github.com/actions/runs/1/job/1",
         name: "test",
         scope: false,
@@ -1661,7 +1661,7 @@ describe("Review", () => {
             JSON.stringify([
               {
                 bucket: "fail",
-                link: check.link,
+                link: "https://github.com/actions/runs/1/job/2",
                 name: check.name,
                 state: "FAILURE",
                 workflow: check.workflow,
@@ -1685,6 +1685,372 @@ describe("Review", () => {
         review.state.output,
         "Reran checks test failed.",
       )
+    })
+
+    test("waits for new completed results before counting each failed rerun", async ({
+      magi,
+    }) => {
+      const { config, exec, review, updateEvent, updateState } =
+        createReviewFixture(magi)
+      const check = {
+        bucket: "fail",
+        classifieds: { one: { comment: "Unrelated.", scope: false } },
+        id: "1",
+        link: "https://github.com/actions/runs/1/job/1",
+        log: "original failure",
+        name: "test",
+        scope: false,
+        state: "FAILURE",
+        workflow: "CI",
+      }
+      const snapshots = [
+        [{ ...check, log: undefined }],
+        [
+          {
+            ...check,
+            bucket: "pending",
+            link: "https://github.com/actions/runs/1/job/2",
+            state: "IN_PROGRESS",
+          },
+        ],
+        [{ ...check, link: "https://github.com/actions/runs/1/job/2" }],
+        [
+          {
+            ...check,
+            bucket: "pending",
+            link: "https://github.com/actions/runs/1/job/3",
+            state: "QUEUED",
+          },
+        ],
+        [{ ...check, link: "https://github.com/actions/runs/1/job/3" }],
+      ]
+      const reruns: string[] = []
+
+      config.review.checks.retryFailedJobs = 2
+      review.state.pr!.checks!.failed = [check]
+      exec.mockImplementation((command) => {
+        if (command.includes("gh run rerun")) reruns.push(command)
+        if (command.includes("--json"))
+          return Promise.resolve(JSON.stringify(snapshots.shift()))
+        if (command.includes("--log-failed"))
+          return Promise.resolve(
+            command.includes("'3'") ? "latest failure" : "old failure",
+          )
+
+        return Promise.resolve("")
+      })
+      vi.useFakeTimers()
+
+      try {
+        const result = review.rerunChecks()
+
+        void result.catch(() => undefined)
+        await vi.advanceTimersByTimeAsync(0)
+        expect(reruns).toHaveLength(1)
+        expect(updateState).not.toHaveBeenCalled()
+        await vi.advanceTimersByTimeAsync(1_000)
+        expect(reruns).toHaveLength(1)
+        expect(updateState).not.toHaveBeenCalled()
+        await vi.advanceTimersByTimeAsync(1_000)
+        expect(reruns).toHaveLength(2)
+        expect(updateState).not.toHaveBeenCalled()
+        await vi.advanceTimersByTimeAsync(1_000)
+        await result
+      } finally {
+        vi.useRealTimers()
+      }
+
+      expect(reruns).toStrictEqual([
+        "gh run rerun --repo 'magi-ai/opencode-magi' --job '1'",
+        "gh run rerun --repo 'magi-ai/opencode-magi' --job '2'",
+      ])
+      expect(
+        exec.mock.calls
+          .map(([command]) => command)
+          .filter((command) => command.includes("--log-failed")),
+      ).toStrictEqual([
+        "gh run view --repo 'magi-ai/opencode-magi' --job '2' --log-failed",
+        "gh run view --repo 'magi-ai/opencode-magi' --job '3' --log-failed",
+      ])
+      expect(review.state.pr!.checks!.failed).toStrictEqual([
+        {
+          ...check,
+          id: "3",
+          link: "https://github.com/actions/runs/1/job/3",
+          log: "latest failure",
+        },
+      ])
+      expect(review.state.pr!.checks!.pending).toStrictEqual([])
+      expect(updateEvent).toHaveBeenCalledWith(
+        review.state.output,
+        "Attempt 2 failed to rerun checks test.",
+      )
+      expect(updateEvent).toHaveBeenLastCalledWith(
+        review.state.output,
+        "Finished rerunning checks.",
+      )
+    })
+
+    test("waits for other pending checks and stops rerunning after success", async ({
+      magi,
+    }) => {
+      const { config, exec, review } = createReviewFixture(magi)
+      const check = {
+        bucket: "fail",
+        id: "1",
+        link: "https://github.com/actions/runs/1/job/1",
+        name: "test",
+        scope: false,
+        state: "FAILURE",
+        workflow: "CI",
+      }
+      const passed = {
+        ...check,
+        bucket: "pass",
+        link: "https://github.com/actions/runs/1/job/2",
+        state: "SUCCESS",
+      }
+      const pending = {
+        bucket: "pending",
+        link: "https://github.com/actions/runs/2/job/3",
+        name: "build",
+        state: "IN_PROGRESS",
+        workflow: "Build",
+      }
+      const excluded = {
+        ...pending,
+        bucket: "fail",
+        name: "ignored",
+        state: "FAILURE",
+      }
+      const snapshots = [
+        [{ ...check, link: passed.link }, pending, excluded],
+        [passed, { ...pending, bucket: "pass", state: "SUCCESS" }, excluded],
+      ]
+      const reruns: string[] = []
+
+      config.review.checks.retryFailedJobs = 3
+      config.review.checks.exclude = ["ignored"]
+      review.state.pr!.checks!.failed = [check]
+      review.state.pr!.checks!.pending = [{ ...pending, id: "3" }]
+      exec.mockImplementation((command) => {
+        if (command.includes("gh run rerun")) reruns.push(command)
+        if (command.includes("--json"))
+          return Promise.resolve(JSON.stringify(snapshots.shift()))
+
+        return Promise.resolve("")
+      })
+      vi.useFakeTimers()
+
+      try {
+        const result = review.rerunChecks()
+
+        void result.catch(() => undefined)
+        await vi.advanceTimersByTimeAsync(0)
+        expect(reruns).toHaveLength(1)
+        await vi.advanceTimersByTimeAsync(1_000)
+        await result
+      } finally {
+        vi.useRealTimers()
+      }
+
+      expect(reruns).toHaveLength(1)
+      expect(
+        exec.mock.calls.filter(([command]) => command.includes("--log-failed")),
+      ).toStrictEqual([])
+      expect(review.state.pr!.checks!.failed).toStrictEqual([])
+      expect(review.state.pr!.checks!.pending).toStrictEqual([])
+      expect(review.state.pr!.checks!.excluded).toStrictEqual([
+        { ...excluded, id: "3" },
+      ])
+      expect(review.state.pr!.checks!.passed).toStrictEqual([
+        { ...passed, id: "2" },
+        { ...pending, bucket: "pass", id: "3", state: "SUCCESS" },
+      ])
+    })
+
+    describe.each([
+      ["reruns the second job only after the first finishes", false, 2],
+      ["skips a dependent job that already passed", true, 1],
+    ] as const)("%s", (_label, dependent, expectedReruns) => {
+      test("does not submit competing reruns for jobs in the same workflow", async ({
+        magi,
+      }) => {
+        const { config, exec, review } = createReviewFixture(magi)
+        const first = {
+          bucket: "fail",
+          id: "1",
+          link: "https://github.com/actions/runs/1/job/1",
+          name: "first",
+          scope: false,
+          state: "FAILURE",
+          workflow: "CI",
+        }
+        const second = {
+          ...first,
+          id: "3",
+          link: "https://github.com/actions/runs/1/job/3",
+          name: "second",
+        }
+        const firstWait = Promise.withResolvers<string>()
+        const secondWait = Promise.withResolvers<string>()
+        const reruns: string[] = []
+
+        let watches = 0
+
+        config.review.checks.retryFailedJobs = 1
+        review.state.pr!.checks!.failed = [first, second]
+        exec.mockImplementation((command) => {
+          if (command.includes("gh run rerun")) reruns.push(command)
+
+          if (command.includes("--watch")) {
+            watches += 1
+
+            return watches === 1 ? firstWait.promise : secondWait.promise
+          }
+
+          if (command.includes("--json"))
+            return Promise.resolve(
+              JSON.stringify([
+                {
+                  ...first,
+                  bucket: "pass",
+                  link: "https://github.com/actions/runs/1/job/2",
+                  state: "SUCCESS",
+                },
+                dependent || watches === 2
+                  ? {
+                      ...second,
+                      bucket: "pass",
+                      link: "https://github.com/actions/runs/1/job/4",
+                      state: "SUCCESS",
+                    }
+                  : second,
+              ]),
+            )
+
+          return Promise.resolve("failed log")
+        })
+
+        const result = review.rerunChecks()
+
+        await vi.waitFor(() => expect(reruns).toHaveLength(1))
+        firstWait.resolve("")
+        await vi.waitFor(() => expect(reruns).toHaveLength(expectedReruns))
+        secondWait.resolve("")
+        await result
+
+        expect(reruns).toStrictEqual(
+          dependent
+            ? ["gh run rerun --repo 'magi-ai/opencode-magi' --job '1'"]
+            : [
+                "gh run rerun --repo 'magi-ai/opencode-magi' --job '1'",
+                "gh run rerun --repo 'magi-ai/opencode-magi' --job '3'",
+              ],
+        )
+        expect(review.state.pr!.checks!.failed).toStrictEqual([])
+        expect(review.state.pr!.checks!.passed).toHaveLength(2)
+      })
+    })
+
+    test("cancels while waiting for a rerun to appear without submitting another rerun", async ({
+      magi,
+    }) => {
+      const { controller, exec, review } = createReviewFixture(magi)
+      const check = {
+        bucket: "fail",
+        id: "1",
+        link: "https://github.com/actions/runs/1/job/1",
+        name: "test",
+        scope: false,
+        state: "FAILURE",
+        workflow: "CI",
+      }
+      const reason = new Error("Cancelled")
+
+      review.state.pr!.checks!.failed = [check]
+      exec.mockImplementation((command) =>
+        Promise.resolve(
+          command.includes("--json") ? JSON.stringify([check]) : "old failure",
+        ),
+      )
+      vi.useFakeTimers()
+
+      try {
+        const result = review.rerunChecks()
+
+        void result.catch(() => undefined)
+        await vi.advanceTimersByTimeAsync(0)
+        controller.abort(reason)
+        await expect(result).rejects.toBe(reason)
+      } finally {
+        vi.useRealTimers()
+      }
+
+      expect(
+        exec.mock.calls.filter(([command]) => command.includes("gh run rerun")),
+      ).toHaveLength(1)
+    })
+
+    test("does not rerun checks when the configured retry count is zero", async ({
+      magi,
+    }) => {
+      const { config, exec, review } = createReviewFixture(magi)
+      const check = {
+        bucket: "fail",
+        id: "1",
+        link: "https://github.com/actions/runs/1/job/1",
+        name: "test",
+        scope: false,
+        state: "FAILURE",
+        workflow: "CI",
+      }
+
+      config.review.checks.retryFailedJobs = 0
+      review.state.pr!.checks!.failed = [check]
+
+      await review.rerunChecks()
+
+      expect(exec).not.toHaveBeenCalled()
+      expect(review.state.pr!.checks!.failed).toStrictEqual([check])
+    })
+
+    describe.each(["submission", "status"])("rerun %s errors", (failure) => {
+      test("propagates operational errors instead of proceeding with stale checks", async ({
+        magi,
+      }) => {
+        const { config, exec, review } = createReviewFixture(magi)
+
+        config.review.checks.retryFailedJobs = 3
+        review.state.pr!.checks!.failed = [
+          {
+            bucket: "fail",
+            id: "1",
+            link: "https://github.com/actions/runs/1/job/1",
+            name: "test",
+            scope: false,
+            state: "FAILURE",
+            workflow: "CI",
+          },
+        ]
+        exec.mockImplementation((command) => {
+          if (
+            command.includes(
+              failure === "submission" ? "gh run rerun" : "--json",
+            )
+          )
+            return Promise.reject(new Error("GitHub unavailable"))
+
+          return Promise.resolve("")
+        })
+
+        await expect(review.rerunChecks()).rejects.toThrow("GitHub unavailable")
+        expect(
+          exec.mock.calls.filter(([command]) =>
+            command.includes("gh run rerun"),
+          ),
+        ).toHaveLength(1)
+      })
     })
   })
 
