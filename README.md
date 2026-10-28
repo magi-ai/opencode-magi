@@ -196,6 +196,8 @@ After creating or updating your global or project configuration, validate it.
 /magi:validate
 ```
 
+Check that the report says `Magi config validation: passed` before running a review. If validation fails, correct the listed errors and run `/magi:validate` again.
+
 ### Commands
 
 Run commands from OpenCode.
