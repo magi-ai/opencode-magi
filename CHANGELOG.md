@@ -1,5 +1,35 @@
 # opencode-magi
 
+## 1.0.0
+
+### Major Changes
+
+- [`dda537c`](https://github.com/magi-ai/opencode-magi/commit/dda537c81da10b231324c8b473987c16e473e229) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Migrate plugin registration, tools, commands, sessions, and dependencies to OpenCode v2.0.29, replacing OpenCode v1 support.
+
+### Minor Changes
+
+- [#445](https://github.com/magi-ai/opencode-magi/pull/445) [`1abec9f`](https://github.com/magi-ai/opencode-magi/commit/1abec9f1598074e272d783046b91670f9bd1f3b0) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Add pull request author association filters to review conditions.
+
+### Patch Changes
+
+- [#443](https://github.com/magi-ai/opencode-magi/pull/443) [`474375f`](https://github.com/magi-ai/opencode-magi/commit/474375f77b02d1af8c05f6a4b4984cc2a2cc5f49) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Use the configured editor credentials when pushing changes from GitHub Actions.
+
+- [#454](https://github.com/magi-ai/opencode-magi/pull/454) [`5b675a0`](https://github.com/magi-ai/opencode-magi/commit/5b675a0ba6b794e872c2dd0116974f45e61b8d1d) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Set a command-scoped Git identity for merge conflict checks so they work without configured committer information.
+
+- [`3aeed58`](https://github.com/magi-ai/opencode-magi/commit/3aeed58db98b64d2bf3d636a01f75b60a15e464c) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Treat skipped required CI checks as passed so they do not block merge automation.
+
+- [`c43133b`](https://github.com/magi-ai/opencode-magi/commit/c43133b4a8f2b9b55d25df7053cf05f67ae9e070) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Wait for newly rerun CI jobs to finish and pass their latest results to reviewers even when all configured reruns fail.
+
+- [`a3a24ae`](https://github.com/magi-ai/opencode-magi/commit/a3a24ae6588714fe2f0ceb61e6a0630bbf781084) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Filter unknown-step CI logs using GitHub's failed-step timestamps before passing them to reviewers.
+
+- [`fcf6049`](https://github.com/magi-ai/opencode-magi/commit/fcf6049e46a39b9e366b0da6c9f1913fe77e26b3) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Preserve model request and validation errors across review and merge phases in run events and reports without writing request failures to model output files.
+
+- [#440](https://github.com/magi-ai/opencode-magi/pull/440) [`1625e6a`](https://github.com/magi-ai/opencode-magi/commit/1625e6a48b99ce0c998e64b850dc703115098388) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Remove redundant reviewer configuration guards.
+
+- [#449](https://github.com/magi-ai/opencode-magi/pull/449) [`eed531a`](https://github.com/magi-ai/opencode-magi/commit/eed531acdb4c3fb16bbe295eb70b880fbafe5a74) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Retry pull requests removed from the merge queue after checks time out.
+
+- [`bb16df4`](https://github.com/magi-ai/opencode-magi/commit/bb16df4a3a63ccd26f9c591686a12ad905437ee4) Thanks [@hirotomoyamada](https://github.com/hirotomoyamada)! - Retry invalid ZIP cache errors when fetching failed CI logs using the existing GitHub CLI retry policy.
+
 ## 0.12.0
 
 ### Minor Changes
