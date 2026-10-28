@@ -536,15 +536,60 @@ async function getCheckLog(this: Review, id: string): Promise<string> {
     ),
     { signal: this.context.signal },
   )
+  const lines = log
+    // oxlint-disable-next-line no-control-regex
+    .replaceAll(/\u001B\[[0-9;]*m/g, "")
+    .split("\n")
+    .filter((line) => line.trim())
+  const unknownStep = /^[^\t]*\tUNKNOWN STEP\t\s*(\S+)/
 
-  return (
-    log
-      // oxlint-disable-next-line no-control-regex
-      .replaceAll(/\u001B\[[0-9;]*m/g, "")
-      .split("\n")
-      .filter((line) => line.trim())
-      .join("\n")
+  if (!lines.some((line) => unknownStep.test(line))) return lines.join("\n")
+
+  const raw = await this.exec(
+    command(
+      "gh",
+      "api",
+      quote(
+        `repos/${this.config.github.owner}/${this.config.github.repo}/actions/jobs/${id}`,
+      ),
+    ),
+    { signal: this.context.signal },
   )
+  const { steps = [] } = JSON.parse(raw) as {
+    steps?: {
+      completed_at: null | string
+      conclusion: string
+      started_at: null | string
+    }[]
+  }
+  const ranges = steps.flatMap(({ completed_at, conclusion, started_at }) => {
+    if (conclusion !== "failure" || !started_at || !completed_at) return []
+
+    return [
+      {
+        // GitHub step timestamps have second precision, so include the final second.
+        end: Date.parse(completed_at) + 1_000,
+        start: Date.parse(started_at),
+      },
+    ]
+  })
+
+  if (!ranges.length) return lines.join("\n")
+
+  const filtered = lines.filter((line) => {
+    const match = line.match(unknownStep)
+
+    if (!match) return true
+
+    const time = Date.parse(match[1]!)
+
+    return (
+      Number.isNaN(time) ||
+      ranges.some(({ end, start }) => start <= time && time < end)
+    )
+  })
+
+  return (filtered.length ? filtered : lines).join("\n")
 }
 
 async function rerunCheck(this: Review, id: string): Promise<void> {

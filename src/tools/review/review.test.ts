@@ -941,6 +941,231 @@ describe("Review", () => {
       })
     })
 
+    describe.each([
+      {
+        expected: [
+          "test\tUNKNOWN STEP\t2026-10-27T13:10:13.0000000Z Run tests",
+          "test\tUNKNOWN STEP\t2026-10-27T13:11:55.4205309Z Unexpected browser disconnect",
+          "test\tUNKNOWN STEP\t2026-10-27T13:11:55.9999999Z Final diagnostic",
+        ],
+        lines: [
+          "test\tUNKNOWN STEP\t\uFEFF2026-10-27T13:09:46.6416321Z * [new tag] package@1.0.0",
+          "test\tUNKNOWN STEP\t2026-10-27T13:10:12.9999999Z Install complete",
+          "test\tUNKNOWN STEP\t2026-10-27T13:10:13.0000000Z Run tests",
+          "test\tUNKNOWN STEP\t2026-10-27T13:11:55.4205309Z Unexpected browser disconnect",
+          "test\tUNKNOWN STEP\t2026-10-27T13:11:55.9999999Z Final diagnostic",
+          "test\tUNKNOWN STEP\t2026-10-27T13:11:56.0000000Z Cleaning up",
+        ],
+        name: "includes the failed step's start and entire completion second",
+        steps: [
+          {
+            completed_at: "2026-10-27T13:11:55Z",
+            conclusion: "failure",
+            started_at: "2026-10-27T13:10:13Z",
+          },
+        ],
+      },
+      {
+        expected: [
+          "test\tUNKNOWN STEP\t2026-10-27T13:10:14.1234567Z First failure",
+          "test\tUNKNOWN STEP\t2026-10-27T13:10:21.1234567Z Second failure",
+          "test\tRun tests\t2026-10-27T13:11:00.0000000Z Known failed step output",
+          "test\tUNKNOWN STEP\tTimestamp unavailable",
+        ],
+        lines: [
+          "test\tUNKNOWN STEP\t2026-10-27T13:10:14.1234567Z First failure",
+          "test\tUNKNOWN STEP\t2026-10-27T13:10:18.1234567Z Successful step output",
+          "test\tUNKNOWN STEP\t2026-10-27T13:10:21.1234567Z Second failure",
+          "test\tRun tests\t2026-10-27T13:11:00.0000000Z Known failed step output",
+          "test\tUNKNOWN STEP\tTimestamp unavailable",
+        ],
+        name: "uses separate failure intervals and preserves named-step and untimestamped lines",
+        steps: [
+          {
+            completed_at: "2026-10-27T13:10:15Z",
+            conclusion: "failure",
+            started_at: "2026-10-27T13:10:13Z",
+          },
+          {
+            completed_at: "2026-10-27T13:10:19Z",
+            conclusion: "success",
+            started_at: "2026-10-27T13:10:16Z",
+          },
+          {
+            completed_at: "2026-10-27T13:10:21Z",
+            conclusion: "failure",
+            started_at: "2026-10-27T13:10:20Z",
+          },
+        ],
+      },
+    ])("UNKNOWN STEP logs: $name", ({ expected, lines, steps }) => {
+      test("saves only the relevant log lines using GitHub step metadata", async ({
+        magi,
+      }) => {
+        const { context, exec, review } = createReviewFixture(magi)
+
+        exec
+          .mockResolvedValueOnce(
+            JSON.stringify([
+              {
+                bucket: "fail",
+                link: "https://github.com/actions/runs/1/job/12",
+                name: "test",
+                state: "FAILURE",
+                workflow: "CI",
+              },
+            ]),
+          )
+          .mockResolvedValueOnce(`\u001b[31m${lines.join("\n")}\u001b[0m\n\n`)
+          .mockResolvedValueOnce(JSON.stringify({ steps }))
+
+        await review.checkCi(false)
+
+        expect(review.state.pr?.checks?.failed[0]?.log).toBe(
+          expected.join("\n"),
+        )
+        expect(exec).toHaveBeenCalledTimes(3)
+        expect(exec).toHaveBeenNthCalledWith(
+          2,
+          "gh run view --repo 'magi-ai/opencode-magi' --job '12' --log-failed",
+          { signal: context.signal },
+        )
+        expect(exec).toHaveBeenLastCalledWith(
+          "gh api 'repos/magi-ai/opencode-magi/actions/jobs/12'",
+          { signal: context.signal },
+        )
+      })
+    })
+
+    describe.each([
+      { job: {}, name: "step metadata is absent" },
+      { job: { steps: [] }, name: "the step list is empty" },
+      {
+        job: {
+          steps: [
+            {
+              completed_at: "2026-10-27T13:11:55Z",
+              conclusion: "success",
+              started_at: "2026-10-27T13:10:13Z",
+            },
+          ],
+        },
+        name: "no step failed",
+      },
+      {
+        job: {
+          steps: [
+            {
+              completed_at: "2026-10-27T13:11:55Z",
+              conclusion: "failure",
+              started_at: null,
+            },
+          ],
+        },
+        name: "the failed step has no start time",
+      },
+      {
+        job: {
+          steps: [
+            {
+              completed_at: null,
+              conclusion: "failure",
+              started_at: "2026-10-27T13:10:13Z",
+            },
+          ],
+        },
+        name: "the failed step has no completion time",
+      },
+      {
+        job: {
+          steps: [
+            {
+              completed_at: "2026-10-27T14:11:55Z",
+              conclusion: "failure",
+              started_at: "2026-10-27T14:10:13Z",
+            },
+          ],
+        },
+        name: "no log line matches the failed step's time range",
+      },
+    ])("UNKNOWN STEP logs when $name", ({ job }) => {
+      test("preserves the original log instead of discarding failure evidence", async ({
+        magi,
+      }) => {
+        const { exec, review } = createReviewFixture(magi)
+        const log = "test\tUNKNOWN STEP\t2026-10-27T13:11:55.4205309Z Failed"
+
+        exec
+          .mockResolvedValueOnce(
+            JSON.stringify([
+              {
+                bucket: "fail",
+                link: "https://github.com/actions/runs/1/job/12",
+                name: "test",
+                state: "FAILURE",
+                workflow: "CI",
+              },
+            ]),
+          )
+          .mockResolvedValueOnce(log)
+          .mockResolvedValueOnce(JSON.stringify(job))
+
+        await review.checkCi(false)
+
+        expect(review.state.pr?.checks?.failed[0]?.log).toBe(log)
+        expect(exec).toHaveBeenCalledTimes(3)
+      })
+    })
+
+    test("surfaces GitHub job metadata request failures", async ({ magi }) => {
+      const { exec, review } = createReviewFixture(magi)
+
+      exec
+        .mockResolvedValueOnce(
+          JSON.stringify([
+            {
+              bucket: "fail",
+              link: "https://github.com/actions/runs/1/job/12",
+              name: "test",
+              state: "FAILURE",
+              workflow: "CI",
+            },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          "test\tUNKNOWN STEP\t2026-10-27T13:11:55.4205309Z Failed",
+        )
+        .mockRejectedValueOnce(new Error("GitHub unavailable"))
+
+      await expect(review.checkCi(false)).rejects.toThrow("GitHub unavailable")
+    })
+
+    test("does not fetch job metadata or limit normal failed-step logs", async ({
+      magi,
+    }) => {
+      const { exec, review } = createReviewFixture(magi)
+      const log = `test\tRun tests\t2026-10-27T13:10:13Z ${"x".repeat(70_000)}\tUNKNOWN STEP\tmentioned in output`
+
+      exec
+        .mockResolvedValueOnce(
+          JSON.stringify([
+            {
+              bucket: "fail",
+              link: "https://github.com/actions/runs/1/job/12",
+              name: "test",
+              state: "FAILURE",
+              workflow: "CI",
+            },
+          ]),
+        )
+        .mockResolvedValueOnce(log)
+
+      await review.checkCi(false)
+
+      expect(review.state.pr?.checks?.failed[0]?.log).toBe(log)
+      expect(exec).toHaveBeenCalledTimes(2)
+    })
+
     test("treats skipped checks as passed alongside successful checks with the same name", async ({
       magi,
     }) => {

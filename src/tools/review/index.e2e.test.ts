@@ -885,6 +885,108 @@ describe("magi:review", () => {
     )
   })
 
+  test("filters unknown-step logs before CI classification, review, and persistence", async ({
+    createMagi,
+    tmpDir,
+  }) => {
+    const repository = await createRepository(tmpDir)
+    const config = createPullRequestConfig(tmpDir, "single")
+    const github = createGitHubFixture(
+      createPullRequestMetadata(tmpDir, repository),
+      PULL_REQUEST,
+    )
+    const { client, magi } = createMagi({ dir: tmpDir })
+    const ghCommands: string[] = []
+    const failedCheck = {
+      bucket: "fail",
+      link: "https://github.com/actions/runs/1/job/11",
+      name: "test",
+      state: "FAILURE",
+      workflow: "CI",
+    }
+    const checkout =
+      "test\tUNKNOWN STEP\t2026-07-24T00:00:02.0000000Z refs/tags/v1.2.3"
+    const named =
+      "test\tRun tests\t2026-07-24T00:00:09.0000000Z Named-step diagnostic"
+    const failure =
+      "test\tUNKNOWN STEP\t2026-07-24T00:00:10.0000000Z expected 2, received 1"
+    const finalSecond =
+      "test\tUNKNOWN STEP\t2026-07-24T00:00:12.9999999Z assertion details"
+    const cleanup =
+      "test\tUNKNOWN STEP\t2026-07-24T00:00:13.0000000Z Cleanup complete"
+    const filteredLog = [named, failure, finalSecond].join("\n")
+
+    config.review.concurrency.reviewers = 1
+    magi.exec = createReviewExec(repository, ghCommands, (command) => {
+      if (command.includes("gh pr checks 123") && command.includes("--json"))
+        return JSON.stringify([failedCheck])
+      if (
+        command ===
+        "gh run view --repo 'magi-ai/opencode-magi' --job '11' --log-failed"
+      )
+        return [checkout, named, failure, finalSecond, cleanup].join("\n")
+      if (command === "gh api 'repos/magi-ai/opencode-magi/actions/jobs/11'")
+        return JSON.stringify({
+          steps: [
+            {
+              completed_at: "2026-07-24T00:00:05Z",
+              conclusion: "success",
+              started_at: "2026-07-24T00:00:00Z",
+            },
+            {
+              completed_at: "2026-07-24T00:00:12Z",
+              conclusion: "failure",
+              started_at: "2026-07-24T00:00:10Z",
+            },
+          ],
+        })
+    })
+    mockSessions(client)
+    mockPromptOutputs(client, [
+      ...REVIEWERS.map(() =>
+        JSON.stringify({
+          checks: [
+            {
+              classification: "SCOPE_IN",
+              comment: "Introduced by this change.",
+              id: "11",
+            },
+          ],
+        }),
+      ),
+      ...REVIEWERS.map(() => approvedOutput()),
+    ])
+    vi.spyOn(magi, "getConfig").mockResolvedValue(config)
+    mockGitHub(magi, github)
+
+    await expect(executeReview(magi, createContext())).resolves.toContain(
+      "- **test**: In-scope failure",
+    )
+
+    const { state } = await readRun(config)
+
+    expect(state.status).toBe("completed")
+    expect(state.pr?.checks?.failed).toMatchObject([
+      { id: "11", log: filteredLog, scope: true },
+    ])
+    expect(client.session.prompt).toHaveBeenCalledTimes(REVIEWERS.length * 2)
+
+    client.session.prompt.mock.calls.forEach(([input], index) => {
+      expect(input.text).toContain(
+        index < REVIEWERS.length ? "<failed_checks>" : "<ci_failure>",
+      )
+      expect(input.text).toContain(JSON.stringify(filteredLog))
+      expect(input.text).not.toContain("refs/tags/v1.2.3")
+      expect(input.text).not.toContain("Cleanup complete")
+    })
+    expect(ghCommands).toStrictEqual([
+      "gh pr checks 123 --repo 'magi-ai/opencode-magi' --json name,state,bucket,link,workflow --required",
+      "gh run view --repo 'magi-ai/opencode-magi' --job '11' --log-failed",
+      "gh api 'repos/magi-ai/opencode-magi/actions/jobs/11'",
+      "gh pr checkout 123 --detach",
+    ])
+  })
+
   test("persists CI classification API failures in events and the report without model output files", async ({
     createMagi,
     tmpDir,
